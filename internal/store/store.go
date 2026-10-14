@@ -274,11 +274,12 @@ func UpdateIssue(ctx context.Context, q DBTX, is *Issue) error {
 }
 
 // ListInbox 返回需要该成员处理的问题单：
-// 作为负责人的待接单、已接单、修复中、已重开；作为发起人的草稿与待验证。
+// 作为负责人的待接单、已接单、修复中、已重开；作为发起人的草稿、待验证，以及 7 天内被退回的单。
 func ListInbox(ctx context.Context, q DBTX, memberID int64) ([]Issue, error) {
 	rows, err := q.Query(ctx, `SELECT `+issueColumns+issueFrom+`
 		WHERE (i.owner_id = $1 AND i.status IN ('OPEN','ACCEPTED','FIXING','REOPENED'))
 		   OR (i.source_member_id = $1 AND i.status IN ('DRAFT','READY_FOR_VERIFICATION'))
+		   OR (i.source_member_id = $1 AND i.status = 'DECLINED' AND i.updated_at > now() - interval '7 days')
 		ORDER BY i.updated_at DESC, i.id DESC`, memberID)
 	if err != nil {
 		return nil, err
@@ -355,19 +356,25 @@ func ListEvents(ctx context.Context, q DBTX, issueID int64) ([]Event, error) {
 
 // ---- 幂等 ----
 
-func GetIdempotent(ctx context.Context, q DBTX, tokenID int64, key string) (int64, bool, error) {
-	var issueID int64
-	err := q.QueryRow(ctx, `SELECT issue_id FROM idempotency WHERE token_id = $1 AND key = $2`,
-		tokenID, key).Scan(&issueID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, false, nil
-	}
-	return issueID, err == nil, err
+// IdemRecord 记录某个幂等键第一次用于哪张问题单的哪个动作。
+type IdemRecord struct {
+	IssueID int64
+	Action  string
 }
 
-func PutIdempotent(ctx context.Context, q DBTX, tokenID int64, key string, issueID int64) error {
-	_, err := q.Exec(ctx, `INSERT INTO idempotency (token_id, key, issue_id) VALUES ($1, $2, $3)`,
-		tokenID, key, issueID)
+func GetIdempotent(ctx context.Context, q DBTX, tokenID int64, key string) (IdemRecord, bool, error) {
+	var r IdemRecord
+	err := q.QueryRow(ctx, `SELECT issue_id, action FROM idempotency WHERE token_id = $1 AND key = $2`,
+		tokenID, key).Scan(&r.IssueID, &r.Action)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return IdemRecord{}, false, nil
+	}
+	return r, err == nil, err
+}
+
+func PutIdempotent(ctx context.Context, q DBTX, tokenID int64, key string, r IdemRecord) error {
+	_, err := q.Exec(ctx, `INSERT INTO idempotency (token_id, key, issue_id, action) VALUES ($1, $2, $3, $4)`,
+		tokenID, key, r.IssueID, r.Action)
 	return err
 }
 

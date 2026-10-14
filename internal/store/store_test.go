@@ -258,11 +258,11 @@ func TestIdempotencyRecord(t *testing.T) {
 	if _, ok, err := store.GetIdempotent(ctx, pool, tokenID, "k1"); err != nil || ok {
 		t.Fatalf("未记录前应查不到：%v %v", ok, err)
 	}
-	if err := store.PutIdempotent(ctx, pool, tokenID, "k1", is.ID); err != nil {
+	if err := store.PutIdempotent(ctx, pool, tokenID, "k1", store.IdemRecord{IssueID: is.ID, Action: "submit"}); err != nil {
 		t.Fatal(err)
 	}
 	got, ok, err := store.GetIdempotent(ctx, pool, tokenID, "k1")
-	if err != nil || !ok || got != is.ID {
-		t.Fatalf("应查到 %d，得到 %d %v %v", is.ID, got, ok, err)
+	if err != nil || !ok || got.IssueID != is.ID || got.Action != "submit" {
+		t.Fatalf("应查到 #%d 的 submit，得到 %+v %v %v", is.ID, got, ok, err)
 	}
 }

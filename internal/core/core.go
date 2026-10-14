@@ -94,32 +94,24 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pe) && pe.Code == "23505"
 }
 
-// replay 返回幂等键已记录的问题单。
-func (s *Service) replay(ctx context.Context, who store.Identity, key string) (store.Issue, bool, error) {
-	if key == "" {
-		return store.Issue{}, false, nil
-	}
-	id, ok, err := store.GetIdempotent(ctx, s.Pool, who.TokenID, key)
-	if err != nil || !ok {
-		return store.Issue{}, false, err
-	}
-	is, err := store.GetIssue(ctx, s.Pool, id)
-	return is, err == nil, err
+func keyReuseErr(key string, rec store.IdemRecord) error {
+	return inputErr("幂等键 %q 已用于问题单 #%d 的 %s 操作，不能用于本次请求，请换一个新的键", key, rec.IssueID, rec.Action)
 }
 
-// withIdempotency 处理“先查已记录结果，执行，冲突时再查一次”的通用流程。
-func (s *Service) withIdempotency(ctx context.Context, who store.Identity, key string,
-	run func() (store.Issue, error)) (store.Issue, error) {
-	if is, ok, err := s.replay(ctx, who, key); err != nil || ok {
-		return is, err
+// checkReplay 查幂等记录：记录与本次请求的问题单和动作一致时返回 replay=true；
+// 不一致时报错，避免把无关的结果当成本次操作的结果。issueID 为 0 表示新建（起草）。
+func checkReplay(ctx context.Context, q store.DBTX, who store.Identity, key string, issueID int64, action issue.Action) (int64, bool, error) {
+	if key == "" {
+		return 0, false, nil
 	}
-	is, err := run()
-	if err != nil && key != "" && isUniqueViolation(err) {
-		if again, ok, rerr := s.replay(ctx, who, key); rerr == nil && ok {
-			return again, nil
-		}
+	rec, ok, err := store.GetIdempotent(ctx, q, who.TokenID, key)
+	if err != nil || !ok {
+		return 0, false, err
 	}
-	return is, err
+	if rec.Action != string(action) || (issueID != 0 && rec.IssueID != issueID) {
+		return 0, false, keyReuseErr(key, rec)
+	}
+	return rec.IssueID, true, nil
 }
 
 func severityOrDefault(v string) (string, error) {
@@ -141,49 +133,65 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 	if err != nil {
 		return store.Issue{}, err
 	}
-	return s.withIdempotency(ctx, who, in.IdempotencyKey, func() (store.Issue, error) {
-		var out store.Issue
-		err := s.inTx(ctx, func(tx pgx.Tx) error {
-			is := store.Issue{
-				WorkspaceID: who.WorkspaceID, SourceMemberID: who.MemberID, SourceTool: who.Tool,
-				TargetService: in.TargetService, Severity: sev, Title: in.Title, Summary: in.Summary,
-				Expected: in.Expected, Actual: in.Actual, ReproScript: in.ReproScript, ReproEnv: in.ReproEnv,
-				ReproExitCode: in.ReproExitCode, Evidence: in.Evidence, Repo: in.Repo, Branch: in.Branch,
-				CommitSHA: in.Commit, Status: issue.StatusDraft,
+	replayDraft := func() (store.Issue, bool, error) {
+		id, ok, err := checkReplay(ctx, s.Pool, who, in.IdempotencyKey, 0, ActDraft)
+		if err != nil || !ok {
+			return store.Issue{}, false, err
+		}
+		is, err := store.GetIssue(ctx, s.Pool, id)
+		return is, err == nil, err
+	}
+	if is, ok, err := replayDraft(); err != nil || ok {
+		return is, err
+	}
+	var out store.Issue
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		is := store.Issue{
+			WorkspaceID: who.WorkspaceID, SourceMemberID: who.MemberID, SourceTool: who.Tool,
+			TargetService: in.TargetService, Severity: sev, Title: in.Title, Summary: in.Summary,
+			Expected: in.Expected, Actual: in.Actual, ReproScript: in.ReproScript, ReproEnv: in.ReproEnv,
+			ReproExitCode: in.ReproExitCode, Evidence: in.Evidence, Repo: in.Repo, Branch: in.Branch,
+			CommitSHA: in.Commit, Status: issue.StatusDraft,
+		}
+		switch {
+		case in.Owner != "":
+			m, err := store.MemberByName(ctx, tx, who.WorkspaceID, in.Owner)
+			if err != nil {
+				return inputErr("成员 %q 不存在", in.Owner)
 			}
-			switch {
-			case in.Owner != "":
-				m, err := store.MemberByName(ctx, tx, who.WorkspaceID, in.Owner)
-				if err != nil {
-					return inputErr("成员 %q 不存在", in.Owner)
-				}
+			is.OwnerID = &m.ID
+		case in.TargetService != "":
+			m, err := store.ServiceOwner(ctx, tx, who.WorkspaceID, in.TargetService)
+			if err == nil {
 				is.OwnerID = &m.ID
-			case in.TargetService != "":
-				m, err := store.ServiceOwner(ctx, tx, who.WorkspaceID, in.TargetService)
-				if err == nil {
-					is.OwnerID = &m.ID
-				} else if !errors.Is(err, store.ErrNotFound) {
-					return err
-				}
-			}
-			if err := store.InsertIssue(ctx, tx, &is); err != nil {
+			} else if !errors.Is(err, store.ErrNotFound) {
 				return err
 			}
-			if err := store.InsertEvent(ctx, tx, store.Event{IssueID: is.ID, ActorMemberID: who.MemberID,
-				ActorTool: who.Tool, Action: ActDraft, ToStatus: issue.StatusDraft}); err != nil {
-				return err
-			}
-			if in.IdempotencyKey != "" {
-				if err := store.PutIdempotent(ctx, tx, who.TokenID, in.IdempotencyKey, is.ID); err != nil {
-					return err
-				}
-			}
-			var err error
-			out, err = store.GetIssue(ctx, tx, is.ID)
+		}
+		if err := store.InsertIssue(ctx, tx, &is); err != nil {
 			return err
-		})
-		return out, err
+		}
+		if err := store.InsertEvent(ctx, tx, store.Event{IssueID: is.ID, ActorMemberID: who.MemberID,
+			ActorTool: who.Tool, Action: ActDraft, ToStatus: issue.StatusDraft}); err != nil {
+			return err
+		}
+		if in.IdempotencyKey != "" {
+			if err := store.PutIdempotent(ctx, tx, who.TokenID, in.IdempotencyKey,
+				store.IdemRecord{IssueID: is.ID, Action: string(ActDraft)}); err != nil {
+				return err
+			}
+		}
+		var err error
+		out, err = store.GetIssue(ctx, tx, is.ID)
+		return err
 	})
+	if err != nil && in.IdempotencyKey != "" && isUniqueViolation(err) {
+		// 同一个键的并发请求已先一步写入：按记录返回或报告键被挪用
+		if is, ok, rerr := replayDraft(); rerr != nil || ok {
+			return is, rerr
+		}
+	}
+	return out, err
 }
 
 func visible(who store.Identity, is store.Issue) bool {
@@ -198,83 +206,99 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 	if in.ExpectedVersion <= 0 {
 		return store.Issue{}, inputErr("必须提供 expected_version（问题单当前版本号），可先读取问题单获得")
 	}
-	return s.withIdempotency(ctx, who, in.IdempotencyKey, func() (store.Issue, error) {
-		var out store.Issue
-		err := s.inTx(ctx, func(tx pgx.Tx) error {
-			is, err := store.GetIssueForUpdate(ctx, tx, in.IssueID)
-			if errors.Is(err, store.ErrNotFound) || (err == nil && !visible(who, is)) {
-				return notFoundIssue(in.IssueID)
-			}
-			if err != nil {
-				return err
-			}
-			if is.Version != in.ExpectedVersion {
-				return &ConflictError{IssueID: is.ID, Expected: in.ExpectedVersion, Current: is.Version}
-			}
-			roles := issue.Roles(is.SourceMemberID == who.MemberID,
-				is.OwnerID != nil && *is.OwnerID == who.MemberID)
-			from := is.Status
-			to, err := issue.Apply(from, in.Action, roles)
-			if err != nil {
-				return err
-			}
+	var out store.Issue
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		is, err := store.GetIssueForUpdate(ctx, tx, in.IssueID)
+		if errors.Is(err, store.ErrNotFound) || (err == nil && !visible(who, is)) {
+			return notFoundIssue(in.IssueID)
+		}
+		if err != nil {
+			return err
+		}
+		// 拿到行锁之后再查幂等记录：同键的并发重试会在锁上排队，
+		// 轮到时能看到首个请求已提交的记录，直接返回同样的结果。
+		if _, ok, err := checkReplay(ctx, tx, who, in.IdempotencyKey, in.IssueID, in.Action); err != nil {
+			return err
+		} else if ok {
+			out = is
+			return nil
+		}
+		if is.Version != in.ExpectedVersion {
+			return &ConflictError{IssueID: is.ID, Expected: in.ExpectedVersion, Current: is.Version}
+		}
+		roles := issue.Roles(is.SourceMemberID == who.MemberID,
+			is.OwnerID != nil && *is.OwnerID == who.MemberID)
+		from := is.Status
+		to, err := issue.Apply(from, in.Action, roles)
+		if err != nil {
+			return err
+		}
 
-			payload := map[string]any{}
-			switch in.Action {
-			case issue.ActSubmit:
-				if in.Assignee != "" {
-					m, err := store.MemberByName(ctx, tx, who.WorkspaceID, in.Assignee)
-					if err != nil {
-						return inputErr("成员 %q 不存在", in.Assignee)
-					}
-					is.OwnerID = &m.ID
-					payload["assignee"] = m.Name
-				}
-				if is.OwnerID == nil {
-					return inputErr("问题单还没有负责人：请在 assignee 中指定成员，或先登记服务 %q 的负责人", is.TargetService)
-				}
-			case issue.ActTransfer:
-				if in.Assignee == "" {
-					return inputErr("转交必须在 assignee 中指定接收人")
-				}
+		payload := map[string]any{}
+		if (in.Action == issue.ActDecline || in.Action == issue.ActTransfer) && strings.TrimSpace(in.Note) == "" {
+			return inputErr("退回或转交必须在 note 中说明理由，发起人会看到")
+		}
+		switch in.Action {
+		case issue.ActSubmit:
+			if in.Assignee != "" {
 				m, err := store.MemberByName(ctx, tx, who.WorkspaceID, in.Assignee)
 				if err != nil {
 					return inputErr("成员 %q 不存在", in.Assignee)
 				}
-				if m.ID == *is.OwnerID {
-					return inputErr("接收人与当前负责人相同")
-				}
 				is.OwnerID = &m.ID
 				payload["assignee"] = m.Name
-			case issue.ActReopen:
-				is.ReopenCount++
-				if is.ReopenCount >= EscalateReopenCount && is.EscalatedAt == nil {
-					now := time.Now()
-					is.EscalatedAt = &now
-					is.EscalationReason = fmt.Sprintf("重开次数达到 %d 次", is.ReopenCount)
-					payload["escalated"] = true
-				}
 			}
+			if is.OwnerID == nil {
+				return inputErr("问题单还没有负责人：请在 assignee 中指定成员，或先登记服务 %q 的负责人", is.TargetService)
+			}
+		case issue.ActTransfer:
+			if in.Assignee == "" {
+				return inputErr("转交必须在 assignee 中指定接收人")
+			}
+			m, err := store.MemberByName(ctx, tx, who.WorkspaceID, in.Assignee)
+			if err != nil {
+				return inputErr("成员 %q 不存在", in.Assignee)
+			}
+			if m.ID == *is.OwnerID {
+				return inputErr("接收人与当前负责人相同")
+			}
+			is.OwnerID = &m.ID
+			payload["assignee"] = m.Name
+		case issue.ActReopen:
+			is.ReopenCount++
+			if is.ReopenCount >= EscalateReopenCount && is.EscalatedAt == nil {
+				now := time.Now()
+				is.EscalatedAt = &now
+				is.EscalationReason = fmt.Sprintf("重开次数达到 %d 次", is.ReopenCount)
+				payload["escalated"] = true
+			}
+		}
 
-			is.Status = to
-			if err := store.UpdateIssue(ctx, tx, &is); err != nil {
-				return err
-			}
-			if err := store.InsertEvent(ctx, tx, store.Event{IssueID: is.ID, ActorMemberID: who.MemberID,
-				ActorTool: who.Tool, Action: in.Action, FromStatus: from, ToStatus: to,
-				Note: in.Note, Payload: payload}); err != nil {
-				return err
-			}
-			if in.IdempotencyKey != "" {
-				if err := store.PutIdempotent(ctx, tx, who.TokenID, in.IdempotencyKey, is.ID); err != nil {
-					return err
-				}
-			}
-			out, err = store.GetIssue(ctx, tx, is.ID)
+		is.Status = to
+		if err := store.UpdateIssue(ctx, tx, &is); err != nil {
 			return err
-		})
-		return out, err
+		}
+		if err := store.InsertEvent(ctx, tx, store.Event{IssueID: is.ID, ActorMemberID: who.MemberID,
+			ActorTool: who.Tool, Action: in.Action, FromStatus: from, ToStatus: to,
+			Note: in.Note, Payload: payload}); err != nil {
+			return err
+		}
+		if in.IdempotencyKey != "" {
+			if err := store.PutIdempotent(ctx, tx, who.TokenID, in.IdempotencyKey,
+				store.IdemRecord{IssueID: is.ID, Action: string(in.Action)}); err != nil {
+				return err
+			}
+		}
+		out, err = store.GetIssue(ctx, tx, is.ID)
+		return err
 	})
+	if err != nil && in.IdempotencyKey != "" && isUniqueViolation(err) {
+		// 同一个键刚被并发用于另一张问题单
+		if rec, ok, rerr := store.GetIdempotent(ctx, s.Pool, who.TokenID, in.IdempotencyKey); rerr == nil && ok {
+			return store.Issue{}, keyReuseErr(in.IdempotencyKey, rec)
+		}
+	}
+	return out, err
 }
 
 // Get 返回问题单与全部事件。
@@ -297,6 +321,8 @@ func needsMe(who store.Identity, is store.Issue) string {
 			return "草稿待你确认发出"
 		case issue.StatusReadyForVerification:
 			return "待你验证并确认关闭或重开"
+		case issue.StatusDeclined:
+			return "已被负责人退回，请看理由后决定改派他人、补充信息重新起草，或放弃"
 		}
 	}
 	switch is.Status {
@@ -323,9 +349,31 @@ func (s *Service) Inbox(ctx context.Context, who store.Identity) ([]InboxItem, e
 		if is.WorkspaceID != who.WorkspaceID {
 			continue
 		}
-		out = append(out, InboxItem{Issue: is, NeedsMe: needsMe(who, is)})
+		item := InboxItem{Issue: is, NeedsMe: needsMe(who, is)}
+		if is.Status == issue.StatusDeclined {
+			reason, err := s.lastNote(ctx, is.ID, issue.ActDecline)
+			if err != nil {
+				return nil, err
+			}
+			item.NeedsMe = "已被负责人退回，理由：" + reason + "。请决定改派他人、补充信息重新起草，或放弃"
+		}
+		out = append(out, item)
 	}
 	return out, nil
+}
+
+// lastNote 返回某张问题单最近一次指定动作的备注。
+func (s *Service) lastNote(ctx context.Context, issueID int64, act issue.Action) (string, error) {
+	evs, err := store.ListEvents(ctx, s.Pool, issueID)
+	if err != nil {
+		return "", err
+	}
+	for i := len(evs) - 1; i >= 0; i-- {
+		if evs[i].Action == act {
+			return evs[i].Note, nil
+		}
+	}
+	return "", nil
 }
 
 // Search 查找相似问题单，用于起草前查重。

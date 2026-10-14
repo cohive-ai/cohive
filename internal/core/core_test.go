@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/db"
@@ -168,6 +169,133 @@ func TestSubmitIdempotent(t *testing.T) {
 	}
 	if len(evs) != 2 {
 		t.Fatalf("重试不应产生新事件，事件数 %d", len(evs))
+	}
+}
+
+func TestIdempotencyKeyReuseAcrossIssuesRejected(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	one, two := e.draft(t), e.draft(t)
+	if _, err := e.svc.Act(ctx, e.a, core.ActInput{IssueID: one.ID, Action: issue.ActSubmit,
+		ExpectedVersion: one.Version, IdempotencyKey: "k"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := e.svc.Act(ctx, e.a, core.ActInput{IssueID: two.ID, Action: issue.ActSubmit,
+		ExpectedVersion: two.Version, IdempotencyKey: "k"})
+	if err == nil || !strings.Contains(err.Error(), "幂等键") {
+		t.Fatalf("同一个键用于另一张单应明确报错，得到 %v", err)
+	}
+	got, _, err := e.svc.Get(ctx, e.a, two.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != issue.StatusDraft {
+		t.Fatalf("第二张单不应被改动，状态 %s", got.Status)
+	}
+}
+
+func TestIdempotencyKeyReuseAcrossActionsRejected(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	d, err := e.svc.Draft(ctx, e.a, core.DraftInput{Title: "x", TargetService: "order-api", IdempotencyKey: "same"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.svc.Act(ctx, e.a, core.ActInput{IssueID: d.ID, Action: issue.ActSubmit,
+		ExpectedVersion: d.Version, IdempotencyKey: "same"})
+	if err == nil || !strings.Contains(err.Error(), "幂等键") {
+		t.Fatalf("起草用过的键再用于发出应明确报错，得到 %v", err)
+	}
+}
+
+// 两个同键请求都在行锁上等待（此时都已错过事务外的幂等检查），放开锁后都应拿到首次结果。
+func TestConcurrentSameKeyRetryReturnsFirstResult(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	is := e.draft(t)
+	in := core.ActInput{IssueID: is.ID, Action: issue.ActSubmit, ExpectedVersion: is.Version, IdempotencyKey: "retry"}
+
+	blocker, err := e.svc.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := blocker.Exec(ctx, "SELECT 1 FROM issues WHERE id = $1 FOR UPDATE", is.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	results := make([]store.Issue, 2)
+	errs := make([]error, 2)
+	for i := range errs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i], errs[i] = e.svc.Act(ctx, e.a, in)
+		}(i)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var waiting int
+		if err := e.svc.Pool.QueryRow(ctx,
+			`SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("两个请求未能同时卡在行锁上（当前 %d 个）", waiting)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := blocker.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("同一个键并发重试都应成功，第 %d 个失败：%v", i, err)
+		}
+		if results[i].Status != issue.StatusOpen {
+			t.Fatalf("第 %d 个结果状态应为 OPEN，得到 %s", i, results[i].Status)
+		}
+	}
+	_, evs, err := e.svc.Get(context.Background(), e.a, is.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 2 {
+		t.Fatalf("应只有起草与一次发出两条事件，得到 %d", len(evs))
+	}
+}
+
+func TestDeclineRequiresReason(t *testing.T) {
+	e := newEnv(t)
+	is := e.act(t, e.a, e.draft(t), issue.ActSubmit)
+	_, err := e.svc.Act(context.Background(), e.b, core.ActInput{IssueID: is.ID, Action: issue.ActDecline, ExpectedVersion: is.Version})
+	if err == nil || !strings.Contains(err.Error(), "理由") {
+		t.Fatalf("退回不填理由应报错，得到 %v", err)
+	}
+}
+
+func TestDeclinedVisibleToSource(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	is := e.act(t, e.a, e.draft(t), issue.ActSubmit)
+	if _, err := e.svc.Act(ctx, e.b, core.ActInput{IssueID: is.ID, Action: issue.ActDecline,
+		ExpectedVersion: is.Version, Note: "这是网关超时，不是订单服务"}); err != nil {
+		t.Fatal(err)
+	}
+	items, err := e.svc.Inbox(ctx, e.a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != is.ID {
+		t.Fatalf("被退回的单应出现在发起人收件箱：%+v", items)
+	}
+	if !strings.Contains(items[0].NeedsMe, "退回") || !strings.Contains(items[0].NeedsMe, "网关超时") {
+		t.Fatalf("应提示被退回并附理由：%q", items[0].NeedsMe)
 	}
 }
 

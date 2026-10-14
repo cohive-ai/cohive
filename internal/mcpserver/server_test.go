@@ -3,6 +3,7 @@ package mcpserver_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -281,6 +282,32 @@ func TestDraftExitCodeFieldIsUnambiguous(t *testing.T) {
 		return
 	}
 	t.Fatal("没有找到 cohive_draft_issue")
+}
+
+// 数据库故障时，未鉴权的请求方不应看到驱动错误原文。
+func TestVerifierHidesInternalErrors(t *testing.T) {
+	pool := testutil.NewSchemaPool(t)
+	if err := db.Migrate(context.Background(), pool); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(mcpserver.Handler(&core.Service{Pool: pool}))
+	t.Cleanup(srv.Close)
+	pool.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/mcp", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer anything")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if strings.Contains(string(body), "closed pool") || strings.Contains(strings.ToLower(string(body)), "postgres") {
+		t.Fatalf("响应不应包含数据库错误原文：%s", body)
+	}
+	if !strings.Contains(string(body), "服务暂不可用") {
+		t.Fatalf("应返回固定文案“服务暂不可用”，得到：%s", body)
+	}
 }
 
 func TestHealthz(t *testing.T) {

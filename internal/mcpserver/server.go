@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -37,7 +38,9 @@ func Handler(svc *core.Service) http.Handler {
 			return nil, fmt.Errorf("%w：令牌无效或已吊销", auth.ErrInvalidToken)
 		}
 		if err != nil {
-			return nil, err
+			// 不把数据库错误原文返回给尚未鉴权的请求方
+			log.Printf("校验令牌失败：%v", err)
+			return nil, errors.New("服务暂不可用")
 		}
 		return &auth.TokenInfo{
 			UserID: "member:" + strconv.FormatInt(id.MemberID, 10) + "/token:" + strconv.FormatInt(id.TokenID, 10),
@@ -162,7 +165,7 @@ type SubmitArgs struct {
 type AcceptArgs struct {
 	IssueID         int64  `json:"issue_id"`
 	ExpectedVersion int    `json:"expected_version" jsonschema:"问题单当前版本号"`
-	Decision        string `json:"decision" jsonschema:"accept（接单）、decline（退回，需在 note 说明理由）、transfer（转交，需填 transfer_to）"`
+	Decision        string `json:"decision" jsonschema:"accept（接单）、decline（退回）、transfer（转交，需填 transfer_to）。退回和转交都必须在 note 中说明理由，发起人会看到"`
 	Note            string `json:"note,omitempty"`
 	TransferTo      string `json:"transfer_to,omitempty" jsonschema:"转交的接收人（成员名）"`
 	IdempotencyKey  string `json:"idempotency_key,omitempty"`
