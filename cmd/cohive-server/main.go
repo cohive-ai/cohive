@@ -13,6 +13,7 @@ const usage = `用法：cohive-server <命令>
 
 命令：
   migrate    执行数据库迁移
+  serve      启动协作服务（--addr 监听地址，默认 :8787）
 
 数据库地址取环境变量 COHIVE_DATABASE_URL。
 `
@@ -41,6 +42,8 @@ func run(ctx context.Context, args []string) error {
 		}
 		fmt.Println("迁移完成")
 		return nil
+	case "serve":
+		return serve(ctx, args[1:])
 	default:
 		fmt.Print(usage)
 		return fmt.Errorf("未知命令 %q", args[0])
