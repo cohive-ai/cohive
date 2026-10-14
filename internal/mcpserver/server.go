@@ -9,11 +9,11 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
+	"github.com/cohive-ai/cohive/internal/view"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -67,71 +67,6 @@ func identity(req *mcp.CallToolRequest) (store.Identity, error) {
 		return store.Identity{}, errors.New("未鉴权")
 	}
 	return id, nil
-}
-
-// ---- 输出结构 ----
-
-type Repro struct {
-	Script   string `json:"script,omitempty"`
-	Env      string `json:"env,omitempty"`
-	ExitCode *int   `json:"expected_exit_code,omitempty" jsonschema:"修复后复现脚本应返回的退出码"`
-}
-
-type IssueView struct {
-	ID               int64     `json:"id"`
-	Version          int       `json:"version" jsonschema:"当前版本号，执行任何改变状态的操作时作为 expected_version 传入"`
-	Status           string    `json:"status"`
-	StatusLabel      string    `json:"status_label"`
-	Category         string    `json:"category"`
-	Title            string    `json:"title"`
-	Summary          string    `json:"summary,omitempty"`
-	Expected         string    `json:"expected,omitempty"`
-	Actual           string    `json:"actual,omitempty"`
-	Repro            Repro     `json:"repro"`
-	Evidence         string    `json:"evidence,omitempty"`
-	Repo             string    `json:"repo,omitempty"`
-	Branch           string    `json:"branch,omitempty"`
-	Commit           string    `json:"commit,omitempty"`
-	TargetService    string    `json:"target_service,omitempty"`
-	Severity         string    `json:"severity"`
-	Source           string    `json:"source"`
-	SourceTool       string    `json:"source_tool"`
-	Owner            string    `json:"owner,omitempty"`
-	ReopenCount      int       `json:"reopen_count"`
-	Escalated        bool      `json:"escalated"`
-	EscalationReason string    `json:"escalation_reason,omitempty"`
-	YourActions      []string  `json:"your_actions" jsonschema:"你当前可以对这张问题单执行的动作"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-}
-
-type EventView struct {
-	At     time.Time `json:"at"`
-	Actor  string    `json:"actor"`
-	Tool   string    `json:"tool"`
-	Action string    `json:"action"`
-	From   string    `json:"from,omitempty"`
-	To     string    `json:"to,omitempty"`
-	Note   string    `json:"note,omitempty"`
-}
-
-func view(who store.Identity, is store.Issue) IssueView {
-	roles := issue.Roles(is.SourceMemberID == who.MemberID, is.OwnerID != nil && *is.OwnerID == who.MemberID)
-	actions := []string{}
-	for _, a := range issue.Allowed(is.Status, roles) {
-		actions = append(actions, string(a))
-	}
-	return IssueView{
-		ID: is.ID, Version: is.Version, Status: string(is.Status), StatusLabel: is.Status.Label(),
-		Category: string(is.Status.Category()), Title: is.Title, Summary: is.Summary,
-		Expected: is.Expected, Actual: is.Actual,
-		Repro:    Repro{Script: is.ReproScript, Env: is.ReproEnv, ExitCode: is.ReproExitCode},
-		Evidence: is.Evidence, Repo: is.Repo, Branch: is.Branch, Commit: is.CommitSHA,
-		TargetService: is.TargetService, Severity: is.Severity, Source: is.SourceName,
-		SourceTool: is.SourceTool, Owner: is.OwnerName, ReopenCount: is.ReopenCount,
-		Escalated: is.EscalatedAt != nil, EscalationReason: is.EscalationReason,
-		YourActions: actions, CreatedAt: is.CreatedAt, UpdatedAt: is.UpdatedAt,
-	}
 }
 
 // ---- 输入结构 ----
@@ -208,12 +143,12 @@ type WhoOwnsArgs struct {
 }
 
 type GetResult struct {
-	Issue  IssueView   `json:"issue"`
-	Events []EventView `json:"events"`
+	Issue  view.IssueView   `json:"issue"`
+	Events []view.EventView `json:"events"`
 }
 
 type InboxEntry struct {
-	IssueView
+	view.IssueView
 	NeedsMe string `json:"needs_me"`
 }
 
@@ -222,7 +157,7 @@ type InboxResult struct {
 }
 
 type SearchResult struct {
-	Items []IssueView `json:"items"`
+	Items []view.IssueView `json:"items"`
 }
 
 type OwnerResult struct {
@@ -247,16 +182,16 @@ func NewServer(svc *core.Service) *mcp.Server {
 			"发出问题单、接单、关闭这三类操作会影响他人的工作，必须由用户确认。" + trustNote,
 	})
 
-	act := func(ctx context.Context, req *mcp.CallToolRequest, in core.ActInput) (*mcp.CallToolResult, IssueView, error) {
+	act := func(ctx context.Context, req *mcp.CallToolRequest, in core.ActInput) (*mcp.CallToolResult, view.IssueView, error) {
 		who, err := identity(req)
 		if err != nil {
-			return nil, IssueView{}, err
+			return nil, view.IssueView{}, err
 		}
 		is, err := svc.Act(ctx, who, in)
 		if err != nil {
-			return nil, IssueView{}, err
+			return nil, view.IssueView{}, err
 		}
-		return nil, view(who, is), nil
+		return nil, view.Issue(who, is), nil
 	}
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -264,10 +199,10 @@ func NewServer(svc *core.Service) *mcp.Server {
 		Annotations: writes,
 		Description: "起草一张问题单，交给另一位成员处理。草稿只有你自己可见，需要用户确认后再调用 cohive_submit_issue 发出。" +
 			"起草前请先用 cohive_search 查重；请尽量提供可直接运行的复现脚本和提交号。" + trustNote,
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in DraftArgs) (*mcp.CallToolResult, IssueView, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in DraftArgs) (*mcp.CallToolResult, view.IssueView, error) {
 		who, err := identity(req)
 		if err != nil {
-			return nil, IssueView{}, err
+			return nil, view.IssueView{}, err
 		}
 		is, err := svc.Draft(ctx, who, core.DraftInput{
 			Title: in.Title, Summary: in.Summary, Expected: in.Expected, Actual: in.Actual,
@@ -277,16 +212,16 @@ func NewServer(svc *core.Service) *mcp.Server {
 			IdempotencyKey: in.IdempotencyKey,
 		})
 		if err != nil {
-			return nil, IssueView{}, err
+			return nil, view.IssueView{}, err
 		}
-		return nil, view(who, is), nil
+		return nil, view.Issue(who, is), nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "cohive_submit_issue",
 		Annotations: writes,
 		Description: "把草稿发出给负责人。这会进入他人的待办，必须先向用户展示草稿内容并得到确认。" + trustNote,
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in SubmitArgs) (*mcp.CallToolResult, IssueView, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in SubmitArgs) (*mcp.CallToolResult, view.IssueView, error) {
 		return act(ctx, req, core.ActInput{IssueID: in.IssueID, Action: issue.ActSubmit,
 			ExpectedVersion: in.ExpectedVersion, Assignee: in.Assignee, Note: in.Note, IdempotencyKey: in.IdempotencyKey})
 	})
@@ -295,7 +230,7 @@ func NewServer(svc *core.Service) *mcp.Server {
 		Name:        "cohive_accept_issue",
 		Annotations: writes,
 		Description: "对分给你的问题单做决定：接单、退回或转交。请先汇总问题单要点和你的初筛意见（是否重复、是否属于你、缺什么信息），由用户决定。" + trustNote,
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in AcceptArgs) (*mcp.CallToolResult, IssueView, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in AcceptArgs) (*mcp.CallToolResult, view.IssueView, error) {
 		var a issue.Action
 		switch in.Decision {
 		case "accept":
@@ -305,7 +240,7 @@ func NewServer(svc *core.Service) *mcp.Server {
 		case "transfer":
 			a = issue.ActTransfer
 		default:
-			return nil, IssueView{}, fmt.Errorf("decision 只能是 accept、decline、transfer 之一，收到 %q", in.Decision)
+			return nil, view.IssueView{}, fmt.Errorf("decision 只能是 accept、decline、transfer 之一，收到 %q", in.Decision)
 		}
 		return act(ctx, req, core.ActInput{IssueID: in.IssueID, Action: a, ExpectedVersion: in.ExpectedVersion,
 			Note: in.Note, Assignee: in.TransferTo, IdempotencyKey: in.IdempotencyKey})
@@ -315,12 +250,12 @@ func NewServer(svc *core.Service) *mcp.Server {
 		Name:        "cohive_update_issue",
 		Annotations: writes,
 		Description: "给问题单补充说明、证据或进展；负责人可用 start_fixing 标记开始修复。" + trustNote,
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in UpdateArgs) (*mcp.CallToolResult, IssueView, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in UpdateArgs) (*mcp.CallToolResult, view.IssueView, error) {
 		a := issue.ActComment
 		if in.StartFixing {
 			a = issue.ActStart
 		} else if in.Note == "" {
-			return nil, IssueView{}, errors.New("note 不能为空")
+			return nil, view.IssueView{}, errors.New("note 不能为空")
 		}
 		return act(ctx, req, core.ActInput{IssueID: in.IssueID, Action: a, ExpectedVersion: in.ExpectedVersion,
 			Note: in.Note, IdempotencyKey: in.IdempotencyKey})
@@ -330,7 +265,7 @@ func NewServer(svc *core.Service) *mcp.Server {
 		Name:        "cohive_request_verification",
 		Annotations: writes,
 		Description: "修复完成后请求发起人验证。请在 note 中说明改了什么、合并请求链接和部署位置。" + trustNote,
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in RequestVerificationArgs) (*mcp.CallToolResult, IssueView, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in RequestVerificationArgs) (*mcp.CallToolResult, view.IssueView, error) {
 		return act(ctx, req, core.ActInput{IssueID: in.IssueID, Action: issue.ActRequestVerification,
 			ExpectedVersion: in.ExpectedVersion, Note: in.Note, IdempotencyKey: in.IdempotencyKey})
 	})
@@ -339,7 +274,7 @@ func NewServer(svc *core.Service) *mcp.Server {
 		Name:        "cohive_close_issue",
 		Annotations: writes,
 		Description: "发起人验证修复结果：通过则关闭，未修好则重开退回负责人。请先运行复现脚本，把结果展示给用户，由用户决定。" + trustNote,
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in CloseArgs) (*mcp.CallToolResult, IssueView, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in CloseArgs) (*mcp.CallToolResult, view.IssueView, error) {
 		var a issue.Action
 		switch in.Verdict {
 		case "pass":
@@ -347,7 +282,7 @@ func NewServer(svc *core.Service) *mcp.Server {
 		case "reopen":
 			a = issue.ActReopen
 		default:
-			return nil, IssueView{}, fmt.Errorf("verdict 只能是 pass 或 reopen，收到 %q", in.Verdict)
+			return nil, view.IssueView{}, fmt.Errorf("verdict 只能是 pass 或 reopen，收到 %q", in.Verdict)
 		}
 		return act(ctx, req, core.ActInput{IssueID: in.IssueID, Action: a, ExpectedVersion: in.ExpectedVersion,
 			Note: in.Note, IdempotencyKey: in.IdempotencyKey})
@@ -366,11 +301,7 @@ func NewServer(svc *core.Service) *mcp.Server {
 		if err != nil {
 			return nil, GetResult{}, err
 		}
-		out := GetResult{Issue: view(who, is), Events: make([]EventView, 0, len(evs))}
-		for _, e := range evs {
-			out.Events = append(out.Events, EventView{At: e.CreatedAt, Actor: e.ActorName, Tool: e.ActorTool,
-				Action: string(e.Action), From: string(e.FromStatus), To: string(e.ToStatus), Note: e.Note})
-		}
+		out := GetResult{Issue: view.Issue(who, is), Events: view.Events(evs)}
 		return nil, out, nil
 	})
 
@@ -389,7 +320,7 @@ func NewServer(svc *core.Service) *mcp.Server {
 		}
 		out := InboxResult{Items: make([]InboxEntry, 0, len(items))}
 		for _, it := range items {
-			out.Items = append(out.Items, InboxEntry{IssueView: view(who, it.Issue), NeedsMe: it.NeedsMe})
+			out.Items = append(out.Items, InboxEntry{IssueView: view.Issue(who, it.Issue), NeedsMe: it.NeedsMe})
 		}
 		return nil, out, nil
 	})
@@ -407,9 +338,9 @@ func NewServer(svc *core.Service) *mcp.Server {
 		if err != nil {
 			return nil, SearchResult{}, err
 		}
-		out := SearchResult{Items: make([]IssueView, 0, len(list))}
+		out := SearchResult{Items: make([]view.IssueView, 0, len(list))}
 		for _, is := range list {
-			out.Items = append(out.Items, view(who, is))
+			out.Items = append(out.Items, view.Issue(who, is))
 		}
 		return nil, out, nil
 	})
