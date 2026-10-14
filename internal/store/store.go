@@ -370,3 +370,74 @@ func PutIdempotent(ctx context.Context, q DBTX, tokenID int64, key string, issue
 		tokenID, key, issueID)
 	return err
 }
+
+// ---- 管理用列表 ----
+
+type TokenInfo struct {
+	ID         int64
+	MemberName string
+	Tool       string
+	CreatedAt  time.Time
+	RevokedAt  *time.Time
+}
+
+type ServiceInfo struct {
+	Name      string
+	OwnerName string
+}
+
+func ListMembers(ctx context.Context, q DBTX, wsID int64) ([]Member, error) {
+	rows, err := q.Query(ctx, `SELECT id, name, display_name FROM members WHERE workspace_id = $1 ORDER BY id`, wsID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Member
+	for rows.Next() {
+		m := Member{WorkspaceID: wsID}
+		if err := rows.Scan(&m.ID, &m.Name, &m.DisplayName); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func ListTokens(ctx context.Context, q DBTX, wsID int64) ([]TokenInfo, error) {
+	rows, err := q.Query(ctx, `
+		SELECT t.id, m.name, t.tool, t.created_at, t.revoked_at
+		FROM tokens t JOIN members m ON m.id = t.member_id
+		WHERE m.workspace_id = $1 ORDER BY t.id`, wsID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TokenInfo
+	for rows.Next() {
+		var ti TokenInfo
+		if err := rows.Scan(&ti.ID, &ti.MemberName, &ti.Tool, &ti.CreatedAt, &ti.RevokedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, ti)
+	}
+	return out, rows.Err()
+}
+
+func ListServices(ctx context.Context, q DBTX, wsID int64) ([]ServiceInfo, error) {
+	rows, err := q.Query(ctx, `
+		SELECT s.name, m.name FROM services s JOIN members m ON m.id = s.owner_id
+		WHERE s.workspace_id = $1 ORDER BY s.name`, wsID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ServiceInfo
+	for rows.Next() {
+		var si ServiceInfo
+		if err := rows.Scan(&si.Name, &si.OwnerName); err != nil {
+			return nil, err
+		}
+		out = append(out, si)
+	}
+	return out, rows.Err()
+}

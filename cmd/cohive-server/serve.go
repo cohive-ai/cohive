@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -15,7 +16,7 @@ import (
 	"github.com/cohive-ai/cohive/internal/mcpserver"
 )
 
-func serve(ctx context.Context, args []string) error {
+func serve(ctx context.Context, out io.Writer, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", ":8787", "监听地址")
 	if err := fs.Parse(args); err != nil {
@@ -41,7 +42,7 @@ func serve(ctx context.Context, args []string) error {
 	defer stop()
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
-	fmt.Printf("Cohive 协作服务已启动：http://%s/mcp\n", displayAddr(*addr))
+	fmt.Fprintf(out, "Cohive 协作服务已启动：http://%s/mcp\n", displayAddr(*addr))
 
 	select {
 	case err := <-errCh:
@@ -50,7 +51,7 @@ func serve(ctx context.Context, args []string) error {
 		}
 		return nil
 	case <-ctx.Done():
-		fmt.Println("正在停止……")
+		fmt.Fprintln(out, "正在停止……")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		return srv.Shutdown(shutdownCtx)
