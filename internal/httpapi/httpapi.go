@@ -66,7 +66,7 @@ func Handler(svc *core.Service) http.Handler {
 	mux.HandleFunc("GET /api/v1/issues", func(w http.ResponseWriter, r *http.Request) {
 		who := identity(r)
 		q := r.URL.Query()
-		list, err := svc.Search(r.Context(), who, q.Get("q"), q.Get("service"))
+		list, err := svc.List(r.Context(), who, q.Get("q"), q.Get("service"))
 		if err != nil {
 			writeError(w, err)
 			return

@@ -381,6 +381,11 @@ func (s *Service) Search(ctx context.Context, who store.Identity, query, service
 	return store.SearchIssues(ctx, s.Pool, who.WorkspaceID, who.MemberID, query, service, 20)
 }
 
+// List 供看板列表使用，返回最近更新的至多 50 张。
+func (s *Service) List(ctx context.Context, who store.Identity, query, service string) ([]store.Issue, error) {
+	return store.SearchIssues(ctx, s.Pool, who.WorkspaceID, who.MemberID, query, service, 50)
+}
+
 // WhoOwns 查询服务的负责人。
 func (s *Service) WhoOwns(ctx context.Context, who store.Identity, service string) (store.Member, error) {
 	if service == "" {

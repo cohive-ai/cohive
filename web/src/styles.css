@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/* 颜色令牌：浅灰绿底、石板色文字；琥珀只用于“等你处理”，青绿用于链接与选中；两个工具各一个低饱和标识色 */
+:root {
+  --bg: #e9ede8;
+  --surface: #fbfcfa;
+  --sunken: #e1e6e0;
+  --ink: #1e2b2f;
+  --muted: #5d6b6e;
+  --line: #d0d8d1;
+  --amber: #9a6414;
+  --amber-soft: #f3e3c4;
+  --teal: #2e6b66;
+  --teal-soft: #d4e6e2;
+  --tool-claude: #8a5a83;
+  --tool-codex: #3e6a93;
+  --danger: #a3402f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141b1c;
+    --surface: #1c2426;
+    --sunken: #111718;
+    --ink: #e3e9e6;
+    --muted: #93a19f;
+    --line: #2c3638;
+    --amber: #e0a44a;
+    --amber-soft: #3a2e1a;
+    --teal: #6fb3ab;
+    --teal-soft: #1f3533;
+    --tool-claude: #c49abd;
+    --tool-codex: #8fb2d4;
+    --danger: #e08a7a;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #141b1c;
+  --surface: #1c2426;
+  --sunken: #111718;
+  --ink: #e3e9e6;
+  --muted: #93a19f;
+  --line: #2c3638;
+  --amber: #e0a44a;
+  --amber-soft: #3a2e1a;
+  --teal: #6fb3ab;
+  --teal-soft: #1f3533;
+  --tool-claude: #c49abd;
+  --tool-codex: #8fb2d4;
+  --danger: #e08a7a;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-teal: var(--teal);
+  --color-teal-soft: var(--teal-soft);
+  --color-tool-claude: var(--tool-claude);
+  --color-tool-codex: var(--tool-codex);
+  --color-danger: var(--danger);
+  /* 只用系统字体：看板必须能在断网的内网里打开 */
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans CJK SC", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 唯一的自动动效：问题单换到另一个人手上时短暂提示 */
+@keyframes handoff {
+  0% {
+    box-shadow: 0 0 0 3px var(--amber);
+    background: var(--amber-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.handoff {
+  animation: handoff 2.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .handoff {
+    animation: none;
+    outline: 2px solid var(--amber);
+  }
+}
