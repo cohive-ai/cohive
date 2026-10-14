@@ -1,0 +1,36 @@
+# Cohive 接入 Codex 的项目级配置。令牌从环境变量 COHIVE_TOKEN 读取。
+[mcp_servers.cohive]
+url = "http://localhost:8787/mcp"
+bearer_token_env_var = "COHIVE_TOKEN"
+
+# 影响他人工作的三个工具：每次调用都必须由用户确认
+[mcp_servers.cohive.tools.cohive_submit_issue]
+approval_mode = "prompt"
+
+[mcp_servers.cohive.tools.cohive_accept_issue]
+approval_mode = "prompt"
+
+[mcp_servers.cohive.tools.cohive_close_issue]
+approval_mode = "prompt"
+
+# 只读工具与只影响自己或已接手单子的工具：直接放行
+[mcp_servers.cohive.tools.cohive_inbox]
+approval_mode = "approve"
+
+[mcp_servers.cohive.tools.cohive_get_issue]
+approval_mode = "approve"
+
+[mcp_servers.cohive.tools.cohive_search]
+approval_mode = "approve"
+
+[mcp_servers.cohive.tools.cohive_who_owns]
+approval_mode = "approve"
+
+[mcp_servers.cohive.tools.cohive_draft_issue]
+approval_mode = "approve"
+
+[mcp_servers.cohive.tools.cohive_update_issue]
+approval_mode = "approve"
+
+[mcp_servers.cohive.tools.cohive_request_verification]
+approval_mode = "approve"

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cohive": {
+      "type": "http",
+      "url": "${COHIVE_URL:-http://localhost:8787/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${COHIVE_TOKEN}"
+      }
+    }
+  }
+}

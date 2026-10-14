@@ -254,6 +254,35 @@ func TestToolAnnotations(t *testing.T) {
 	}
 }
 
+// 实测中智能体把“修复后应返回的退出码”误解为“当前退出码”，字段名必须消除歧义。
+func TestDraftExitCodeFieldIsUnambiguous(t *testing.T) {
+	f := newFixture(t)
+	a := mustConnect(t, f.url, f.tokenA)
+	res, err := a.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range res.Tools {
+		if tool.Name != "cohive_draft_issue" {
+			continue
+		}
+		b, _ := json.Marshal(tool.InputSchema)
+		s := string(b)
+		if strings.Contains(s, `"repro_exit_code"`) || !strings.Contains(s, `"repro_expected_exit_code"`) {
+			t.Fatalf("应使用 repro_expected_exit_code 字段：%s", s)
+		}
+		if !strings.Contains(s, "修复后") {
+			t.Fatalf("字段说明应强调是修复后的退出码：%s", s)
+		}
+		d := mustCall(t, a, "cohive_draft_issue", map[string]any{"title": "x", "repro_expected_exit_code": 0})
+		if d["repro"].(map[string]any)["expected_exit_code"] != float64(0) {
+			t.Fatalf("返回结果应包含 repro.expected_exit_code：%v", d["repro"])
+		}
+		return
+	}
+	t.Fatal("没有找到 cohive_draft_issue")
+}
+
 func TestHealthz(t *testing.T) {
 	f := newFixture(t)
 	resp, err := http.Get(strings.TrimSuffix(f.url, "/mcp") + "/healthz")

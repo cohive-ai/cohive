@@ -71,7 +71,7 @@ func identity(req *mcp.CallToolRequest) (store.Identity, error) {
 type Repro struct {
 	Script   string `json:"script,omitempty"`
 	Env      string `json:"env,omitempty"`
-	ExitCode *int   `json:"exit_code,omitempty"`
+	ExitCode *int   `json:"expected_exit_code,omitempty" jsonschema:"修复后复现脚本应返回的退出码"`
 }
 
 type IssueView struct {
@@ -140,7 +140,7 @@ type DraftArgs struct {
 	Actual         string `json:"actual,omitempty" jsonschema:"实际结果"`
 	ReproScript    string `json:"repro_script,omitempty" jsonschema:"可直接运行的复现脚本"`
 	ReproEnv       string `json:"repro_env,omitempty" jsonschema:"运行复现脚本所需的环境，例如镜像、地址、前置数据"`
-	ReproExitCode  *int   `json:"repro_exit_code,omitempty" jsonschema:"问题修复后复现脚本应返回的退出码"`
+	ReproExitCode  *int   `json:"repro_expected_exit_code,omitempty" jsonschema:"问题修复后，复现脚本应返回的退出码（通常为 0）。注意不是现在运行得到的退出码；验证时以此判断是否修好"`
 	Evidence       string `json:"evidence,omitempty" jsonschema:"日志、报错、截图说明等证据"`
 	Repo           string `json:"repo,omitempty" jsonschema:"发现问题时所在的仓库"`
 	Branch         string `json:"branch,omitempty"`
