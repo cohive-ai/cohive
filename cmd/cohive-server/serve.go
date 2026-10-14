@@ -13,7 +13,8 @@ import (
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/db"
-	"github.com/cohive-ai/cohive/internal/mcpserver"
+	"github.com/cohive-ai/cohive/internal/server"
+	"github.com/cohive-ai/cohive/web"
 )
 
 func serve(ctx context.Context, out io.Writer, args []string) error {
@@ -34,7 +35,7 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           mcpserver.Handler(&core.Service{Pool: pool}),
+		Handler:           server.New(&core.Service{Pool: pool}, web.Dist()),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -42,7 +43,7 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	defer stop()
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
-	fmt.Fprintf(out, "Cohive 协作服务已启动：http://%s/mcp\n", displayAddr(*addr))
+	fmt.Fprintf(out, "Cohive 协作服务已启动\n  看板：http://%[1]s/\n  MCP： http://%[1]s/mcp\n", displayAddr(*addr))
 
 	select {
 	case err := <-errCh:

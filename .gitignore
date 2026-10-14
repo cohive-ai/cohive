@@ -6,3 +6,5 @@ node_modules/
 .claude/worktrees/
 .superpowers/
 bin/
+web/dist/*
+!web/dist/.gitkeep
