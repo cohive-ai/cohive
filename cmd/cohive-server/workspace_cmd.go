@@ -169,6 +169,17 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 		}
 	}
 	if set["telegram-id"] {
+		if userID != nil {
+			list, err := store.ListMembers(ctx, pool, ws)
+			if err != nil {
+				return err
+			}
+			for _, other := range list {
+				if other.ID != m.ID && other.TelegramUserID != nil && *other.TelegramUserID == *userID {
+					return fmt.Errorf("这个 Telegram 账号已经绑定给本工作空间的成员 %s。一个人在一个工作空间里只需要一个成员身份，不同编程工具会各自拿到令牌", other.Name)
+				}
+			}
+		}
 		if err := store.SetMemberTelegramUserID(ctx, pool, m.ID, userID); err != nil {
 			return err
 		}
