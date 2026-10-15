@@ -31,10 +31,11 @@ type DBTX interface {
 }
 
 type Member struct {
-	ID          int64
-	WorkspaceID int64
-	Name        string
-	DisplayName string
+	ID               int64
+	WorkspaceID      int64
+	Name             string
+	DisplayName      string
+	TelegramUsername string
 }
 
 // Identity 是一次调用的操作者：哪个人的哪个工具。
@@ -57,6 +58,7 @@ type Issue struct {
 	TargetService    string
 	Severity         string
 	Title            string
+	Brief            string // 群通知简述，会发到工作空间的群里
 	Summary          string
 	Expected         string
 	Actual           string
@@ -120,8 +122,8 @@ func CreateMember(ctx context.Context, q DBTX, wsID int64, name, display string)
 func MemberByName(ctx context.Context, q DBTX, wsID int64, name string) (Member, error) {
 	m := Member{WorkspaceID: wsID, Name: name}
 	err := q.QueryRow(ctx,
-		`SELECT id, display_name FROM members WHERE workspace_id = $1 AND name = $2`,
-		wsID, name).Scan(&m.ID, &m.DisplayName)
+		`SELECT id, display_name, telegram_username FROM members WHERE workspace_id = $1 AND name = $2`,
+		wsID, name).Scan(&m.ID, &m.DisplayName, &m.TelegramUsername)
 	return m, notFound(err)
 }
 
@@ -169,6 +171,19 @@ func RevokeToken(ctx context.Context, q DBTX, tokenID int64) error {
 	return nil
 }
 
+// RevokeTokenInWorkspace 只吊销属于指定工作空间成员的令牌。
+func RevokeTokenInWorkspace(ctx context.Context, q DBTX, wsID, tokenID int64) error {
+	tag, err := q.Exec(ctx, `UPDATE tokens t SET revoked_at = now() FROM members m
+		WHERE t.id = $2 AND t.member_id = m.id AND m.workspace_id = $1 AND t.revoked_at IS NULL`, wsID, tokenID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ---- 服务登记 ----
 
 func UpsertService(ctx context.Context, q DBTX, wsID int64, name string, ownerID int64) error {
@@ -182,10 +197,10 @@ func UpsertService(ctx context.Context, q DBTX, wsID int64, name string, ownerID
 func ServiceOwner(ctx context.Context, q DBTX, wsID int64, service string) (Member, error) {
 	m := Member{WorkspaceID: wsID}
 	err := q.QueryRow(ctx, `
-		SELECT m.id, m.name, m.display_name
+		SELECT m.id, m.name, m.display_name, m.telegram_username
 		FROM services s JOIN members m ON m.id = s.owner_id
 		WHERE s.workspace_id = $1 AND s.name = $2`,
-		wsID, service).Scan(&m.ID, &m.Name, &m.DisplayName)
+		wsID, service).Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername)
 	return m, notFound(err)
 }
 
@@ -193,7 +208,7 @@ func ServiceOwner(ctx context.Context, q DBTX, wsID int64, service string) (Memb
 
 const issueColumns = `
 	i.id, i.workspace_id, i.source_member_id, sm.name, i.source_tool, i.owner_id, COALESCE(om.name, ''),
-	i.target_service, i.severity, i.title, i.summary, i.expected, i.actual,
+	i.target_service, i.severity, i.title, i.brief, i.summary, i.expected, i.actual,
 	i.repro_script, i.repro_env, i.repro_exit_code, i.evidence, i.repo, i.branch, i.commit_sha,
 	i.status, i.version, i.reopen_count, i.escalated_at, i.escalation_reason, i.created_at, i.updated_at`
 
@@ -206,7 +221,7 @@ func scanIssue(row pgx.Row) (Issue, error) {
 	var is Issue
 	var status string
 	err := row.Scan(&is.ID, &is.WorkspaceID, &is.SourceMemberID, &is.SourceName, &is.SourceTool,
-		&is.OwnerID, &is.OwnerName, &is.TargetService, &is.Severity, &is.Title, &is.Summary,
+		&is.OwnerID, &is.OwnerName, &is.TargetService, &is.Severity, &is.Title, &is.Brief, &is.Summary,
 		&is.Expected, &is.Actual, &is.ReproScript, &is.ReproEnv, &is.ReproExitCode, &is.Evidence,
 		&is.Repo, &is.Branch, &is.CommitSHA, &status, &is.Version, &is.ReopenCount,
 		&is.EscalatedAt, &is.EscalationReason, &is.CreatedAt, &is.UpdatedAt)
@@ -235,12 +250,12 @@ func InsertIssue(ctx context.Context, q DBTX, is *Issue) error {
 	return q.QueryRow(ctx, `
 		INSERT INTO issues (workspace_id, source_member_id, source_tool, owner_id, target_service,
 			severity, title, summary, expected, actual, repro_script, repro_env, repro_exit_code,
-			evidence, repo, branch, commit_sha, status)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+			evidence, repo, branch, commit_sha, status, brief)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 		RETURNING id, version, created_at, updated_at`,
 		is.WorkspaceID, is.SourceMemberID, is.SourceTool, is.OwnerID, is.TargetService,
 		is.Severity, is.Title, is.Summary, is.Expected, is.Actual, is.ReproScript, is.ReproEnv,
-		is.ReproExitCode, is.Evidence, is.Repo, is.Branch, is.CommitSHA, string(is.Status),
+		is.ReproExitCode, is.Evidence, is.Repo, is.Branch, is.CommitSHA, string(is.Status), is.Brief,
 	).Scan(&is.ID, &is.Version, &is.CreatedAt, &is.UpdatedAt)
 }
 
@@ -259,13 +274,13 @@ func UpdateIssue(ctx context.Context, q DBTX, is *Issue) error {
 		UPDATE issues SET owner_id=$3, target_service=$4, severity=$5, title=$6, summary=$7,
 			expected=$8, actual=$9, repro_script=$10, repro_env=$11, repro_exit_code=$12,
 			evidence=$13, repo=$14, branch=$15, commit_sha=$16, status=$17, reopen_count=$18,
-			escalated_at=$19, escalation_reason=$20, version=version+1, updated_at=now()
+			escalated_at=$19, escalation_reason=$20, brief=$21, version=version+1, updated_at=now()
 		WHERE id=$1 AND version=$2
 		RETURNING version, updated_at`,
 		is.ID, is.Version, is.OwnerID, is.TargetService, is.Severity, is.Title, is.Summary,
 		is.Expected, is.Actual, is.ReproScript, is.ReproEnv, is.ReproExitCode, is.Evidence,
 		is.Repo, is.Branch, is.CommitSHA, string(is.Status), is.ReopenCount,
-		is.EscalatedAt, is.EscalationReason,
+		is.EscalatedAt, is.EscalationReason, is.Brief,
 	).Scan(&is.Version, &is.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrVersionConflict
@@ -394,7 +409,7 @@ type ServiceInfo struct {
 }
 
 func ListMembers(ctx context.Context, q DBTX, wsID int64) ([]Member, error) {
-	rows, err := q.Query(ctx, `SELECT id, name, display_name FROM members WHERE workspace_id = $1 ORDER BY id`, wsID)
+	rows, err := q.Query(ctx, `SELECT id, name, display_name, telegram_username FROM members WHERE workspace_id = $1 ORDER BY id`, wsID)
 	if err != nil {
 		return nil, err
 	}
@@ -402,7 +417,7 @@ func ListMembers(ctx context.Context, q DBTX, wsID int64) ([]Member, error) {
 	var out []Member
 	for rows.Next() {
 		m := Member{WorkspaceID: wsID}
-		if err := rows.Scan(&m.ID, &m.Name, &m.DisplayName); err != nil {
+		if err := rows.Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

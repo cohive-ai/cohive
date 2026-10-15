@@ -310,6 +310,27 @@ func TestVerifierHidesInternalErrors(t *testing.T) {
 	}
 }
 
+func TestDraftBriefOverMCP(t *testing.T) {
+	f := newFixture(t)
+	a := mustConnect(t, f.url, f.tokenA)
+	res, err := a.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range res.Tools {
+		if tool.Name == "cohive_draft_issue" {
+			b, _ := json.Marshal(tool.InputSchema)
+			if !strings.Contains(string(b), `"brief"`) || !strings.Contains(string(b), "群") {
+				t.Fatalf("起草工具应有 brief 参数并说明会发到群里：%s", b)
+			}
+		}
+	}
+	d := mustCall(t, a, "cohive_draft_issue", map[string]any{"title": "x", "brief": "一句话简述"})
+	if d["brief"] != "一句话简述" {
+		t.Fatalf("返回结果应包含 brief：%v", d)
+	}
+}
+
 func TestHealthz(t *testing.T) {
 	f := newFixture(t)
 	resp, err := http.Get(strings.TrimSuffix(f.url, "/mcp") + "/healthz")

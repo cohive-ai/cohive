@@ -21,6 +21,7 @@ type IssueView struct {
 	StatusLabel      string    `json:"status_label"`
 	Category         string    `json:"category"`
 	Title            string    `json:"title"`
+	Brief            string    `json:"brief,omitempty" jsonschema:"群通知简述"`
 	Summary          string    `json:"summary,omitempty"`
 	Expected         string    `json:"expected,omitempty"`
 	Actual           string    `json:"actual,omitempty"`
@@ -62,7 +63,7 @@ func Issue(who store.Identity, is store.Issue) IssueView {
 	}
 	return IssueView{
 		ID: is.ID, Version: is.Version, Status: string(is.Status), StatusLabel: is.Status.Label(),
-		Category: string(is.Status.Category()), Title: is.Title, Summary: is.Summary,
+		Category: string(is.Status.Category()), Title: is.Title, Brief: is.Brief, Summary: is.Summary,
 		Expected: is.Expected, Actual: is.Actual,
 		Repro:    Repro{Script: is.ReproScript, Env: is.ReproEnv, ExitCode: is.ReproExitCode},
 		Evidence: is.Evidence, Repo: is.Repo, Branch: is.Branch, Commit: is.CommitSHA,

@@ -62,7 +62,7 @@ func newFixture(t *testing.T, web fstest.MapFS) fixture {
 	if err := store.UpsertService(ctx, pool, ws, "order-api", f.b.MemberID); err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(server.New(f.svc, web))
+	srv := httptest.NewServer(server.New(f.svc, web, server.Options{}))
 	t.Cleanup(srv.Close)
 	f.url = srv.URL
 	return f
@@ -215,6 +215,42 @@ func TestBoardNotBuilt(t *testing.T) {
 	code, _, body := get(t, f.url+"/", "")
 	if code != http.StatusServiceUnavailable || !strings.Contains(body, "make web") {
 		t.Fatalf("看板未构建时应提示构建方法，得到 %d %s", code, body)
+	}
+}
+
+// 经隧道转发来的请求 Host 是公网域名；只有白名单里的域名能访问 MCP，其余仍按 DNS 重绑定防护拒绝。
+func TestMCPHostAllowlist(t *testing.T) {
+	ctx := context.Background()
+	pool := testutil.NewSchemaPool(t)
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(server.New(&core.Service{Pool: pool}, builtWeb, server.Options{AllowedHosts: []string{"cohive-test.example.com"}}))
+	defer srv.Close()
+
+	post := func(host string) int {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/mcp", strings.NewReader(`{}`))
+		req.Host = host
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := post("evil.example.org"); code != http.StatusForbidden {
+		t.Fatalf("不在白名单的 Host 应返回 403，得到 %d", code)
+	}
+	if code := post("cohive-test.example.com"); code != http.StatusUnauthorized {
+		t.Fatalf("白名单里的 Host 应进入令牌校验（未带令牌返回 401），得到 %d", code)
+	}
+	if code := post("COHIVE-TEST.example.com:443"); code != http.StatusUnauthorized {
+		t.Fatalf("Host 比较应忽略大小写和端口，得到 %d", code)
+	}
+	if code := post("localhost:8787"); code != http.StatusUnauthorized {
+		t.Fatalf("localhost 始终允许，得到 %d", code)
 	}
 }
 
