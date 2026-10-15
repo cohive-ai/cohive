@@ -58,6 +58,7 @@ type Issue struct {
 	TargetService    string
 	Severity         string
 	Title            string
+	Brief            string // 群通知简述，会发到工作空间的群里
 	Summary          string
 	Expected         string
 	Actual           string
@@ -194,7 +195,7 @@ func ServiceOwner(ctx context.Context, q DBTX, wsID int64, service string) (Memb
 
 const issueColumns = `
 	i.id, i.workspace_id, i.source_member_id, sm.name, i.source_tool, i.owner_id, COALESCE(om.name, ''),
-	i.target_service, i.severity, i.title, i.summary, i.expected, i.actual,
+	i.target_service, i.severity, i.title, i.brief, i.summary, i.expected, i.actual,
 	i.repro_script, i.repro_env, i.repro_exit_code, i.evidence, i.repo, i.branch, i.commit_sha,
 	i.status, i.version, i.reopen_count, i.escalated_at, i.escalation_reason, i.created_at, i.updated_at`
 
@@ -207,7 +208,7 @@ func scanIssue(row pgx.Row) (Issue, error) {
 	var is Issue
 	var status string
 	err := row.Scan(&is.ID, &is.WorkspaceID, &is.SourceMemberID, &is.SourceName, &is.SourceTool,
-		&is.OwnerID, &is.OwnerName, &is.TargetService, &is.Severity, &is.Title, &is.Summary,
+		&is.OwnerID, &is.OwnerName, &is.TargetService, &is.Severity, &is.Title, &is.Brief, &is.Summary,
 		&is.Expected, &is.Actual, &is.ReproScript, &is.ReproEnv, &is.ReproExitCode, &is.Evidence,
 		&is.Repo, &is.Branch, &is.CommitSHA, &status, &is.Version, &is.ReopenCount,
 		&is.EscalatedAt, &is.EscalationReason, &is.CreatedAt, &is.UpdatedAt)
@@ -236,12 +237,12 @@ func InsertIssue(ctx context.Context, q DBTX, is *Issue) error {
 	return q.QueryRow(ctx, `
 		INSERT INTO issues (workspace_id, source_member_id, source_tool, owner_id, target_service,
 			severity, title, summary, expected, actual, repro_script, repro_env, repro_exit_code,
-			evidence, repo, branch, commit_sha, status)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+			evidence, repo, branch, commit_sha, status, brief)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 		RETURNING id, version, created_at, updated_at`,
 		is.WorkspaceID, is.SourceMemberID, is.SourceTool, is.OwnerID, is.TargetService,
 		is.Severity, is.Title, is.Summary, is.Expected, is.Actual, is.ReproScript, is.ReproEnv,
-		is.ReproExitCode, is.Evidence, is.Repo, is.Branch, is.CommitSHA, string(is.Status),
+		is.ReproExitCode, is.Evidence, is.Repo, is.Branch, is.CommitSHA, string(is.Status), is.Brief,
 	).Scan(&is.ID, &is.Version, &is.CreatedAt, &is.UpdatedAt)
 }
 
@@ -260,13 +261,13 @@ func UpdateIssue(ctx context.Context, q DBTX, is *Issue) error {
 		UPDATE issues SET owner_id=$3, target_service=$4, severity=$5, title=$6, summary=$7,
 			expected=$8, actual=$9, repro_script=$10, repro_env=$11, repro_exit_code=$12,
 			evidence=$13, repo=$14, branch=$15, commit_sha=$16, status=$17, reopen_count=$18,
-			escalated_at=$19, escalation_reason=$20, version=version+1, updated_at=now()
+			escalated_at=$19, escalation_reason=$20, brief=$21, version=version+1, updated_at=now()
 		WHERE id=$1 AND version=$2
 		RETURNING version, updated_at`,
 		is.ID, is.Version, is.OwnerID, is.TargetService, is.Severity, is.Title, is.Summary,
 		is.Expected, is.Actual, is.ReproScript, is.ReproEnv, is.ReproExitCode, is.Evidence,
 		is.Repo, is.Branch, is.CommitSHA, string(is.Status), is.ReopenCount,
-		is.EscalatedAt, is.EscalationReason,
+		is.EscalatedAt, is.EscalationReason, is.Brief,
 	).Scan(&is.Version, &is.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrVersionConflict

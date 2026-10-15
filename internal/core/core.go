@@ -52,8 +52,12 @@ func notFoundIssue(id int64) error {
 	return fmt.Errorf("问题单 #%d 不存在或你无权查看：%w", id, store.ErrNotFound)
 }
 
+// BriefMaxRunes 是群通知简述的字数上限。
+const BriefMaxRunes = 80
+
 type DraftInput struct {
 	Title, Summary, Expected, Actual string
+	Brief                            string // 群通知简述，发出时由人一并确认
 	ReproScript, ReproEnv            string
 	ReproExitCode                    *int
 	Evidence, Repo, Branch, Commit   string
@@ -133,6 +137,10 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 	if err != nil {
 		return store.Issue{}, err
 	}
+	brief := strings.Join(strings.Fields(in.Brief), " ")
+	if n := len([]rune(brief)); n > BriefMaxRunes {
+		return store.Issue{}, inputErr("brief（群通知简述）不能超过 %d 个字，当前 %d 个", BriefMaxRunes, n)
+	}
 	replayDraft := func() (store.Issue, bool, error) {
 		id, ok, err := checkReplay(ctx, s.Pool, who, in.IdempotencyKey, 0, ActDraft)
 		if err != nil || !ok {
@@ -148,7 +156,7 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
 		is := store.Issue{
 			WorkspaceID: who.WorkspaceID, SourceMemberID: who.MemberID, SourceTool: who.Tool,
-			TargetService: in.TargetService, Severity: sev, Title: in.Title, Summary: in.Summary,
+			TargetService: in.TargetService, Severity: sev, Title: in.Title, Brief: brief, Summary: in.Summary,
 			Expected: in.Expected, Actual: in.Actual, ReproScript: in.ReproScript, ReproEnv: in.ReproEnv,
 			ReproExitCode: in.ReproExitCode, Evidence: in.Evidence, Repo: in.Repo, Branch: in.Branch,
 			CommitSHA: in.Commit, Status: issue.StatusDraft,

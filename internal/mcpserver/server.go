@@ -53,7 +53,8 @@ func identity(req *mcp.CallToolRequest) (store.Identity, error) {
 // ---- 输入结构 ----
 
 type DraftArgs struct {
-	Title          string `json:"title" jsonschema:"一句话标题"`
+	Title          string `json:"title" jsonschema:"一句话标题。默认会显示在工作空间的群通知里"`
+	Brief          string `json:"brief,omitempty" jsonschema:"群通知简述：一句话说清是什么问题、影响什么，不超过 80 字。会原样发到工作空间的群里，不要包含日志、密钥、内部地址、客户数据"`
 	Summary        string `json:"summary,omitempty" jsonschema:"问题概述与已做的排查"`
 	Expected       string `json:"expected,omitempty" jsonschema:"期望结果"`
 	Actual         string `json:"actual,omitempty" jsonschema:"实际结果"`
@@ -179,14 +180,15 @@ func NewServer(svc *core.Service) *mcp.Server {
 		Name:        "cohive_draft_issue",
 		Annotations: writes,
 		Description: "起草一张问题单，交给另一位成员处理。草稿只有你自己可见，需要用户确认后再调用 cohive_submit_issue 发出。" +
-			"起草前请先用 cohive_search 查重；请尽量提供可直接运行的复现脚本和提交号。" + trustNote,
+			"起草前请先用 cohive_search 查重；请尽量提供可直接运行的复现脚本和提交号，并写一句可以发到群里的 brief。" +
+			"发出前把标题和 brief 展示给用户，它们会出现在群通知里。" + trustNote,
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in DraftArgs) (*mcp.CallToolResult, view.IssueView, error) {
 		who, err := identity(req)
 		if err != nil {
 			return nil, view.IssueView{}, err
 		}
 		is, err := svc.Draft(ctx, who, core.DraftInput{
-			Title: in.Title, Summary: in.Summary, Expected: in.Expected, Actual: in.Actual,
+			Title: in.Title, Brief: in.Brief, Summary: in.Summary, Expected: in.Expected, Actual: in.Actual,
 			ReproScript: in.ReproScript, ReproEnv: in.ReproEnv, ReproExitCode: in.ReproExitCode,
 			Evidence: in.Evidence, Repo: in.Repo, Branch: in.Branch, Commit: in.Commit,
 			TargetService: in.TargetService, Owner: in.Owner, Severity: in.Severity,
