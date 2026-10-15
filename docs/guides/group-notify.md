@@ -39,10 +39,10 @@ Cohive 的群通知是“群里敲门，客户端开门”：问题单轮到谁�
 - `--show-title=false`、`--show-brief=false`：不在群里显示标题、群通知简述（默认都显示）。
 - `--off`：关闭这个工作空间的群通知。
 
-每位成员在群里发 `/whoami`，机器人回复其 Telegram 用户名；管理员据此登记，群通知才能 @ 到人：
+每位成员在群里或私聊发 `/whoami`，机器人回复其 Telegram 用户名和用户编号；管理员据此登记，群通知才能 @ 到人，成员也才能私聊领取登录码（见 [新成员接入](onboarding.md)）：
 
 ```bash
-./bin/cohive-server member set --workspace payments --name lee --telegram lee_ut
+./bin/cohive-server member set --workspace payments --name lee --telegram lee_ut --telegram-id 7012345678
 ```
 
 确认接通：
