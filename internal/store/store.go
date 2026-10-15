@@ -36,6 +36,7 @@ type Member struct {
 	Name             string
 	DisplayName      string
 	TelegramUsername string
+	TelegramUserID   *int64 // Telegram 用户编号，用于私聊领取登录码时识别身份
 }
 
 // Identity 是一次调用的操作者：哪个人的哪个工具。
@@ -122,8 +123,8 @@ func CreateMember(ctx context.Context, q DBTX, wsID int64, name, display string)
 func MemberByName(ctx context.Context, q DBTX, wsID int64, name string) (Member, error) {
 	m := Member{WorkspaceID: wsID, Name: name}
 	err := q.QueryRow(ctx,
-		`SELECT id, display_name, telegram_username FROM members WHERE workspace_id = $1 AND name = $2`,
-		wsID, name).Scan(&m.ID, &m.DisplayName, &m.TelegramUsername)
+		`SELECT id, display_name, telegram_username, telegram_user_id FROM members WHERE workspace_id = $1 AND name = $2`,
+		wsID, name).Scan(&m.ID, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID)
 	return m, notFound(err)
 }
 
@@ -197,10 +198,10 @@ func UpsertService(ctx context.Context, q DBTX, wsID int64, name string, ownerID
 func ServiceOwner(ctx context.Context, q DBTX, wsID int64, service string) (Member, error) {
 	m := Member{WorkspaceID: wsID}
 	err := q.QueryRow(ctx, `
-		SELECT m.id, m.name, m.display_name, m.telegram_username
+		SELECT m.id, m.name, m.display_name, m.telegram_username, m.telegram_user_id
 		FROM services s JOIN members m ON m.id = s.owner_id
 		WHERE s.workspace_id = $1 AND s.name = $2`,
-		wsID, service).Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername)
+		wsID, service).Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID)
 	return m, notFound(err)
 }
 
@@ -409,7 +410,7 @@ type ServiceInfo struct {
 }
 
 func ListMembers(ctx context.Context, q DBTX, wsID int64) ([]Member, error) {
-	rows, err := q.Query(ctx, `SELECT id, name, display_name, telegram_username FROM members WHERE workspace_id = $1 ORDER BY id`, wsID)
+	rows, err := q.Query(ctx, `SELECT id, name, display_name, telegram_username, telegram_user_id FROM members WHERE workspace_id = $1 ORDER BY id`, wsID)
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +418,7 @@ func ListMembers(ctx context.Context, q DBTX, wsID int64) ([]Member, error) {
 	var out []Member
 	for rows.Next() {
 		m := Member{WorkspaceID: wsID}
-		if err := rows.Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername); err != nil {
+		if err := rows.Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -142,9 +143,13 @@ func memberList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 		return err
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "编号\t成员名\t显示名\tTelegram")
+	fmt.Fprintln(tw, "编号\t成员名\t显示名\tTelegram 用户名\tTelegram 编号")
 	for _, m := range list {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", m.ID, m.Name, m.DisplayName, m.TelegramUsername)
+		tgID := ""
+		if m.TelegramUserID != nil {
+			tgID = strconv.FormatInt(*m.TelegramUserID, 10)
+		}
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", m.ID, m.Name, m.DisplayName, m.TelegramUsername, tgID)
 	}
 	return tw.Flush()
 }

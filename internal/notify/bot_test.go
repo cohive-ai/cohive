@@ -34,12 +34,13 @@ func TestChatIDInPrivateChat(t *testing.T) {
 
 func TestWhoAmICommand(t *testing.T) {
 	reply, ok := notify.HandleCommand(msg("/whoami", "group", -1, "lee_dev"), "CohiveBot")
-	if !ok || !strings.Contains(reply, "lee_dev") || !strings.Contains(reply, "member set") {
-		t.Fatalf("应回复用户名与登记命令：%s", reply)
+	if !ok || !strings.Contains(reply, "lee_dev") || !strings.Contains(reply, "member set") ||
+		!strings.Contains(reply, "--telegram-id 42") {
+		t.Fatalf("应回复用户名、用户编号与登记命令：%s", reply)
 	}
 	reply, ok = notify.HandleCommand(msg("/whoami", "group", -1, ""), "CohiveBot")
-	if !ok || !strings.Contains(reply, "还没有设置") {
-		t.Fatalf("没有用户名时应提示先设置：%s", reply)
+	if !ok || !strings.Contains(reply, "还没有设置") || !strings.Contains(reply, "--telegram-id 42") {
+		t.Fatalf("没有用户名时应提示先设置，但仍给出用户编号：%s", reply)
 	}
 }
 

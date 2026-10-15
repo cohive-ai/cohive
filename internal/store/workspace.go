@@ -71,7 +71,16 @@ func SetWorkspaceNotify(ctx context.Context, q DBTX, wsID int64, cfg NotifyConfi
 }
 
 func SetMemberTelegram(ctx context.Context, q DBTX, memberID int64, username string) error {
-	tag, err := q.Exec(ctx, `UPDATE members SET telegram_username = $2 WHERE id = $1`, memberID, username)
+	return updateMember(ctx, q, `UPDATE members SET telegram_username = $2 WHERE id = $1`, memberID, username)
+}
+
+// SetMemberTelegramUserID 绑定或解绑（nil）成员的 Telegram 用户编号。
+func SetMemberTelegramUserID(ctx context.Context, q DBTX, memberID int64, userID *int64) error {
+	return updateMember(ctx, q, `UPDATE members SET telegram_user_id = $2 WHERE id = $1`, memberID, userID)
+}
+
+func updateMember(ctx context.Context, q DBTX, sql string, memberID int64, value any) error {
+	tag, err := q.Exec(ctx, sql, memberID, value)
 	if err != nil {
 		return err
 	}

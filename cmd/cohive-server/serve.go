@@ -53,7 +53,7 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	if tg := telegramFromEnv(); tg != nil {
 		d := &notify.Dispatcher{Pool: pool, Senders: map[string]notify.Sender{"telegram": tg}}
 		go d.Run(ctx, 2*time.Second)
-		go (&notify.Bot{TG: tg}).Run(ctx)
+		go (&notify.Bot{TG: tg, Logins: &core.Service{Pool: pool}}).Run(ctx)
 		fmt.Fprintln(out, "  群通知：Telegram 已启用；群里发 /chatid 可获取群编号")
 	} else {
 		fmt.Fprintln(out, "  群通知：未设置 COHIVE_TELEGRAM_BOT_TOKEN，暂不发送（待发记录会保留）")

@@ -71,6 +71,8 @@ export COHIVE_DATABASE_URL='postgres://cohive:cohive@localhost:55432/cohive?sslm
 
 令牌只显示一次，分别记下来。丢了就用 `token revoke` 吊销后重新签发。
 
+> 推荐的接入方式是登录码加 `cohive init`，见 [新成员接入](onboarding.md)。下面第 3、4 节是手工配置的方式，留作参考。
+
 ## 3. 配置 Claude Code（lee-claude）
 
 在你要用的项目目录里：

@@ -70,3 +70,35 @@ func TestWorkspaceNotifyAndMemberTelegram(t *testing.T) {
 		t.Fatalf("关闭后应显示未配置：%s", out)
 	}
 }
+
+func TestMemberTelegramID(t *testing.T) {
+	adminEnv(t)
+	mustRun(t, "migrate")
+	mustRun(t, "member", "add", "--name", "lee")
+	mustRun(t, "member", "set", "--name", "lee", "--telegram-id", "7012345678")
+	out := mustRun(t, "member", "list")
+	if !strings.Contains(out, "7012345678") {
+		t.Fatalf("成员列表应显示 Telegram 用户编号：%s", out)
+	}
+	if _, err := runCmd(t, "member", "set", "--name", "lee", "--telegram-id", "abc"); err == nil {
+		t.Fatal("非数字的用户编号应报错")
+	}
+	// 只改用户名时不应清掉已绑定的编号
+	mustRun(t, "member", "set", "--name", "lee", "--telegram", "lee_ut")
+	if out := mustRun(t, "member", "list"); !strings.Contains(out, "7012345678") || !strings.Contains(out, "lee_ut") {
+		t.Fatalf("只改用户名不应影响编号：%s", out)
+	}
+	if _, err := runCmd(t, "member", "set", "--name", "lee"); err == nil {
+		t.Fatal("没有任何要修改的项时应报错")
+	}
+
+	// 同一个工作空间里，一个 Telegram 账号只能绑定一个成员
+	mustRun(t, "member", "add", "--name", "lee2")
+	if _, err := runCmd(t, "member", "set", "--name", "lee2", "--telegram-id", "7012345678"); err == nil || !strings.Contains(err.Error(), "lee") {
+		t.Fatalf("重复绑定应报错并说明已绑定给谁，得到 %v", err)
+	}
+	// 不同工作空间可以绑定同一个账号
+	mustRun(t, "workspace", "add", "--name", "payments")
+	mustRun(t, "member", "add", "--workspace", "payments", "--name", "lee")
+	mustRun(t, "member", "set", "--workspace", "payments", "--name", "lee", "--telegram-id", "7012345678")
+}
