@@ -77,16 +77,20 @@ export COHIVE_DATABASE_URL='postgres://cohive:cohive@localhost:55432/cohive?sslm
 
 1. 复制 [examples/claude-code/.mcp.json](../../examples/claude-code/.mcp.json) 到项目根目录。
 2. 把 [examples/claude-code/.claude/settings.json](../../examples/claude-code/.claude/settings.json) 的内容合并进项目的 `.claude/settings.json`。
-3. 启动前设置令牌：`export COHIVE_TOKEN=<lee-claude 的令牌>`。
-4. **项目目录必须被 Claude Code 信任过**（第一次在该目录交互式启动时接受信任提示）。没有信任的目录里，设置中的 `allow` 规则会被忽略，连只读工具都要逐个确认；`ask` 规则不受影响，照常生效。
+3. 复制技能：把 [examples/skills/cohive](../../examples/skills/cohive) 整个目录复制到项目的 `.claude/skills/cohive`，之后在 Claude Code 里用 `/cohive` 或 `/cohive 12` 处理问题单。
+4. 启动前设置令牌：`export COHIVE_TOKEN=<lee-claude 的令牌>`；经公网访问时再设 `export COHIVE_URL=https://你的域名/mcp`。
+5. **项目目录必须被 Claude Code 信任过**（第一次在该目录交互式启动时接受信任提示）。没有信任的目录里，设置中的 `allow` 规则会被忽略，连只读工具都要逐个确认；`ask` 规则不受影响，照常生效。
 
 ## 4. 配置 Codex（lee-codex）
 
 在另一个项目目录里：
 
 1. 复制 [examples/codex/.codex/config.toml](../../examples/codex/.codex/config.toml) 到项目的 `.codex/config.toml`。
-2. 启动前设置令牌：`export COHIVE_TOKEN=<lee-codex 的令牌>`。
-3. **项目必须被 Codex 信任过**，否则不会读取项目级 `.codex/config.toml`。可以用 `codex mcp list` 在项目目录里确认是否出现 `cohive`。
+2. 复制技能：把 [examples/skills/cohive](../../examples/skills/cohive) 整个目录复制到项目的 `.agents/skills/cohive`，之后在 Codex 里用 `$cohive` 或 `$cohive 12` 处理问题单。
+3. 启动前设置令牌：`export COHIVE_TOKEN=<lee-codex 的令牌>`。
+4. **项目必须被 Codex 信任过**，否则不会读取项目级 `.codex/config.toml`。可以用 `codex mcp list` 在项目目录里确认是否出现 `cohive`。
+
+群通知与公网访问的配置见 [群通知与公网访问](group-notify.md)。
 
 ## 5. 走一遍
 
