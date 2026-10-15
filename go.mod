@@ -3,6 +3,7 @@ module github.com/cohive-ai/cohive
 go 1.25.0
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 )
