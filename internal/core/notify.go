@@ -56,6 +56,7 @@ func queueNotifications(ctx context.Context, tx store.DBTX, who store.Identity, 
 		if err := store.InsertNotification(ctx, tx, store.Notification{
 			WorkspaceID: is.WorkspaceID, IssueID: is.ID, Event: it.event,
 			ActorMemberID: who.MemberID, ActorTool: who.Tool, Recipients: it.recipients,
+			IssueStatus: string(is.Status), IssueOwnerID: is.OwnerID,
 		}); err != nil {
 			return err
 		}

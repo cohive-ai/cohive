@@ -23,6 +23,9 @@ func telegramFromEnv() *notify.Telegram {
 }
 
 func notifyCmd(ctx context.Context, out io.Writer, args []string) error {
+	if len(args) > 0 && args[0] == "retry" {
+		return notifyRetry(ctx, out, args[1:])
+	}
 	if len(args) == 0 || args[0] != "test" {
 		fmt.Fprint(out, usage)
 		return fmt.Errorf("未知命令 %q", "notify")
@@ -60,5 +63,30 @@ func notifyCmd(ctx context.Context, out io.Writer, args []string) error {
 		return err
 	}
 	fmt.Fprintf(out, "已发送测试消息到工作空间 %s 的群\n", name)
+	return nil
+}
+
+// notifyRetry 把工作空间里发送失败的通知重新排队（例如修好群配置或令牌之后）。
+func notifyRetry(ctx context.Context, out io.Writer, args []string) error {
+	var name string
+	if err := parse("notify retry", args, func(fs *flag.FlagSet) {
+		fs.StringVar(&name, "workspace", "default", "工作空间名")
+	}); err != nil {
+		return err
+	}
+	pool, err := openDB(ctx)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	wsID, err := resolveWorkspace(ctx, pool, name)
+	if err != nil {
+		return err
+	}
+	n, err := store.RequeueFailedNotifications(ctx, pool, wsID)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "已把工作空间 %s 的 %d 条失败通知重新排队，服务会在几秒内重发（问题单已有新进展的会被跳过）\n", name, n)
 	return nil
 }

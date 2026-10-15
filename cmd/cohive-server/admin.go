@@ -30,7 +30,10 @@ func admin(ctx context.Context, out io.Writer, args []string) error {
 	if group == "workspace" {
 		return workspaceCmd(ctx, out, pool, sub, rest)
 	}
-	wsName, rest := extractWorkspace(rest)
+	wsName, rest, err := extractWorkspace(rest)
+	if err != nil {
+		return err
+	}
 	ws, err := resolveWorkspace(ctx, pool, wsName)
 	if err != nil {
 		return err
@@ -48,7 +51,7 @@ func admin(ctx context.Context, out io.Writer, args []string) error {
 	case "token list":
 		return tokenList(ctx, out, pool, ws)
 	case "token revoke":
-		return tokenRevoke(ctx, out, pool, rest)
+		return tokenRevoke(ctx, out, pool, ws, rest)
 	case "service add":
 		return serviceAdd(ctx, out, pool, ws, rest)
 	case "service list":
@@ -59,24 +62,30 @@ func admin(ctx context.Context, out io.Writer, args []string) error {
 }
 
 // extractWorkspace 从参数中取出 --workspace，返回其值与剩余参数。
-func extractWorkspace(args []string) (string, []string) {
+// 漏写值时报错，而不是悄悄落回 default（否则令牌可能签到错误的工作空间）。
+func extractWorkspace(args []string) (string, []string, error) {
 	name := "default"
+	missing := errors.New("--workspace 缺少工作空间名")
 	rest := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case a == "--workspace" || a == "-workspace":
-			if i+1 < len(args) {
-				name = args[i+1]
-				i++
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return "", nil, missing
 			}
-		case strings.HasPrefix(a, "--workspace="):
-			name = strings.TrimPrefix(a, "--workspace=")
+			name = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--workspace=") || strings.HasPrefix(a, "-workspace="):
+			_, name, _ = strings.Cut(a, "=")
+			if name == "" {
+				return "", nil, missing
+			}
 		default:
 			rest = append(rest, a)
 		}
 	}
-	return name, rest
+	return name, rest, nil
 }
 
 func resolveWorkspace(ctx context.Context, pool *pgxpool.Pool, name string) (int64, error) {
@@ -183,7 +192,7 @@ func tokenList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64)
 	return tw.Flush()
 }
 
-func tokenRevoke(ctx context.Context, out io.Writer, pool *pgxpool.Pool, args []string) error {
+func tokenRevoke(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
 	var id int64
 	if err := parse("token revoke", args, func(fs *flag.FlagSet) {
 		fs.Int64Var(&id, "id", 0, "令牌编号")
@@ -193,8 +202,8 @@ func tokenRevoke(ctx context.Context, out io.Writer, pool *pgxpool.Pool, args []
 	if id <= 0 {
 		return fmt.Errorf("缺少参数 --id")
 	}
-	if err := store.RevokeToken(ctx, pool, id); errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("令牌 %d 不存在或已吊销", id)
+	if err := store.RevokeTokenInWorkspace(ctx, pool, ws, id); errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("令牌 %d 不存在、已吊销，或不属于这个工作空间", id)
 	} else if err != nil {
 		return err
 	}

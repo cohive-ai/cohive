@@ -47,14 +47,18 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 			return err
 		}
 		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "编号\t名称\t群通知\t看板地址")
+		fmt.Fprintln(tw, "编号\t名称\t群通知\t待发/失败\t看板地址")
 		for _, w := range list {
+			pending, failed, err := store.CountNotifications(ctx, pool, w.ID)
+			if err != nil {
+				return err
+			}
 			notify := "未配置"
 			if w.Notify.Channel != "" {
 				notify = fmt.Sprintf("%s %s（标题 %s，简述 %s）", w.Notify.Channel, w.Notify.Target,
 					onOff(w.Notify.ShowTitle), onOff(w.Notify.ShowBrief))
 			}
-			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", w.ID, w.Name, notify, w.PublicURL)
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%d/%d\t%s\n", w.ID, w.Name, notify, pending, failed, w.PublicURL)
 		}
 		return tw.Flush()
 	case "notify":
@@ -76,7 +80,7 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 	var showTitle, showBrief, off bool
 	if err := parse("workspace notify", args, func(fs *flag.FlagSet) {
 		fs.StringVar(&name, "workspace", "default", "工作空间名")
-		fs.StringVar(&chat, "telegram-chat", "", "Telegram 群聊编号（用 telegram chats 查询）")
+		fs.StringVar(&chat, "telegram-chat", "", "Telegram 群聊编号（群里发 /chatid 获取）")
 		fs.BoolVar(&showTitle, "show-title", true, "群消息里显示标题")
 		fs.BoolVar(&showBrief, "show-brief", true, "群消息里显示群通知简述")
 		fs.StringVar(&publicURL, "public-url", "", "看板的外部地址，用于群消息里的链接")

@@ -27,6 +27,18 @@ func (e *RetryAfterError) Error() string {
 	return fmt.Sprintf("Telegram 限流，%d 秒后重试", e.Seconds)
 }
 
+// ChannelDownError 表示通道整体不可用（例如机器人令牌错误或已重置），与具体哪条通知无关。
+type ChannelDownError struct{ Msg string }
+
+func (e *ChannelDownError) Error() string { return e.Msg }
+
+// ChatMigratedError 表示群已升级为超级群，需改用新的群编号。
+type ChatMigratedError struct{ NewChatID string }
+
+func (e *ChatMigratedError) Error() string {
+	return fmt.Sprintf("群已升级为超级群，新的群编号是 %s", e.NewChatID)
+}
+
 // PermanentError 表示不值得重试的错误（例如群编号错误、机器人被移出群）。
 type PermanentError struct{ Msg string }
 
@@ -68,7 +80,8 @@ type tgResponse struct {
 	Description string          `json:"description"`
 	Result      json.RawMessage `json:"result"`
 	Parameters  struct {
-		RetryAfter int `json:"retry_after"`
+		RetryAfter      int   `json:"retry_after"`
+		MigrateToChatID int64 `json:"migrate_to_chat_id"`
 	} `json:"parameters"`
 }
 
@@ -114,7 +127,11 @@ func (t *Telegram) call(ctx context.Context, method string, req *http.Request) (
 			sec = 30
 		}
 		return nil, &RetryAfterError{Seconds: sec}
-	case r.ErrorCode == 400 || r.ErrorCode == 401 || r.ErrorCode == 403 || r.ErrorCode == 404:
+	case r.Parameters.MigrateToChatID != 0:
+		return nil, &ChatMigratedError{NewChatID: strconv.FormatInt(r.Parameters.MigrateToChatID, 10)}
+	case r.ErrorCode == 401 || r.ErrorCode == 404:
+		return nil, &ChannelDownError{Msg: fmt.Sprintf("Telegram 机器人令牌无效（%d）：%s", r.ErrorCode, r.Description)}
+	case r.ErrorCode == 400 || r.ErrorCode == 403:
 		return nil, &PermanentError{Msg: fmt.Sprintf("Telegram %s 拒绝（%d）：%s", method, r.ErrorCode, r.Description)}
 	}
 	return nil, fmt.Errorf("Telegram %s 失败（%d）：%s", method, r.ErrorCode, r.Description)

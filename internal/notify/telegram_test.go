@@ -58,6 +58,18 @@ func TestTelegramErrorsClassified(t *testing.T) {
 		t.Fatalf("403 应为不可重试错误并带上原因，得到 %v", err)
 	}
 
+	status, body = 401, `{"ok":false,"error_code":401,"description":"Unauthorized"}`
+	var down *notify.ChannelDownError
+	if err := tg.Send(context.Background(), "-1", "x"); !errors.As(err, &down) {
+		t.Fatalf("401 是令牌错误，应为通道不可用，得到 %v", err)
+	}
+
+	status, body = 400, `{"ok":false,"error_code":400,"description":"Bad Request: group chat was upgraded to a supergroup chat","parameters":{"migrate_to_chat_id":-1001234}}`
+	var mig *notify.ChatMigratedError
+	if err := tg.Send(context.Background(), "-1", "x"); !errors.As(err, &mig) || mig.NewChatID != "-1001234" {
+		t.Fatalf("群升级应返回新群编号，得到 %v", err)
+	}
+
 	status, body = 502, `bad gateway`
 	if err := tg.Send(context.Background(), "-1", "x"); err == nil || notify.IsPermanent(err) {
 		t.Fatalf("502 应为可重试错误，得到 %v", err)

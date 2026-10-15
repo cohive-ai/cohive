@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# 启动协作服务。机器人令牌只在本脚本的进程里加载，不进入你的交互终端，
+# 因此之后在终端里启动的其他程序（包括 AI 编程工具）读不到它。
+#
+# 用法：scripts/run-server.sh [serve 的参数，例如 --addr 0.0.0.0:8787]
+# 需要的环境变量：COHIVE_DATABASE_URL；经隧道访问时另设 COHIVE_ALLOWED_HOSTS。
+set -euo pipefail
+
+env_file="$HOME/.config/cohive/telegram.env"
+if [ -f "$env_file" ]; then
+  # shellcheck disable=SC1090
+  source "$env_file"
+  export COHIVE_TELEGRAM_BOT_TOKEN
+fi
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$root/bin/cohive-server" serve "$@"

@@ -171,6 +171,19 @@ func RevokeToken(ctx context.Context, q DBTX, tokenID int64) error {
 	return nil
 }
 
+// RevokeTokenInWorkspace 只吊销属于指定工作空间成员的令牌。
+func RevokeTokenInWorkspace(ctx context.Context, q DBTX, wsID, tokenID int64) error {
+	tag, err := q.Exec(ctx, `UPDATE tokens t SET revoked_at = now() FROM members m
+		WHERE t.id = $2 AND t.member_id = m.id AND m.workspace_id = $1 AND t.revoked_at IS NULL`, wsID, tokenID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ---- 服务登记 ----
 
 func UpsertService(ctx context.Context, q DBTX, wsID int64, name string, ownerID int64) error {

@@ -80,3 +80,9 @@ func SetMemberTelegram(ctx context.Context, q DBTX, memberID int64, username str
 	}
 	return nil
 }
+
+// SetWorkspaceNotifyTarget 只更新群编号（例如群升级为超级群后编号变化）。
+func SetWorkspaceNotifyTarget(ctx context.Context, q DBTX, wsID int64, target string) error {
+	_, err := q.Exec(ctx, `UPDATE workspaces SET notify_target = $2 WHERE id = $1`, wsID, target)
+	return err
+}

@@ -23,6 +23,7 @@ const usage = `用法：cohive-server <命令>
       [--show-title=false] [--show-brief=false] [--public-url <看板地址>]
                                                   配置群通知；--off 关闭
   notify test --workspace <名称>                   往工作空间的群里发一条测试消息
+  notify retry --workspace <名称>                  把发送失败的通知重新排队
 
 成员、令牌与服务（都可加 --workspace <名称>，缺省为 default）：
   member add --name <名称> [--display <显示名>]    添加成员

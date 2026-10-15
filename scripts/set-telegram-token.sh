@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 保存 Telegram 机器人令牌到 ~/.config/cohive/telegram.env（仅本人可读）。
-# 输入时不回显，也不会进入命令历史。协作服务启动前 source 这个文件即可。
+# 输入时不回显，也不会进入命令历史。用 scripts/run-server.sh 启动服务时会自动加载。
 set -euo pipefail
 
 dir="$HOME/.config/cohive"
@@ -24,4 +24,4 @@ chmod 600 "$file"
 unset token
 
 echo "已保存到 ${file}（仅你本人可读）"
-echo "启动服务前执行：source ${file}"
+echo "用 scripts/run-server.sh 启动服务即可加载它；不要在交互终端里 source 这个文件"
