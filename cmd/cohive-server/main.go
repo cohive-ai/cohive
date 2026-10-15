@@ -67,6 +67,8 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		return serve(ctx, out, args[1:])
 	case "workspace", "member", "token", "service":
 		return admin(ctx, out, args)
+	case "notify":
+		return notifyCmd(ctx, out, args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(out, usage)
 		return nil
