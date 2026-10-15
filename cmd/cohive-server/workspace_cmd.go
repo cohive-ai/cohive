@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -122,19 +123,33 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 var telegramUsername = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{3,31}$`)
 
 func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
-	var name, tg string
-	if err := parse("member set", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&name, "name", "", "成员名")
-		fs.StringVar(&tg, "telegram", "", "Telegram 用户名，群通知里用于 @ 提醒；传空字符串可清除")
-	}); err != nil {
+	var name, tg, tgID string
+	set := map[string]bool{}
+	fs := flag.NewFlagSet("member set", flag.ContinueOnError)
+	fs.StringVar(&name, "name", "", "成员名")
+	fs.StringVar(&tg, "telegram", "", "Telegram 用户名，群通知里用于 @ 提醒；传空字符串可清除")
+	fs.StringVar(&tgID, "telegram-id", "", "Telegram 用户编号（私聊机器人 /whoami 获取），用于领取登录码；传空字符串可解绑")
+	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	if err := required("name", name); err != nil {
 		return err
+	}
+	if !set["telegram"] && !set["telegram-id"] {
+		return fmt.Errorf("没有要修改的项：用 --telegram 设置用户名，或用 --telegram-id 绑定用户编号")
 	}
 	tg = strings.TrimPrefix(strings.TrimSpace(tg), "@")
 	if tg != "" && !telegramUsername.MatchString(tg) {
 		return fmt.Errorf("Telegram 用户名 %q 不合法：5 到 32 位，字母开头，只含字母、数字和下划线", tg)
+	}
+	var userID *int64
+	if tgID = strings.TrimSpace(tgID); tgID != "" {
+		v, err := strconv.ParseInt(tgID, 10, 64)
+		if err != nil || v <= 0 {
+			return fmt.Errorf("Telegram 用户编号应为正整数，私聊机器人发 /whoami 可以查到")
+		}
+		userID = &v
 	}
 	m, err := store.MemberByName(ctx, pool, ws, name)
 	if errors.Is(err, store.ErrNotFound) {
@@ -143,13 +158,25 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 	if err != nil {
 		return err
 	}
-	if err := store.SetMemberTelegram(ctx, pool, m.ID, tg); err != nil {
-		return err
+	if set["telegram"] {
+		if err := store.SetMemberTelegram(ctx, pool, m.ID, tg); err != nil {
+			return err
+		}
+		if tg == "" {
+			fmt.Fprintf(out, "已清除 %s 的 Telegram 用户名\n", name)
+		} else {
+			fmt.Fprintf(out, "%s 的 Telegram 用户名为 %s\n", name, tg)
+		}
 	}
-	if tg == "" {
-		fmt.Fprintf(out, "已清除 %s 的 Telegram 用户名\n", name)
-	} else {
-		fmt.Fprintf(out, "%s 的 Telegram 用户名为 %s\n", name, tg)
+	if set["telegram-id"] {
+		if err := store.SetMemberTelegramUserID(ctx, pool, m.ID, userID); err != nil {
+			return err
+		}
+		if userID == nil {
+			fmt.Fprintf(out, "已解绑 %s 的 Telegram 用户编号\n", name)
+		} else {
+			fmt.Fprintf(out, "%s 已绑定 Telegram 用户编号 %d，可以私聊机器人发 /login 领取登录码\n", name, *userID)
+		}
 	}
 	return nil
 }

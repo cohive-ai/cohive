@@ -33,12 +33,16 @@ func HandleCommand(u Update, botName string) (string, bool) {
 		return fmt.Sprintf("这个群（%s）的编号是 <code>%s</code>\n\n在协作服务所在的机器上执行，把工作空间名换成你的：\n<code>cohive-server workspace notify --workspace 工作空间名 --telegram-chat %s</code>",
 			html.EscapeString(m.Chat.Title), id, id), true
 	case "/whoami":
-		if m.From == nil || m.From.Username == "" {
-			return "你还没有设置 Telegram 用户名。请先在 Telegram 的设置里设置用户名，否则群通知没法 @ 到你。", true
+		if m.From == nil {
+			return "", false
+		}
+		if m.From.Username == "" {
+			return fmt.Sprintf("你的 Telegram 用户编号是 <code>%d</code>。你还没有设置 Telegram 用户名，请先在 Telegram 的设置里设置，否则群通知没法 @ 到你。\n\n请管理员执行，把工作空间名和成员名换成你的：\n<code>cohive-server member set --workspace 工作空间名 --name 成员名 --telegram-id %d</code>",
+				m.From.ID, m.From.ID), true
 		}
 		name := html.EscapeString(m.From.Username)
-		return fmt.Sprintf("你的 Telegram 用户名是 <code>%s</code>\n\n请管理员执行，把工作空间名和成员名换成你的：\n<code>cohive-server member set --workspace 工作空间名 --name 成员名 --telegram %s</code>",
-			name, name), true
+		return fmt.Sprintf("你的 Telegram 用户名是 <code>%s</code>，用户编号是 <code>%d</code>\n\n请管理员执行，把工作空间名和成员名换成你的：\n<code>cohive-server member set --workspace 工作空间名 --name 成员名 --telegram %s --telegram-id %d</code>",
+			name, m.From.ID, name, m.From.ID), true
 	}
 	return "", false
 }
