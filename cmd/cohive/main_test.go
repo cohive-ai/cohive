@@ -122,4 +122,10 @@ func TestLoginErrors(t *testing.T) {
 	if _, err := run(t, "login", "--server", s.url, "--tool", "codex"); err == nil || !strings.Contains(err.Error(), "--code") {
 		t.Fatalf("缺登录码时应报错，得到 %v", err)
 	}
+	// 照抄占位文字、长度不对时在本地就提示格式，不发到服务端
+	for _, bad := range []string{"登录码", "ABC-DEF", "ABCD-EFGH-IJ"} {
+		if _, err := run(t, "login", "--server", "http://127.0.0.1:1", "--code", bad, "--tool", "codex"); err == nil || !strings.Contains(err.Error(), "ABCD-EFGH") {
+			t.Fatalf("%q 应在本地提示登录码格式，得到 %v", bad, err)
+		}
+	}
 }

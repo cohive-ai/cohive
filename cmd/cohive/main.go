@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/cohive-ai/cohive/internal/client"
@@ -24,6 +26,9 @@ const usage = `用法：cohive <命令>
 
 凭据保存在 ~/.config/cohive/credentials.json（仅本人可读），可用 COHIVE_CONFIG_DIR 改变目录。
 `
+
+// loginCodeShape 是登录码的大致形状（大小写、空格、横线不敏感），用于在本地提示明显的输入错误。
+var loginCodeShape = regexp.MustCompile(`^[A-Za-z0-9]{4}[- ]?[A-Za-z0-9]{4}$`)
 
 func main() {
 	if err := runCLI(context.Background(), os.Stdin, os.Stdout, os.Args[1:]); err != nil {
@@ -69,6 +74,9 @@ func login(ctx context.Context, out io.Writer, args []string) error {
 		return fmt.Errorf("缺少 --code：私聊机器人发 /login 领取登录码")
 	case *tool == "":
 		return fmt.Errorf("缺少 --tool：claude-code 或 codex")
+	}
+	if !loginCodeShape.MatchString(strings.TrimSpace(*code)) {
+		return fmt.Errorf("登录码 %q 格式不对：应形如 ABCD-EFGH（8 位字母数字），请复制机器人私聊回复里的登录码", *code)
 	}
 	srv, err := client.CheckServer(*server)
 	if err != nil {
