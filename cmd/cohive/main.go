@@ -75,12 +75,12 @@ func login(ctx context.Context, out io.Writer, args []string) error {
 	case *tool == "":
 		return fmt.Errorf("缺少 --tool：claude-code 或 codex")
 	}
-	if !loginCodeShape.MatchString(strings.TrimSpace(*code)) {
-		return fmt.Errorf("登录码 %q 格式不对：应形如 ABCD-EFGH（8 位字母数字），请复制机器人私聊回复里的登录码", *code)
-	}
 	srv, err := client.CheckServer(*server)
 	if err != nil {
 		return err
+	}
+	if !loginCodeShape.MatchString(strings.TrimSpace(*code)) {
+		return fmt.Errorf("登录码 %q 格式不对：应形如 ABCD-EFGH（8 位字母数字），请复制机器人私聊回复里的登录码", *code)
 	}
 	l, err := client.Exchange(ctx, srv, *code, *tool)
 	if err != nil {
