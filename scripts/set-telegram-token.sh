@@ -23,5 +23,5 @@ printf 'export COHIVE_TELEGRAM_BOT_TOKEN=%s\n' "$token" > "$file"
 chmod 600 "$file"
 unset token
 
-echo "已保存到 $file（仅你本人可读）"
-echo "启动服务前执行：source $file"
+echo "已保存到 ${file}（仅你本人可读）"
+echo "启动服务前执行：source ${file}"
