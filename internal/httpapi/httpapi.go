@@ -47,10 +47,12 @@ func Handler(svc *core.Service) http.Handler {
 	outer := http.NewServeMux()
 	limiter := &failureLimiter{max: 30, window: time.Minute}
 	outer.HandleFunc("POST /api/v1/login", func(w http.ResponseWriter, r *http.Request) {
-		if limiter.blocked() {
+		if !limiter.begin() {
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "尝试次数过多，请一分钟后再试"})
 			return
 		}
+		failed := false
+		defer func() { limiter.end(failed) }()
 		var in struct {
 			Code string `json:"code"`
 			Tool string `json:"tool"`
@@ -61,7 +63,7 @@ func Handler(svc *core.Service) http.Handler {
 		}
 		token, who, err := svc.ExchangeLoginCode(r.Context(), in.Code, in.Tool)
 		if errors.Is(err, core.ErrBadLoginCode) {
-			limiter.fail()
+			failed = true
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error() + "，请私聊机器人重新发 /login 领取"})
 			return
 		}
@@ -138,7 +140,8 @@ func Handler(svc *core.Service) http.Handler {
 	return outer
 }
 
-// failureLimiter 统计一个时间窗口内的失败次数，超过上限后拒绝所有换取请求，防止暴力猜登录码。
+// failureLimiter 限制一个时间窗口内的失败换取次数，防止暴力猜登录码。
+// 先占名额再查库：同时在查库的请求也算进名额，并发请求无法绕过上限。
 // 登录码约 40 位熵、10 分钟有效，全局每分钟 30 次失败足以让猜中的概率可以忽略。
 type failureLimiter struct {
 	mu       sync.Mutex
@@ -146,6 +149,7 @@ type failureLimiter struct {
 	window   time.Duration
 	start    time.Time
 	failures int
+	inflight int
 }
 
 func (l *failureLimiter) roll(now time.Time) {
@@ -154,18 +158,27 @@ func (l *failureLimiter) roll(now time.Time) {
 	}
 }
 
-func (l *failureLimiter) blocked() bool {
+// begin 占用一个名额；名额用完时返回 false。
+func (l *failureLimiter) begin() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.roll(time.Now())
-	return l.failures >= l.max
+	if l.failures+l.inflight >= l.max {
+		return false
+	}
+	l.inflight++
+	return true
 }
 
-func (l *failureLimiter) fail() {
+// end 归还名额；失败的换取计入失败次数。
+func (l *failureLimiter) end(failed bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.inflight--
 	l.roll(time.Now())
-	l.failures++
+	if failed {
+		l.failures++
+	}
 }
 
 func identity(r *http.Request) store.Identity {

@@ -108,7 +108,14 @@ func (s *Service) IssueLoginCode(ctx context.Context, telegramUserID int64, work
 	if err != nil {
 		return LoginCodeResult{}, err
 	}
-	if err := store.CreateLoginCode(ctx, s.Pool, pick.ID, hashLoginCode(normalizeLoginCode(code)), time.Now().Add(LoginCodeTTL)); err != nil {
+	// 同一成员同时只保留一个有效码：作废之前没用掉的，再保存新码
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := store.RevokeUnusedLoginCodes(ctx, tx, pick.ID); err != nil {
+			return err
+		}
+		return store.CreateLoginCode(ctx, tx, pick.ID, hashLoginCode(normalizeLoginCode(code)), time.Now().Add(LoginCodeTTL))
+	})
+	if err != nil {
 		return LoginCodeResult{}, err
 	}
 	ws, err := store.GetWorkspace(ctx, s.Pool, pick.WorkspaceID)

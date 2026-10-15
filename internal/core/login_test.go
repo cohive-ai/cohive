@@ -61,6 +61,27 @@ func TestLoginCodeExchange(t *testing.T) {
 	}
 }
 
+// 重新领码后，之前没用掉的码作废，同一成员同时只有一个有效码。
+func TestNewLoginCodeInvalidatesOld(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	bindTelegram(t, e, e.a.MemberID)
+	first, err := e.svc.IssueLoginCode(ctx, tgUser, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := e.svc.IssueLoginCode(ctx, tgUser, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.svc.ExchangeLoginCode(ctx, first.Code, "codex"); !errors.Is(err, core.ErrBadLoginCode) {
+		t.Fatalf("旧码应已作废，得到 %v", err)
+	}
+	if _, _, err := e.svc.ExchangeLoginCode(ctx, second.Code, "codex"); err != nil {
+		t.Fatalf("新码应可用：%v", err)
+	}
+}
+
 func TestLoginCodeExpires(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)

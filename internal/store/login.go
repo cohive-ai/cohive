@@ -61,3 +61,9 @@ func MemberByID(ctx context.Context, q DBTX, id int64) (Member, error) {
 		FROM members WHERE id = $1`, id).Scan(&m.WorkspaceID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID)
 	return m, notFound(err)
 }
+
+// RevokeUnusedLoginCodes 作废成员所有尚未使用的登录码。
+func RevokeUnusedLoginCodes(ctx context.Context, q DBTX, memberID int64) error {
+	_, err := q.Exec(ctx, `UPDATE login_codes SET used_at = now() WHERE member_id = $1 AND used_at IS NULL`, memberID)
+	return err
+}
