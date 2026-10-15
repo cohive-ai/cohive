@@ -6,13 +6,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// admin 处理 member、token、service 三组管理命令。
+// admin 处理 workspace、member、token、service 四组管理命令。
+// 除 workspace 组外都可用 --workspace 指定工作空间，缺省为 default。
 func admin(ctx context.Context, out io.Writer, args []string) error {
 	if len(args) < 2 {
 		fmt.Fprint(out, usage)
@@ -23,17 +25,24 @@ func admin(ctx context.Context, out io.Writer, args []string) error {
 		return err
 	}
 	defer pool.Close()
-	ws, err := store.DefaultWorkspace(ctx, pool)
+
+	group, sub, rest := args[0], args[1], args[2:]
+	if group == "workspace" {
+		return workspaceCmd(ctx, out, pool, sub, rest)
+	}
+	wsName, rest := extractWorkspace(rest)
+	ws, err := resolveWorkspace(ctx, pool, wsName)
 	if err != nil {
 		return err
 	}
 
-	group, sub, rest := args[0], args[1], args[2:]
 	switch group + " " + sub {
 	case "member add":
 		return memberAdd(ctx, out, pool, ws, rest)
 	case "member list":
 		return memberList(ctx, out, pool, ws)
+	case "member set":
+		return memberSet(ctx, out, pool, ws, rest)
 	case "token issue":
 		return tokenIssue(ctx, out, pool, ws, rest)
 	case "token list":
@@ -47,6 +56,38 @@ func admin(ctx context.Context, out io.Writer, args []string) error {
 	}
 	fmt.Fprint(out, usage)
 	return fmt.Errorf("未知命令 %q", group+" "+sub)
+}
+
+// extractWorkspace 从参数中取出 --workspace，返回其值与剩余参数。
+func extractWorkspace(args []string) (string, []string) {
+	name := "default"
+	rest := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--workspace" || a == "-workspace":
+			if i+1 < len(args) {
+				name = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--workspace="):
+			name = strings.TrimPrefix(a, "--workspace=")
+		default:
+			rest = append(rest, a)
+		}
+	}
+	return name, rest
+}
+
+func resolveWorkspace(ctx context.Context, pool *pgxpool.Pool, name string) (int64, error) {
+	if name == "default" {
+		return store.DefaultWorkspace(ctx, pool)
+	}
+	w, err := store.WorkspaceByName(ctx, pool, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return 0, fmt.Errorf("工作空间 %q 不存在，可用 workspace add 创建", name)
+	}
+	return w.ID, err
 }
 
 func parse(name string, args []string, define func(fs *flag.FlagSet)) error {
@@ -92,9 +133,9 @@ func memberList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 		return err
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "编号\t成员名\t显示名")
+	fmt.Fprintln(tw, "编号\t成员名\t显示名\tTelegram")
 	for _, m := range list {
-		fmt.Fprintf(tw, "%d\t%s\t%s\n", m.ID, m.Name, m.DisplayName)
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", m.ID, m.Name, m.DisplayName, m.TelegramUsername)
 	}
 	return tw.Flush()
 }
