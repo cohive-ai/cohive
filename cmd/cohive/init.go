@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/cohive-ai/cohive/internal/client"
 	"github.com/cohive-ai/cohive/internal/skill"
 )
@@ -135,6 +137,27 @@ func pickTarget(creds *client.Credentials, server, workspace string) (string, st
 	return "", "", fmt.Errorf("本机登录了多个工作空间，请指定其中一个：\n  %s", strings.Join(list, "\n  "))
 }
 
+// checkNoSymlinks 确认 rel 路径上的每一级（从项目目录往下）都不是符号链接。
+// 防止别人仓库里预先放好的链接让 init 写到项目之外（例如 ~/.zshrc）。
+func checkNoSymlinks(dir, rel string) error {
+	p := dir
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		p = filepath.Join(p, part)
+		fi, err := os.Lstat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s 是符号链接，cohive init 不会跟随它写入（可能指向项目之外），请检查后删除再执行", p)
+		}
+	}
+	return nil
+}
+
+// readJSONObject 读取 JSON 对象；数字保持原样（不转成浮点），文件不存在时返回空对象。
 func readJSONObject(path string) (map[string]any, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -147,40 +170,75 @@ func readJSONObject(path string) (map[string]any, error) {
 	if len(strings.TrimSpace(string(b))) == 0 {
 		return m, nil
 	}
-	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, fmt.Errorf("%s 不是有效的 JSON，请先修正：%v", path, err)
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if err := dec.Decode(&m); err != nil {
+		return nil, fmt.Errorf("%s 不是有效的 JSON 对象，请先修正：%v", path, err)
 	}
 	return m, nil
 }
 
+// writeJSON 写回 JSON：不转义 &、<、> 这类字符，保持用户原有内容可读。
 func writeJSON(path string, v any) error {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
 		return err
 	}
-	return writeFile(path, append(b, '\n'))
+	return writeFile(path, buf.Bytes())
 }
 
+// writeFile 先写同目录下的临时文件再改名，中途失败不会损坏原文件。
 func writeFile(path string, b []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o644)
-}
-
-func childObject(m map[string]any, key string) map[string]any {
-	if c, ok := m[key].(map[string]any); ok {
-		return c
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".cohive-*")
+	if err != nil {
+		return err
 	}
-	c := map[string]any{}
-	m[key] = c
-	return c
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
-// addStrings 往字符串数组里追加缺少的项，保持原有顺序。
-func addStrings(m map[string]any, key string, items ...string) {
+// childObject 取出（或创建）子对象；已有值不是对象时报错，不覆盖用户的内容。
+func childObject(m map[string]any, key, path string) (map[string]any, error) {
+	switch c := m[key].(type) {
+	case map[string]any:
+		return c, nil
+	case nil:
+		if _, exists := m[key]; exists {
+			return nil, fmt.Errorf("%s 是 null，应为对象，请先修正", path)
+		}
+		c2 := map[string]any{}
+		m[key] = c2
+		return c2, nil
+	default:
+		return nil, fmt.Errorf("%s 应为对象，实际是 %T，请先修正", path, c)
+	}
+}
+
+// addStrings 往字符串数组里追加缺少的项，保持原有顺序；已有值不是数组时报错。
+func addStrings(m map[string]any, key, path string, items ...string) error {
 	var list []any
-	if existing, ok := m[key].([]any); ok {
+	if v, exists := m[key]; exists {
+		existing, ok := v.([]any)
+		if !ok {
+			return fmt.Errorf("%s 应为数组，实际是 %T，请先修正", path, v)
+		}
 		list = existing
 	}
 	have := map[string]bool{}
@@ -196,11 +254,21 @@ func addStrings(m map[string]any, key string, items ...string) {
 		}
 	}
 	m[key] = list
+	return nil
 }
 
 func initClaude(dir, command string, args []string) error {
+	for _, rel := range []string{".mcp.json", ".claude/settings.json", ".claude/skills/cohive/SKILL.md"} {
+		if err := checkNoSymlinks(dir, rel); err != nil {
+			return err
+		}
+	}
 	mcpPath := filepath.Join(dir, ".mcp.json")
 	mcp, err := readJSONObject(mcpPath)
+	if err != nil {
+		return err
+	}
+	servers, err := childObject(mcp, "mcpServers", ".mcp.json 的 mcpServers")
 	if err != nil {
 		return err
 	}
@@ -208,17 +276,17 @@ func initClaude(dir, command string, args []string) error {
 	for i, a := range args {
 		argv[i] = a
 	}
-	childObject(mcp, "mcpServers")["cohive"] = map[string]any{"type": "stdio", "command": command, "args": argv}
-	if err := writeJSON(mcpPath, mcp); err != nil {
-		return err
-	}
+	servers["cohive"] = map[string]any{"type": "stdio", "command": command, "args": argv}
 
 	settingsPath := filepath.Join(dir, ".claude", "settings.json")
 	settings, err := readJSONObject(settingsPath)
 	if err != nil {
 		return err
 	}
-	perms := childObject(settings, "permissions")
+	perms, err := childObject(settings, "permissions", ".claude/settings.json 的 permissions")
+	if err != nil {
+		return err
+	}
 	prefixed := func(names []string) []string {
 		out := make([]string, len(names))
 		for i, n := range names {
@@ -226,9 +294,19 @@ func initClaude(dir, command string, args []string) error {
 		}
 		return out
 	}
-	addStrings(perms, "allow", prefixed(allowTools)...)
-	addStrings(perms, "ask", prefixed(confirmTools)...)
-	addStrings(settings, "enabledMcpjsonServers", "cohive")
+	if err := addStrings(perms, "allow", ".claude/settings.json 的 permissions.allow", prefixed(allowTools)...); err != nil {
+		return err
+	}
+	if err := addStrings(perms, "ask", ".claude/settings.json 的 permissions.ask", prefixed(confirmTools)...); err != nil {
+		return err
+	}
+	if err := addStrings(settings, "enabledMcpjsonServers", ".claude/settings.json 的 enabledMcpjsonServers", "cohive"); err != nil {
+		return err
+	}
+	// 全部校验通过后再写，避免只写了一半
+	if err := writeJSON(mcpPath, mcp); err != nil {
+		return err
+	}
 	if err := writeJSON(settingsPath, settings); err != nil {
 		return err
 	}
@@ -236,8 +314,22 @@ func initClaude(dir, command string, args []string) error {
 }
 
 func tomlString(s string) string {
-	b, _ := json.Marshal(s) // JSON 字符串转义与 TOML 基本字符串兼容
-	return string(b)
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch {
+		case r == '"':
+			b.WriteString(`\"`)
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&b, `\u%04X`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 func codexBlock(command string, args []string) string {
@@ -267,16 +359,33 @@ func codexBlock(command string, args []string) string {
 	return b.String()
 }
 
+// hasCohiveServer 用 TOML 解析判断配置里是否已有 mcp_servers.cohive（任何写法）。
+func hasCohiveServer(path, text string) (bool, error) {
+	var cfg map[string]any
+	if _, err := toml.Decode(text, &cfg); err != nil {
+		return false, fmt.Errorf("%s 不是合法的 TOML，请先修正：%v", path, err)
+	}
+	servers, _ := cfg["mcp_servers"].(map[string]any)
+	_, ok := servers["cohive"]
+	return ok, nil
+}
+
 func initCodex(dir, command string, args []string) error {
+	for _, rel := range []string{".codex/config.toml", ".agents/skills/cohive/SKILL.md"} {
+		if err := checkNoSymlinks(dir, rel); err != nil {
+			return err
+		}
+	}
 	path := filepath.Join(dir, ".codex", "config.toml")
 	b, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	text := string(b)
-	block := codexBlock(command, args)
-	start := strings.Index(text, blockBegin)
-	if start >= 0 {
+
+	// 去掉 init 自己管理的那一段，剩下的就是用户自己的配置
+	rest, blockAt := text, -1
+	if start := strings.Index(text, blockBegin); start >= 0 {
 		end := strings.Index(text[start:], blockEnd)
 		if end < 0 {
 			return fmt.Errorf("%s 里的 cohive 配置块缺少结束标记 %q，请手工修正", path, blockEnd)
@@ -285,20 +394,32 @@ func initCodex(dir, command string, args []string) error {
 		if end < len(text) && text[end] == '\n' {
 			end++
 		}
-		text = text[:start] + block + text[end:]
-	} else {
-		if strings.Contains(text, "[mcp_servers.cohive") {
-			return fmt.Errorf("%s 里已经有手写的 [mcp_servers.cohive] 配置，请先删除它，再执行 cohive init", path)
-		}
-		if text != "" && !strings.HasSuffix(text, "\n") {
-			text += "\n"
-		}
-		if text != "" {
-			text += "\n"
-		}
-		text += block
+		rest, blockAt = text[:start]+text[end:], start
 	}
-	if err := writeFile(path, []byte(text)); err != nil {
+	if exists, err := hasCohiveServer(path, rest); err != nil {
+		return err
+	} else if exists {
+		return fmt.Errorf("%s 里已经有手写的 mcp_servers.cohive 配置，请先删除它，再执行 cohive init", path)
+	}
+
+	block := codexBlock(command, args)
+	var next string
+	if blockAt >= 0 {
+		next = rest[:blockAt] + block + rest[blockAt:]
+	} else {
+		next = rest
+		if next != "" && !strings.HasSuffix(next, "\n") {
+			next += "\n"
+		}
+		if next != "" {
+			next += "\n"
+		}
+		next += block
+	}
+	if _, err := hasCohiveServer(path, next); err != nil {
+		return fmt.Errorf("生成的 Codex 配置无法解析，已放弃写入：%v", err)
+	}
+	if err := writeFile(path, []byte(next)); err != nil {
 		return err
 	}
 	return writeFile(filepath.Join(dir, ".agents", "skills", "cohive", "SKILL.md"), skill.Cohive)

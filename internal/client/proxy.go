@@ -10,9 +10,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
-	"time"
 )
 
 // Proxy 把编程工具通过标准输入输出发来的 MCP 消息（每行一条 JSON-RPC）转发到协作服务的 /mcp，
@@ -22,6 +22,8 @@ type Proxy struct {
 	Token  string
 	HTTP   *http.Client
 	Log    io.Writer
+	// Unavailable 非空时不转发，对每个请求都返回这条提示（例如本机还没登录）。
+	Unavailable string
 
 	outMu    sync.Mutex
 	stateMu  sync.Mutex
@@ -37,7 +39,8 @@ type rpcHead struct {
 // Run 一直转发到输入结束。每条请求并发处理，初始化请求先处理完再处理后续消息。
 func (p *Proxy) Run(ctx context.Context, in io.Reader, out io.Writer) error {
 	if p.HTTP == nil {
-		p.HTTP = &http.Client{Timeout: 2 * time.Minute}
+		// 不设总超时：工具调用和流式响应可能较久；连接阶段由默认传输层的超时兜底
+		p.HTTP = &http.Client{}
 	}
 	r := bufio.NewReaderSize(in, 1<<20)
 	var wg sync.WaitGroup
@@ -45,7 +48,10 @@ func (p *Proxy) Run(ctx context.Context, in io.Reader, out io.Writer) error {
 		line, err := r.ReadBytes('\n')
 		if msg := bytes.TrimSpace(line); len(msg) > 0 {
 			var head rpcHead
-			_ = json.Unmarshal(msg, &head)
+			if err := json.Unmarshal(msg, &head); err != nil {
+				p.write(out, []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"解析错误：输入不是合法的 JSON"}}`))
+				continue
+			}
 			if head.Method == "initialize" {
 				p.forward(ctx, msg, head, out)
 			} else {
@@ -73,15 +79,16 @@ func (p *Proxy) logf(format string, args ...any) {
 	}
 }
 
-func (p *Proxy) write(out io.Writer, msg []byte) {
+func (p *Proxy) write(out io.Writer, msg []byte) bool {
 	var buf bytes.Buffer
 	if json.Compact(&buf, msg) != nil {
-		return
+		return false
 	}
 	buf.WriteByte('\n')
 	p.outMu.Lock()
 	defer p.outMu.Unlock()
 	_, _ = out.Write(buf.Bytes())
+	return true
 }
 
 // fail 对带编号的请求返回 JSON-RPC 错误；通知没有编号，不需要回复。
@@ -98,6 +105,10 @@ func (p *Proxy) fail(out io.Writer, head rpcHead, msg string) {
 }
 
 func (p *Proxy) forward(ctx context.Context, msg []byte, head rpcHead, out io.Writer) {
+	if p.Unavailable != "" {
+		p.fail(out, head, p.Unavailable)
+		return
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Server+"/mcp", bytes.NewReader(msg))
 	if err != nil {
 		p.fail(out, head, "构造请求失败")
@@ -139,7 +150,7 @@ func (p *Proxy) forward(ctx context.Context, msg []byte, head rpcHead, out io.Wr
 		return
 	case resp.StatusCode >= 300:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		p.fail(out, head, fmt.Sprintf("Cohive 协作服务返回 HTTP %d：%s", resp.StatusCode, strings.TrimSpace(string(body))))
+		p.fail(out, head, fmt.Sprintf("Cohive 协作服务返回 HTTP %d：%s", resp.StatusCode, p.sanitize(string(body))))
 		return
 	}
 
@@ -178,6 +189,10 @@ func (p *Proxy) relaySSE(body io.Reader, head rpcHead, out io.Writer) {
 			data.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
 		}
 	}
+	if err := sc.Err(); err != nil {
+		p.fail(out, head, "读取 Cohive 协作服务的流式响应失败："+err.Error())
+		return
+	}
 	flush()
 }
 
@@ -194,5 +209,22 @@ func (p *Proxy) deliver(msg []byte, head rpcHead, out io.Writer) {
 			p.stateMu.Unlock()
 		}
 	}
-	p.write(out, msg)
+	if !p.write(out, msg) {
+		p.fail(out, head, "Cohive 协作服务返回了无法识别的内容")
+	}
+}
+
+var bearerPattern = regexp.MustCompile(`(?i)bearer\s+\S+`)
+
+// sanitize 处理要转给模型看的服务端错误正文：抹掉令牌、截短。
+func (p *Proxy) sanitize(body string) string {
+	if p.Token != "" {
+		body = strings.ReplaceAll(body, p.Token, "***")
+	}
+	body = bearerPattern.ReplaceAllString(body, "Bearer ***")
+	body = strings.TrimSpace(body)
+	if r := []rune(body); len(r) > 300 {
+		body = string(r[:300]) + "……"
+	}
+	return body
 }

@@ -27,20 +27,25 @@ type Credentials struct {
 }
 
 // ConfigDir 返回配置目录，可用 COHIVE_CONFIG_DIR 覆盖（默认 ~/.config/cohive）。
-func ConfigDir() string {
+// 找不到用户主目录时报错，而不是退回当前目录（那可能是项目目录，令牌会被提交进仓库）。
+func ConfigDir() (string, error) {
 	if d := os.Getenv("COHIVE_CONFIG_DIR"); d != "" {
-		return d
+		return d, nil
 	}
 	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".cohive"
+	if err != nil || home == "" {
+		return "", errors.New("找不到用户主目录，无法确定凭据保存位置：请设置环境变量 COHIVE_CONFIG_DIR")
 	}
-	return filepath.Join(home, ".config", "cohive")
+	return filepath.Join(home, ".config", "cohive"), nil
 }
 
-// CredentialsPath 返回凭据文件路径。
+// CredentialsPath 返回凭据文件路径；无法确定时返回空字符串。
 func CredentialsPath() string {
-	return filepath.Join(ConfigDir(), "credentials.json")
+	dir, err := ConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "credentials.json")
 }
 
 // NormalizeServer 去掉服务地址末尾的斜杠。
@@ -50,7 +55,11 @@ func NormalizeServer(s string) string {
 
 // LoadCredentials 读取凭据文件；文件不存在时返回空。
 func LoadCredentials() (*Credentials, error) {
-	b, err := os.ReadFile(CredentialsPath())
+	dir, err := ConfigDir()
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "credentials.json"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return &Credentials{}, nil
 	}
@@ -92,12 +101,17 @@ func (c *Credentials) Find(server, workspace, tool string) (Login, bool) {
 
 // Save 以只有本人可读的权限原子写入凭据文件。
 func (c *Credentials) Save() error {
-	dir := ConfigDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	dir, err := ConfigDir()
+	if err != nil {
 		return err
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
-		return err
+	// 只在自己新建目录时设成 700；已有目录（例如用 COHIVE_CONFIG_DIR 指定的）不改它的权限
+	if _, statErr := os.Stat(dir); errors.Is(statErr, fs.ErrNotExist) {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+	} else if statErr != nil {
+		return statErr
 	}
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
@@ -119,5 +133,5 @@ func (c *Credentials) Save() error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), CredentialsPath())
+	return os.Rename(tmp.Name(), filepath.Join(dir, "credentials.json"))
 }

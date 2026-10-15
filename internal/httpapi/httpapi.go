@@ -84,7 +84,12 @@ func Handler(svc *core.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/me", func(w http.ResponseWriter, r *http.Request) {
 		who := identity(r)
-		writeJSON(w, http.StatusOK, map[string]string{"member": who.MemberName, "tool": who.Tool})
+		ws, err := store.GetWorkspace(r.Context(), svc.Pool, who.WorkspaceID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"member": who.MemberName, "tool": who.Tool, "workspace": ws.Name})
 	})
 	mux.HandleFunc("GET /api/v1/board", func(w http.ResponseWriter, r *http.Request) {
 		who := identity(r)

@@ -2,7 +2,9 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -18,6 +20,8 @@ const usage = `用法：cohive <命令>
 
   login --server <地址> --code <登录码> --tool <claude-code|codex>
                      用机器人私聊发来的一次性登录码登录（私聊机器人发 /login 领取）
+  login --server <地址> --token-stdin
+                     从标准输入读入管理员签发的令牌（没有 Telegram 时的备用方式）
   init [--tools claude-code,codex] [--server <地址>] [--workspace <名称>]
                      在当前项目里写入 Cohive 的 MCP 配置、确认规则与 /cohive 技能
   status             列出本机保存的登录（不显示令牌）
@@ -44,7 +48,7 @@ func runCLI(ctx context.Context, in io.Reader, out io.Writer, args []string) err
 	}
 	switch args[0] {
 	case "login":
-		return login(ctx, out, args[1:])
+		return login(ctx, in, out, args[1:])
 	case "status":
 		return status(out)
 	case "init":
@@ -59,13 +63,17 @@ func runCLI(ctx context.Context, in io.Reader, out io.Writer, args []string) err
 	return fmt.Errorf("未知命令 %q", args[0])
 }
 
-func login(ctx context.Context, out io.Writer, args []string) error {
+func login(ctx context.Context, in io.Reader, out io.Writer, args []string) error {
 	fs := flag.NewFlagSet("login", flag.ContinueOnError)
 	server := fs.String("server", "", "协作服务地址，例如 https://cohive.example.com")
 	code := fs.String("code", "", "私聊机器人 /login 得到的登录码")
 	tool := fs.String("tool", "", "这个令牌给哪个编程工具用：claude-code 或 codex")
+	tokenStdin := fs.Bool("token-stdin", false, "从标准输入读取管理员签发的令牌（没有 Telegram 时的备用方式）")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *tokenStdin {
+		return loginWithToken(ctx, in, out, *server)
 	}
 	switch {
 	case *server == "":
@@ -83,6 +91,41 @@ func login(ctx context.Context, out io.Writer, args []string) error {
 		return fmt.Errorf("登录码 %q 格式不对：应形如 ABCD-EFGH（8 位字母数字），请复制机器人私聊回复里的登录码", *code)
 	}
 	l, err := client.Exchange(ctx, srv, *code, *tool)
+	if err != nil {
+		return err
+	}
+	creds, err := client.LoadCredentials()
+	if err != nil {
+		return err
+	}
+	creds.Upsert(l)
+	if err := creds.Save(); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "已登录：工作空间 %s，成员 %s，工具 %s\n令牌已保存到 %s（仅本人可读）\n\n下一步：在项目目录执行 cohive init\n",
+		l.Workspace, l.Member, l.Tool, client.CredentialsPath())
+	return nil
+}
+
+// loginWithToken 保存管理员用 cohive-server token issue 签发的令牌。
+// 令牌从标准输入读取，不出现在命令行参数和 shell 历史里；先向服务端确认归属再保存。
+func loginWithToken(ctx context.Context, in io.Reader, out io.Writer, server string) error {
+	if server == "" {
+		return fmt.Errorf("缺少 --server（协作服务地址）")
+	}
+	srv, err := client.CheckServer(server)
+	if err != nil {
+		return err
+	}
+	line, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	token := strings.TrimSpace(line)
+	if !strings.HasPrefix(token, "cohive_") {
+		return fmt.Errorf("没有读到令牌：请把管理员给你的令牌（以 cohive_ 开头）通过标准输入传进来，例如 pbpaste | cohive login --server %s --token-stdin", srv)
+	}
+	l, err := client.Whoami(ctx, srv, token)
 	if err != nil {
 		return err
 	}

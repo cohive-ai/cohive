@@ -94,12 +94,3 @@ func TestProxyRevokedTokenExplains(t *testing.T) {
 		t.Fatalf("令牌失效时应对请求返回带提示的 JSON-RPC 错误，通知不输出：%q", out.String())
 	}
 }
-
-func TestProxyNotLoggedIn(t *testing.T) {
-	configDir(t)
-	err := runProxy(context.Background(), strings.NewReader(""), io.Discard, io.Discard,
-		[]string{"--server", "https://cohive.example.com", "--workspace", "default", "--tool", "codex"})
-	if err == nil || !strings.Contains(err.Error(), "cohive login") {
-		t.Fatalf("没有登录时应提示先登录，得到 %v", err)
-	}
-}
