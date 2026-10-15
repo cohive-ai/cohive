@@ -19,10 +19,9 @@ const usage = `用法：cohive-server <命令>
 工作空间（一个业务组一个工作空间、一个群）：
   workspace add --name <名称>                      创建工作空间
   workspace list                                  列出工作空间与群通知配置
-  workspace notify --workspace <名称> --telegram-chat <群聊编号>
+  workspace notify --workspace <名称> --telegram-chat <群聊编号（群里发 /chatid 获取）>
       [--show-title=false] [--show-brief=false] [--public-url <看板地址>]
                                                   配置群通知；--off 关闭
-  telegram chats                                  列出机器人所在的群及其编号
   notify test --workspace <名称>                   往工作空间的群里发一条测试消息
 
 成员、令牌与服务（都可加 --workspace <名称>，缺省为 default）：

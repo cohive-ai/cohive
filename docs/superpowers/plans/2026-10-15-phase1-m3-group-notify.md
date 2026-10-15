@@ -44,10 +44,13 @@ cohive-server workspace add --name payments
 cohive-server workspace list
 cohive-server workspace notify --workspace payments --telegram-chat -100123 [--show-title=false] [--show-brief=false] [--public-url https://…]
 cohive-server member set --workspace payments --name lee-codex --telegram lee_codex
-cohive-server telegram chats                 # 列出机器人所在的群及其编号（用于配置）
 cohive-server notify test --workspace payments
 ```
 原有 member、token、service 命令增加 `--workspace`，缺省为 `default`。
+
+**机器人命令（2026-10-15 调整，代替原计划的 `telegram chats` 命令）：** 服务端用长轮询接收机器人消息（只需出站访问）。群里发 `/chatid`，机器人回复群聊编号和一条可复制的 `workspace notify` 命令；发 `/whoami`，回复发送者的 Telegram 用户名和一条 `member set` 命令。同一个机器人同时只能有一个程序接收消息，所以不再提供命令行查询。
+
+**投递循环（调整）：** 用服务端自己的后台循环加 `FOR UPDATE SKIP LOCKED`，暂不引入 river；等需要定时任务（超时催办）时再引入。
 
 **技能：** `examples/skills/cohive/SKILL.md` 一份内容，示例里分别放到 `.claude/skills/cohive/` 与 `.agents/skills/cohive/`。
 
@@ -57,5 +60,5 @@ cohive-server notify test --workspace payments
 2. 群通知简述字段：起草参数、校验、输出。
 3. 事件写入待发表：业务层在同一事务内写入；测试覆盖各事件、评论不写、幂等重放不重复、未配置群不写、升级额外一条。
 4. 消息渲染：标题与简述开关、@ 映射、从不包含正文、HTML 转义。
-5. Telegram 通道与投递循环：成功、失败退避、429、超过次数标记失败；`telegram chats`、`notify test` 命令。
+5. Telegram 通道与投递循环：成功、失败退避、429、超过次数标记失败；机器人 `/chatid`、`/whoami` 命令；`notify test` 命令。
 6. `/cohive` 技能与示例配置、操作指南；真实 Telegram 群实测。
