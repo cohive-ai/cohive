@@ -42,6 +42,8 @@ func runCLI(ctx context.Context, in io.Reader, out io.Writer, args []string) err
 		return login(ctx, out, args[1:])
 	case "status":
 		return status(out)
+	case "mcp-proxy":
+		return runProxy(ctx, in, out, os.Stderr, args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(out, usage)
 		return nil
