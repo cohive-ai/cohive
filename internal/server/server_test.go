@@ -254,6 +254,62 @@ func TestMCPHostAllowlist(t *testing.T) {
 	}
 }
 
+func postLogin(t *testing.T, url, code, tool string) (int, map[string]any) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"code": code, "tool": tool})
+	resp, err := http.Post(url+"/api/v1/login", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
+func TestLoginExchangeAPI(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, builtWeb)
+	uid := int64(42)
+	if err := store.SetMemberTelegramUserID(ctx, f.svc.Pool, f.b.MemberID, &uid); err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.svc.IssueLoginCode(ctx, uid, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if code, out := postLogin(t, f.url, res.Code, "bad tool!"); code != http.StatusBadRequest {
+		t.Fatalf("工具名不合法应返回 400：%d %v", code, out)
+	}
+	code, out := postLogin(t, f.url, res.Code, "codex")
+	if code != http.StatusOK || out["member"] != "lee-codex" || out["workspace"] != "default" {
+		t.Fatalf("换取应成功：%d %v", code, out)
+	}
+	token, _ := out["token"].(string)
+	if c, _, body := get(t, f.url+"/api/v1/me", token); c != http.StatusOK || !strings.Contains(body, "lee-codex") {
+		t.Fatalf("换到的令牌应能直接使用：%d %s", c, body)
+	}
+	if code, out := postLogin(t, f.url, res.Code, "codex"); code != http.StatusUnauthorized || out["error"] == nil {
+		t.Fatalf("登录码重复使用应返回 401 和错误说明：%d %v", code, out)
+	}
+}
+
+func TestLoginExchangeRateLimited(t *testing.T) {
+	f := newFixture(t, builtWeb)
+	limited := false
+	for i := 0; i < 40; i++ {
+		code, _ := postLogin(t, f.url, "AAAA-AAAA", "codex")
+		if code == http.StatusTooManyRequests {
+			limited = true
+			break
+		}
+	}
+	if !limited {
+		t.Fatal("连续尝试错误的登录码应被限流")
+	}
+}
+
 func jsonNumber(n int64) string {
 	b, _ := json.Marshal(n)
 	return string(b)

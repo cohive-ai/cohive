@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/cohive-ai/cohive/internal/authn"
 	"github.com/cohive-ai/cohive/internal/core"
@@ -40,8 +42,43 @@ type detailResult struct {
 	Events []view.EventView `json:"events"`
 }
 
-// Handler 返回 /api/v1 下的只读接口，所有接口都需要令牌。
+// Handler 返回 /api/v1 下的接口。除登录码换取外都需要令牌。
 func Handler(svc *core.Service) http.Handler {
+	outer := http.NewServeMux()
+	limiter := &failureLimiter{max: 30, window: time.Minute}
+	outer.HandleFunc("POST /api/v1/login", func(w http.ResponseWriter, r *http.Request) {
+		if limiter.blocked() {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "尝试次数过多，请一分钟后再试"})
+			return
+		}
+		var in struct {
+			Code string `json:"code"`
+			Tool string `json:"tool"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求格式不对"})
+			return
+		}
+		token, who, err := svc.ExchangeLoginCode(r.Context(), in.Code, in.Tool)
+		if errors.Is(err, core.ErrBadLoginCode) {
+			limiter.fail()
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error() + "，请私聊机器人重新发 /login 领取"})
+			return
+		}
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		ws, err := store.GetWorkspace(r.Context(), svc.Pool, who.WorkspaceID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{
+			"token": token, "member": who.MemberName, "workspace": ws.Name, "tool": who.Tool,
+		})
+	})
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/me", func(w http.ResponseWriter, r *http.Request) {
 		who := identity(r)
@@ -97,7 +134,38 @@ func Handler(svc *core.Service) http.Handler {
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "没有这个接口"})
 	})
-	return authn.Middleware(svc.Pool)(mux)
+	outer.Handle("/api/", authn.Middleware(svc.Pool)(mux))
+	return outer
+}
+
+// failureLimiter 统计一个时间窗口内的失败次数，超过上限后拒绝所有换取请求，防止暴力猜登录码。
+// 登录码约 40 位熵、10 分钟有效，全局每分钟 30 次失败足以让猜中的概率可以忽略。
+type failureLimiter struct {
+	mu       sync.Mutex
+	max      int
+	window   time.Duration
+	start    time.Time
+	failures int
+}
+
+func (l *failureLimiter) roll(now time.Time) {
+	if now.Sub(l.start) >= l.window {
+		l.start, l.failures = now, 0
+	}
+}
+
+func (l *failureLimiter) blocked() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.roll(time.Now())
+	return l.failures >= l.max
+}
+
+func (l *failureLimiter) fail() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.roll(time.Now())
+	l.failures++
 }
 
 func identity(r *http.Request) store.Identity {
