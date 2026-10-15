@@ -37,6 +37,7 @@ const usage = `用法：cohive-server <命令>
 环境变量：
   COHIVE_DATABASE_URL          数据库地址（必填）
   COHIVE_TELEGRAM_BOT_TOKEN    Telegram 机器人令牌（使用群通知时必填）
+  COHIVE_ALLOWED_HOSTS         经隧道等方式访问 MCP 时的公网域名，逗号分隔
 `
 
 func main() {

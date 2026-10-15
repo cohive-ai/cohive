@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,7 +38,7 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           server.New(&core.Service{Pool: pool}, web.Dist()),
+		Handler:           server.New(&core.Service{Pool: pool}, web.Dist(), server.Options{AllowedHosts: allowedHosts()}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -68,6 +70,17 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		defer cancel()
 		return srv.Shutdown(shutdownCtx)
 	}
+}
+
+// allowedHosts 读取 COHIVE_ALLOWED_HOSTS（逗号分隔），即经隧道等方式访问时使用的公网域名。
+func allowedHosts() []string {
+	var out []string
+	for _, h := range strings.Split(os.Getenv("COHIVE_ALLOWED_HOSTS"), ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 func displayAddr(addr string) string {
