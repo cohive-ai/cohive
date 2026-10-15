@@ -4,3 +4,7 @@ node_modules/
 .env.*
 !.env.example
 .claude/worktrees/
+.superpowers/
+bin/
+web/dist/*
+!web/dist/.gitkeep

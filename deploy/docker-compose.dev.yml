@@ -1,0 +1,21 @@
+# 仅用于本地开发与测试的 Postgres，账号密码不要用于任何共享环境。
+services:
+  postgres:
+    image: postgres:17
+    container_name: cohive-dev-postgres
+    environment:
+      POSTGRES_DB: cohive
+      POSTGRES_USER: cohive
+      POSTGRES_PASSWORD: cohive
+    ports:
+      - "55432:5432"
+    volumes:
+      - cohive-dev-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cohive -d cohive"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  cohive-dev-pg:
