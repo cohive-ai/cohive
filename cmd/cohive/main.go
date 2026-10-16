@@ -11,6 +11,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/cohive-ai/cohive/internal/buildinfo"
 	"github.com/cohive-ai/cohive/internal/client"
 )
 
@@ -28,6 +29,7 @@ const usage = `用法：cohive <命令>
   init [--tools claude-code,codex] [--server <地址>] [--workspace <名称>]
                      在当前项目里写入 Cohive 的 MCP 配置、确认规则与 /cohive 技能
   status             列出本机保存的登录（不显示令牌）
+  version            显示本机 cohive 的版本
   mcp-proxy --server <地址> --workspace <名称> --tool <工具>
                      供编程工具调用的本机转发器，不需要手动运行
 
@@ -50,7 +52,10 @@ func runCLI(ctx context.Context, in io.Reader, out io.Writer, args []string) err
 	case "login":
 		return login(ctx, in, out, args[1:])
 	case "status":
-		return status(out)
+		return status(ctx, out)
+	case "version", "--version":
+		fmt.Fprintf(out, "cohive %s\n", buildinfo.String())
+		return nil
 	case "web":
 		return openWeb(ctx, out, args[1:])
 	case "init":
@@ -100,7 +105,7 @@ func loginWithToken(ctx context.Context, in io.Reader, out io.Writer, server str
 	return nil
 }
 
-func status(out io.Writer) error {
+func status(ctx context.Context, out io.Writer) error {
 	creds, err := client.LoadCredentials()
 	if err != nil {
 		return err
@@ -118,8 +123,28 @@ func status(out io.Writer) error {
 		fmt.Fprintln(tw, "\t\t\t")
 	}
 	fmt.Fprintln(tw, "服务\t工作空间\t账号\t工具\t登录时间")
+	servers := map[string]bool{}
+	var order []string
 	for _, l := range creds.Logins {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", l.Server, l.Workspace, l.Member, l.Tool, l.CreatedAt.Local().Format("2006-01-02 15:04"))
+		if !servers[l.Server] {
+			servers[l.Server] = true
+			order = append(order, l.Server)
+		}
 	}
-	return tw.Flush()
+	for _, d := range creds.Devices {
+		if !servers[d.Server] {
+			servers[d.Server] = true
+			order = append(order, d.Server)
+		}
+	}
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	for _, srv := range order {
+		if w := client.VersionWarning(ctx, srv); w != "" {
+			fmt.Fprintf(out, "\n%s\n", w)
+		}
+	}
+	return nil
 }

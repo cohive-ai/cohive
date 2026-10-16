@@ -9,6 +9,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/cohive-ai/cohive/internal/buildinfo"
+	"github.com/cohive-ai/cohive/internal/clidist"
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/httpapi"
 	"github.com/cohive-ai/cohive/internal/mcpserver"
@@ -20,6 +22,8 @@ type Options struct {
 	AllowedHosts []string
 	// API 是网页与命令行接口的可选依赖（机器人用户名、审批通知）。
 	API httpapi.Options
+	// CLI 是提供下载的命令行安装包；为空时用随程序嵌入的那一套。
+	CLI *clidist.Dist
 }
 
 // New 返回协作服务的根处理器。web 是看板的构建产物（index.html 与 assets/）。
@@ -29,6 +33,15 @@ func New(svc *core.Service, web fs.FS, opts Options) http.Handler {
 	api := httpapi.Handler(svc, opts.API)
 	mux.Handle("/api/", api)
 	mux.Handle("/auth/", api)
+	dist := opts.CLI
+	if dist == nil {
+		var err error
+		if dist, err = clidist.Embedded(); err != nil {
+			// 嵌入的清单损坏是构建问题：不提供下载，其余功能照常
+			dist, _ = clidist.New(emptyFS{})
+		}
+	}
+	dist.Register(mux, httpapi.Origin, buildinfo.Version, buildinfo.Commit)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprintln(w, "ok")
@@ -79,3 +92,8 @@ func spa(web fs.FS) http.Handler {
 		_, _ = w.Write(index)
 	})
 }
+
+// emptyFS 是没有任何文件的文件系统。
+type emptyFS struct{}
+
+func (emptyFS) Open(string) (fs.File, error) { return nil, fs.ErrNotExist }

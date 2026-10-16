@@ -4,6 +4,7 @@ import {
   adminNeedsPasswordLogin,
   authorizeAsText,
   deviceScopeText,
+  installCommands,
   inviteLookupFailure,
   isTelegramLink,
   revokeDeviceMessage,
@@ -66,4 +67,11 @@ it("查询邀请时 429 是请求过频，不是邀请无效", () => {
   expect(inviteLookupFailure(new ApiError(400, "格式不对"))).toBe("invalid");
   expect(inviteLookupFailure(new ApiError(0, "网络"))).toBe("error");
   expect(inviteLookupFailure(new ApiError(502, "网关"))).toBe("error");
+});
+
+it("安装命令只指向本服务", () => {
+  expect(installCommands("https://cohive.example.com/")).toEqual({
+    unix: "curl -fsSL https://cohive.example.com/install.sh | sh",
+    windows: "irm https://cohive.example.com/install.ps1 | iex",
+  });
 });

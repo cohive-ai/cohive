@@ -193,3 +193,23 @@ func TestInitErrors(t *testing.T) {
 		t.Fatalf("已有手写的 cohive 配置时应报错而不是写出重复配置，得到 %v", err)
 	}
 }
+
+// init 写完配置后检查转发器命令是否在 PATH 里，不在时提示。
+func TestInitWarnsWhenCommandNotOnPath(t *testing.T) {
+	configDir(t)
+	saveLogins(t, "claude-code")
+	old := lookPath
+	defer func() { lookPath = old }()
+	lookPath = func(string) (string, error) { return "", os.ErrNotExist }
+	out, err := run(t, "init", "--dir", t.TempDir(), "--tools", "claude-code")
+	if err != nil {
+		t.Fatalf("init 失败：%v\n%s", err, out)
+	}
+	if !strings.Contains(out, "PATH 里找不到") {
+		t.Fatalf("应提示 cohive 不在 PATH 里：%s", out)
+	}
+	lookPath = func(string) (string, error) { return "/usr/local/bin/cohive", nil }
+	if out, _ := run(t, "init", "--dir", t.TempDir(), "--tools", "claude-code"); strings.Contains(out, "PATH 里找不到") {
+		t.Fatalf("在 PATH 里时不提示：%s", out)
+	}
+}

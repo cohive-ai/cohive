@@ -53,3 +53,9 @@ export function deviceScopeText(workspaces: string[] | null | undefined): string
 export function adminNeedsPasswordLogin(me: { login_method?: string }): boolean {
   return me.login_method !== "password";
 }
+
+// 安装命令行的命令：只从本服务下载（安装脚本会核对校验和）。origin 形如 https://cohive.example.com
+export function installCommands(origin: string): { unix: string; windows: string } {
+  const o = origin.replace(/\/+$/, "");
+  return { unix: `curl -fsSL ${o}/install.sh | sh`, windows: `irm ${o}/install.ps1 | iex` };
+}

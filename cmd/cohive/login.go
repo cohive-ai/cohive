@@ -186,6 +186,9 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 	if srv, err = client.CheckServer(srv); err != nil {
 		return err
 	}
+	if w := client.VersionWarning(ctx, srv); w != "" {
+		fmt.Fprintln(out, w)
+	}
 	repoReady := len(repo.Tools) > 0 && srv == repo.Server
 	var tools []string
 	switch {

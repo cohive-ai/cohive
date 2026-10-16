@@ -135,6 +135,10 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 	if strings.TrimSpace(in.Title) == "" {
 		return store.Issue{}, inputErr("title 不能为空")
 	}
+	// 入库前扫描密钥：在查幂等记录与开事务之前，被拒绝的请求什么都不写，脱敏后用同一个键重试可以成功
+	if err := checkSecrets(draftFields(in)...); err != nil {
+		return store.Issue{}, err
+	}
 	sev, err := severityOrDefault(in.Severity)
 	if err != nil {
 		return store.Issue{}, err
@@ -228,8 +232,14 @@ func visible(who store.Identity, is store.Issue) bool {
 
 // Act 对问题单执行一个动作。
 func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (store.Issue, error) {
-	if in.ExpectedVersion <= 0 {
+	// 评论只追加事件，不改状态、归属与正文：不比对也不改变版本号，
+	// 免得人刚批准的发出、接单、关闭因为期间多了一条评论而版本冲突。
+	comment := in.Action == issue.ActComment
+	if !comment && in.ExpectedVersion <= 0 {
 		return store.Issue{}, inputErr("必须提供 expected_version（问题单当前版本号），可先读取问题单获得")
+	}
+	if err := checkSecrets(actFields(in)...); err != nil {
+		return store.Issue{}, err
 	}
 	var out store.Issue
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
@@ -248,7 +258,7 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 			out = is
 			return nil
 		}
-		if is.Version != in.ExpectedVersion {
+		if !comment && is.Version != in.ExpectedVersion {
 			return &ConflictError{IssueID: is.ID, Expected: in.ExpectedVersion, Current: is.Version}
 		}
 		roles := issue.Roles(is.SourceMemberID == who.MemberID,
@@ -300,7 +310,12 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 		}
 
 		is.Status = to
-		if err := store.UpdateIssue(ctx, tx, &is); err != nil {
+		if comment {
+			err = store.TouchIssue(ctx, tx, is.ID)
+		} else {
+			err = store.UpdateIssue(ctx, tx, &is)
+		}
+		if err != nil {
 			return err
 		}
 		if err := store.InsertEvent(ctx, tx, store.Event{IssueID: is.ID, ActorMemberID: who.MemberID,
