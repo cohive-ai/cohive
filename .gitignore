@@ -10,3 +10,6 @@ bin/
 /data/
 web/dist/*
 !web/dist/.gitkeep
+# 命令行安装包（make cli-dist 生成，嵌入服务端）
+internal/clidist/files/*
+!internal/clidist/files/.gitkeep

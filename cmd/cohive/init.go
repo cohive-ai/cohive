@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -27,6 +28,9 @@ var (
 	allowTools   = []string{"cohive_inbox", "cohive_get_issue", "cohive_search", "cohive_who_owns",
 		"cohive_draft_issue", "cohive_update_issue", "cohive_request_verification"}
 )
+
+// lookPath 查找命令；测试里替换掉。
+var lookPath = exec.LookPath
 
 const (
 	blockBegin = "# >>> cohive（由 cohive init 生成，重新执行会覆盖这一段）"
@@ -101,6 +105,11 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 		fmt.Fprintf(out, "  %s\n", w)
 	}
 	fmt.Fprintln(out, "\n这些文件不含令牌，可以提交进仓库，团队成员共用。")
+	// 编程工具按配置里的命令启动转发器：命令不在 PATH 里时它会找不到 cohive
+	if _, err := lookPath(*command); err != nil {
+		fmt.Fprintf(out, "\n注意：当前 PATH 里找不到 %q，编程工具启动时会找不到转发器。"+
+			"请把 cohive 所在目录加入 PATH（安装脚本默认装在 ~/.local/bin），并从终端重新启动编程工具。\n", *command)
+	}
 	// 有设备密钥时顺手补签这个工作空间缺的令牌（新加入的工作空间不必重新配对）
 	var missing []string
 	for _, t := range tools {

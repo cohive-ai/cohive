@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/buildinfo"
+	"github.com/cohive-ai/cohive/internal/clidist"
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/db"
 	"github.com/cohive-ai/cohive/internal/httpapi"
@@ -52,7 +54,15 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		fmt.Fprintf(out, "  已生成初始管理员，登录名与密码在 %s（仅本人可读）；首次登录网页后须修改密码，改完该文件自动删除\n", path)
 	}
 
-	opts := server.Options{AllowedHosts: hosts}
+	dist, err := clidist.Embedded()
+	if err != nil {
+		return fmt.Errorf("命令行安装包：%w", err)
+	}
+	fmt.Fprintf(out, "  %s\n", dist.Summary())
+	if m := dist.Manifest; m != nil && m.Version != buildinfo.Version {
+		fmt.Fprintf(out, "  警告：命令行安装包版本 %s 与服务端版本 %s 不一致，请用 make build 重新构建\n", m.Version, buildinfo.Version)
+	}
+	opts := server.Options{AllowedHosts: hosts, CLI: dist}
 	// 群通知与机器人：设置了机器人令牌才启用；没设置时待发记录会保留，设置后重启即可补发
 	if tg := telegramFromEnv(); tg != nil {
 		d := &notify.Dispatcher{Pool: pool, Senders: map[string]notify.Sender{"telegram": tg}}
@@ -71,7 +81,8 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
-	fmt.Fprintf(out, "Cohive 协作服务已启动\n  网页：http://%[1]s/\n  MCP： http://%[1]s/mcp\n", displayAddr(*addr))
+	fmt.Fprintf(out, "Cohive 协作服务已启动，版本 %s\n", buildinfo.String())
+	fmt.Fprintf(out, "  网页：http://%[1]s/\n  MCP： http://%[1]s/mcp\n", displayAddr(*addr))
 	if len(hosts) > 0 {
 		fmt.Fprintf(out, "  允许经这些域名访问 MCP：%s\n", strings.Join(hosts, "、"))
 	}

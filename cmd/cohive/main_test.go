@@ -118,3 +118,10 @@ func configDir(t *testing.T) {
 	t.Helper()
 	t.Setenv("COHIVE_CONFIG_DIR", filepath.Join(t.TempDir(), "cohive"))
 }
+
+func TestVersionCommand(t *testing.T) {
+	out, err := run(t, "version")
+	if err != nil || !strings.HasPrefix(out, "cohive ") {
+		t.Fatalf("cohive version：%v %q", err, out)
+	}
+}

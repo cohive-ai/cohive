@@ -206,6 +206,9 @@ func isHTTPS(r *http.Request) bool {
 	return ip != nil && ip.IsLoopback() && r.Header.Get("X-Forwarded-Proto") == "https"
 }
 
+// Origin 返回用户访问本站用的地址，用于生成授权页、登录链接与安装脚本。
+func Origin(r *http.Request) string { return origin(r) }
+
 // origin 返回用户访问本站用的地址，用于生成授权页、登录链接。
 func origin(r *http.Request) string {
 	scheme := "http"
