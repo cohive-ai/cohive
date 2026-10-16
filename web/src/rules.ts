@@ -37,3 +37,8 @@ export function authorizeAsText(me: { member: string; display_name?: string; wor
   const who = me.display_name && me.display_name !== me.member ? `${me.member}（${me.display_name}）` : me.member;
   return `将以成员 ${who} 在工作空间 ${me.workspace} 授权这台电脑。`;
 }
+
+// 管理操作只接受账号密码登录：免密登录（cohive web）打开管理页时先提示改用账号密码登录。
+export function adminNeedsPasswordLogin(me: { login_method?: string }): boolean {
+  return me.login_method !== "password";
+}

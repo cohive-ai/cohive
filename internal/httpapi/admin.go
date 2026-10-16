@@ -8,9 +8,18 @@ import (
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
-// admin 要求操作者是本工作空间管理员，返回操作者。
+// errAdminNeedsPassword 是管理接口拒绝令牌与免密会话时的提示。
+const errAdminNeedsPassword = "管理操作请在网页上用账号密码登录后进行"
+
+// admin 要求操作者是本工作空间管理员，且请求来自账号密码登录的网页会话：
+// 编程工具的令牌、cohive web 免密会话都不能做管理操作（电脑被人拿到时不至于连带丢掉管理权限）。
 func admin(w http.ResponseWriter, r *http.Request) (*store.Member, bool) {
-	m := caller(r).Member
+	c := caller(r)
+	if c.Session == "" || c.SessionVia != store.SessionViaPassword {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": errAdminNeedsPassword, "need_password_login": true})
+		return nil, false
+	}
+	m := c.Member
 	if !m.IsAdmin() {
 		writeError(w, core.ErrNotAdmin)
 		return nil, false

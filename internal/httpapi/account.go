@@ -52,6 +52,7 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"member": c.Member.Name, "display_name": c.Member.DisplayName, "workspace": ws.Name, "role": c.Member.Role,
 			"tool": c.Identity.Tool, "must_change_password": pw.MustChange, "has_password": pw.Hash != "",
+			"login_method": loginMethod(c),
 			"telegram": map[string]any{"username": c.Member.TelegramUsername, "linked": c.Member.TelegramUserID != nil},
 		})
 	})
@@ -208,4 +209,12 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// loginMethod 返回这次请求的登录方式：password（账号密码）、device（cohive web 免密）、token（编程工具令牌）。
+func loginMethod(c Caller) string {
+	if c.Session == "" {
+		return "token"
+	}
+	return c.SessionVia
 }

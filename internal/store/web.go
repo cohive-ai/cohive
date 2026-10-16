@@ -62,20 +62,29 @@ func AnyAdmin(ctx context.Context, q DBTX) (bool, error) {
 }
 
 // CreateSession 保存网页会话（只存会话编号的哈希）。
-func CreateSession(ctx context.Context, q DBTX, idHash []byte, memberID int64, expiresAt time.Time) error {
-	_, err := q.Exec(ctx, `INSERT INTO web_sessions (id_hash, member_id, expires_at) VALUES ($1, $2, $3)`,
-		idHash, memberID, expiresAt)
+// 网页会话的来源
+const (
+	SessionViaPassword = "password" // 账号密码登录（或注册后直接登录）
+	SessionViaDevice   = "device"   // 已配对电脑上 cohive web 免密登录
+)
+
+func CreateSession(ctx context.Context, q DBTX, idHash []byte, memberID int64, via string, expiresAt time.Time) error {
+	_, err := q.Exec(ctx, `INSERT INTO web_sessions (id_hash, member_id, via, expires_at) VALUES ($1, $2, $3, $4)`,
+		idHash, memberID, via, expiresAt)
 	return err
 }
 
-// SessionMember 返回有效会话所属的成员；会话不存在或过期时返回 ErrUnauthorized。
-func SessionMember(ctx context.Context, q DBTX, idHash []byte) (Member, error) {
-	m, err := scanMember(q.QueryRow(ctx, `SELECT `+prefixed("m.", memberColumns)+` FROM web_sessions s
-		JOIN members m ON m.id = s.member_id WHERE s.id_hash = $1 AND s.expires_at > now()`, idHash))
-	if errors.Is(err, ErrNotFound) {
-		return Member{}, ErrUnauthorized
+// SessionMember 返回有效会话所属的成员与会话来源；会话不存在或过期时返回 ErrUnauthorized。
+func SessionMember(ctx context.Context, q DBTX, idHash []byte) (Member, string, error) {
+	var m Member
+	var via string
+	err := q.QueryRow(ctx, `SELECT `+prefixed("m.", memberColumns)+`, s.via FROM web_sessions s
+		JOIN members m ON m.id = s.member_id WHERE s.id_hash = $1 AND s.expires_at > now()`, idHash).
+		Scan(&m.ID, &m.WorkspaceID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role, &via)
+	if errors.Is(notFound(err), ErrNotFound) {
+		return Member{}, "", ErrUnauthorized
 	}
-	return m, err
+	return m, via, err
 }
 
 // DeleteSession 删除会话（退出登录）。

@@ -16,11 +16,13 @@ import (
 
 const sessionCookie = "cohive_session"
 
-// Caller 是一次请求的操作者。网页会话时 Session 非空、Identity.Tool 为 web。
+// Caller 是一次请求的操作者。网页会话时 Session 非空、Identity.Tool 为 web；
+// SessionVia 是会话来源（password：账号密码登录；device：cohive web 免密），令牌请求为空。
 type Caller struct {
 	Identity   store.Identity
 	Member     store.Member
 	Session    string
+	SessionVia string
 	MustChange bool
 }
 
@@ -62,7 +64,7 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "请先登录"})
 			return
 		}
-		m, err := svc.SessionMember(r.Context(), c.Value)
+		m, via, err := svc.SessionMember(r.Context(), c.Value)
 		if errors.Is(err, store.ErrUnauthorized) {
 			clearSessionCookie(w, r)
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "登录已过期，请重新登录"})
@@ -86,7 +88,7 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 			return
 		}
 		who := store.Identity{MemberID: m.ID, WorkspaceID: m.WorkspaceID, MemberName: m.Name, Tool: "web"}
-		next.ServeHTTP(w, withCaller(r, Caller{Identity: who, Member: m, Session: c.Value, MustChange: pw.MustChange}))
+		next.ServeHTTP(w, withCaller(r, Caller{Identity: who, Member: m, Session: c.Value, SessionVia: via, MustChange: pw.MustChange}))
 	})
 }
 

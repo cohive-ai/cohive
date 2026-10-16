@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type CreatedInvite, type Invite, type WorkspaceSettings } from "../api";
 import { Notice } from "../components";
@@ -17,6 +17,7 @@ import {
   Section,
   SuccessText,
 } from "../ui";
+import { adminNeedsPasswordLogin } from "../rules";
 
 export const adminTabs = [
   { id: "pending", label: "待审" },
@@ -28,6 +29,31 @@ export const adminTabs = [
 
 export type AdminTab = (typeof adminTabs)[number]["id"];
 
+// 免密登录（cohive web）不能做管理操作：说明原因，并提供退出后用账号密码登录的入口。
+function NeedPasswordLogin() {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const relogin = async () => {
+    try {
+      await api.logout();
+    } catch {
+      // 退出失败也照样去登录页
+    }
+    qc.clear();
+    navigate({ to: "/login", search: { redirect: "/admin" } });
+  };
+  return (
+    <div className="mx-auto max-w-xl space-y-3">
+      <Notice tone="danger">
+        管理操作请在网页上用账号密码登录后进行。你现在是用已配对电脑免密打开的网页（cohive web），为安全起见不能做管理操作。
+      </Notice>
+      <button type="button" onClick={relogin} className={btn.primary}>
+        退出并用账号密码登录
+      </button>
+    </div>
+  );
+}
+
 export function AdminPage() {
   const { tab = "pending" } = useSearch({ from: "/layout/admin" });
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
@@ -37,6 +63,7 @@ export function AdminPage() {
   if (me.data.role !== "admin") {
     return <Notice tone="danger">你没有管理权限。成员、设备与邀请由本工作空间的管理员管理。</Notice>;
   }
+  if (adminNeedsPasswordLogin(me.data)) return <NeedPasswordLogin />;
 
   return (
     <div className="mx-auto max-w-4xl">

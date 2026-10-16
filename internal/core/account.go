@@ -48,12 +48,12 @@ type Session struct {
 	Member store.Member
 }
 
-func (s *Service) newSession(ctx context.Context, q store.DBTX, m store.Member) (Session, error) {
+func (s *Service) newSession(ctx context.Context, q store.DBTX, m store.Member, via string) (Session, error) {
 	id, err := randomString(32)
 	if err != nil {
 		return Session{}, err
 	}
-	if err := store.CreateSession(ctx, q, hashSecret("session", id), m.ID, time.Now().Add(SessionTTL)); err != nil {
+	if err := store.CreateSession(ctx, q, hashSecret("session", id), m.ID, via, time.Now().Add(SessionTTL)); err != nil {
 		return Session{}, err
 	}
 	return Session{ID: id, Member: m}, nil
@@ -97,7 +97,7 @@ func (s *Service) Login(ctx context.Context, name, password, workspace string) (
 	}
 	switch len(ok) {
 	case 1:
-		return s.newSession(ctx, s.Pool, ok[0])
+		return s.newSession(ctx, s.Pool, ok[0], store.SessionViaPassword)
 	case 0:
 		if len(cands) == 0 {
 			s.DummyPasswordCheck(ctx, password)
@@ -118,10 +118,10 @@ func (s *Service) Login(ctx context.Context, name, password, workspace string) (
 	return Session{}, &AmbiguousLoginError{Workspaces: okNames}
 }
 
-// SessionMember 返回会话所属成员。
-func (s *Service) SessionMember(ctx context.Context, sessionID string) (store.Member, error) {
+// SessionMember 返回会话所属成员与会话来源（store.SessionViaPassword 或 SessionViaDevice）。
+func (s *Service) SessionMember(ctx context.Context, sessionID string) (store.Member, string, error) {
 	if sessionID == "" || len(sessionID) > 64 {
-		return store.Member{}, store.ErrUnauthorized
+		return store.Member{}, "", store.ErrUnauthorized
 	}
 	return store.SessionMember(ctx, s.Pool, hashSecret("session", sessionID))
 }
@@ -133,7 +133,7 @@ func (s *Service) Logout(ctx context.Context, sessionID string) error {
 
 // SessionForRegistered 为刚注册（个人邀请）的成员建会话。
 func (s *Service) SessionForRegistered(ctx context.Context, m store.Member) (Session, error) {
-	return s.newSession(ctx, s.Pool, m)
+	return s.newSession(ctx, s.Pool, m, store.SessionViaPassword)
 }
 
 // ChangePassword 修改自己的密码；没设过密码时不校验旧密码。成功后其他会话失效。
@@ -301,7 +301,7 @@ func (s *Service) UseWebLoginCode(ctx context.Context, code string) (Session, er
 		if err != nil {
 			return err
 		}
-		sess, err = s.newSession(ctx, tx, m)
+		sess, err = s.newSession(ctx, tx, m, store.SessionViaDevice)
 		return err
 	})
 	return sess, err

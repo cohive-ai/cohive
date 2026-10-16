@@ -52,7 +52,7 @@
 - `GET /api/v1/me/links/{id}` → `{status, detail}`
 - `DELETE /api/v1/me/links/telegram` → `204`
 
-**管理（会话或令牌，须为本工作空间管理员）**
+**管理（仅账号密码登录的网页会话，须为本工作空间管理员；编程工具令牌与 cohive web 免密会话一律 403，返回 `need_password_login: true`。2026-10-16 lee 定）**
 - `GET /api/v1/admin/pending` → `{signups: [{id, name, display_name, created_at}], devices: [{id, member, device_name, tools, created_at}]}`
 - `POST /api/v1/admin/signups/{id} {approve}`、`POST /api/v1/admin/device-auths/{id} {approve}` → `204`
 - `GET /api/v1/admin/members` → `{items: [{id, name, display_name, role, telegram_username, telegram_linked, devices, has_password}]}`

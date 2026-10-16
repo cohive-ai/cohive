@@ -1,6 +1,20 @@
 import { expect, it } from "vitest";
 import { ApiError } from "./api";
-import { authorizeAsText, inviteLookupFailure, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "./rules";
+import {
+  adminNeedsPasswordLogin,
+  authorizeAsText,
+  inviteLookupFailure,
+  isTelegramLink,
+  revokeDeviceMessage,
+  shouldRetryPoll,
+} from "./rules";
+
+it("只有账号密码登录才能进入管理页", () => {
+  expect(adminNeedsPasswordLogin({ login_method: "password" })).toBe(false);
+  expect(adminNeedsPasswordLogin({ login_method: "device" })).toBe(true);
+  expect(adminNeedsPasswordLogin({ login_method: "token" })).toBe(true);
+  expect(adminNeedsPasswordLogin({})).toBe(true);
+});
 
 it("授权页写明以哪个成员、在哪个工作空间授权", () => {
   expect(authorizeAsText({ member: "ann", display_name: "Ann", workspace: "payments" })).toBe(

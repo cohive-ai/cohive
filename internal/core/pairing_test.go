@@ -306,10 +306,10 @@ func TestInitialAdminAndPasswords(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("改密码后应删除初始密码文件：%v", err)
 	}
-	if _, err := e.svc.SessionMember(ctx, other.ID); !errors.Is(err, store.ErrUnauthorized) {
+	if _, _, err := e.svc.SessionMember(ctx, other.ID); !errors.Is(err, store.ErrUnauthorized) {
 		t.Fatalf("改密码后其他会话失效：%v", err)
 	}
-	if _, err := e.svc.SessionMember(ctx, sess.ID); err != nil {
+	if _, _, err := e.svc.SessionMember(ctx, sess.ID); err != nil {
 		t.Fatalf("当前会话保留：%v", err)
 	}
 
@@ -317,7 +317,7 @@ func TestInitialAdminAndPasswords(t *testing.T) {
 	if err != nil || len(newPw) != 20 {
 		t.Fatalf("重置密码：%v", err)
 	}
-	if _, err := e.svc.SessionMember(ctx, sess.ID); !errors.Is(err, store.ErrUnauthorized) {
+	if _, _, err := e.svc.SessionMember(ctx, sess.ID); !errors.Is(err, store.ErrUnauthorized) {
 		t.Fatalf("重置后全部会话失效：%v", err)
 	}
 	if _, err := e.svc.Login(ctx, "admin", newPw, ""); err != nil {

@@ -79,6 +79,7 @@ CREATE TABLE link_requests (
 CREATE TABLE web_sessions (
     id_hash     bytea PRIMARY KEY,
     member_id   bigint NOT NULL REFERENCES members(id),
+    via         text NOT NULL,  -- password（账号密码登录或注册）、device（cohive web 免密）；管理操作只认 password
     created_at  timestamptz NOT NULL DEFAULT now(),
     expires_at  timestamptz NOT NULL
 );

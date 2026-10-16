@@ -140,6 +140,8 @@ export interface Me {
   must_change_password: boolean;
   has_password: boolean;
   telegram?: { username?: string; linked: boolean };
+  // 本次登录方式：password 账号密码、device 已配对电脑免密（cohive web）、token 编程工具令牌
+  login_method?: "password" | "device" | "token";
 }
 
 export interface LoginResult {
