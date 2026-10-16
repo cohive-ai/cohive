@@ -67,11 +67,13 @@ func (f *fakeCore) CompleteTelegramLink(_ context.Context, p string, uid int64, 
 }
 func (f *fakeCore) DecideSignup(_ context.Context, a *store.Account, ws, id int64, ok bool) (core.SignupDecision, error) {
 	f.calls = append(f.calls, "signup", a.ID, ws, id, ok)
-	st := store.SignupRejected
+	d := core.SignupDecision{Signup: store.Signup{ID: id, Name: "ann", DisplayName: "Ann", Status: store.SignupRejected},
+		Workspace: f.workspace, Decider: a.Name}
 	if ok {
-		st = store.SignupApproved
+		d.Signup.Status = store.SignupApproved
+		d.Member = &store.Member{WorkspaceID: f.workspace.ID, Name: "ann", DisplayName: "Ann", TelegramUsername: "ann_tg"}
 	}
-	return core.SignupDecision{Signup: store.Signup{ID: id, Name: "ann", DisplayName: "Ann", Status: st}, Workspace: f.workspace, Decider: a.Name}, f.err
+	return d, f.err
 }
 func (f *fakeCore) DecideDeviceAuth(_ context.Context, a *store.Account, ws, id int64, ok bool) (core.DeviceDecision, error) {
 	f.calls = append(f.calls, "device", a.ID, ws, id, ok)
@@ -183,6 +185,9 @@ func TestAnnounceAndApprove(t *testing.T) {
 	}
 	if len(api.edits) != 1 || !strings.Contains(api.edits[0], "已批准") || !strings.Contains(api.edits[0], "lee") || api.editKeys[0] != nil {
 		t.Fatalf("应把消息改成结果并去掉按钮：%v", api.edits)
+	}
+	if len(api.texts) != 1 || !strings.Contains(api.texts[0], "@ann_tg") || !strings.Contains(api.texts[0], "已加入") {
+		t.Fatalf("批准后应在群里说一声并 @ 新成员：%v", api.texts)
 	}
 
 	// 没配置群时不发

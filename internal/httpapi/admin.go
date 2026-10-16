@@ -85,7 +85,14 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	adm("POST "+p+"/signups/{id}", decide(func(r *http.Request, ws store.Workspace, actor *store.Account, id int64, approve bool) error {
 		d, err := svc.DecideSignup(r.Context(), actor, ws.ID, id, approve)
 		if err == nil {
-			announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceSignupDecided(ctx, d) })
+			announce(opts, func(ctx context.Context, a Announcer) error {
+				if d.Member != nil {
+					if err := a.AnnounceJoined(ctx, *d.Member); err != nil {
+						return err
+					}
+				}
+				return a.AnnounceSignupDecided(ctx, d)
+			})
 		}
 		return err
 	}))

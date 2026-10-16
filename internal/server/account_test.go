@@ -276,11 +276,11 @@ func TestWebAccountFlow(t *testing.T) {
 		ann.mu.Lock()
 		s, d, j := ann.signups, ann.devices, ann.joined
 		ann.mu.Unlock()
-		if s == 1 && d == 1 && j == 1 {
+		if s == 1 && d == 1 && j == 2 {
 			break
 		}
 		if i > 100 {
-			t.Fatalf("应通知管理员一次注册、一次设备，并在群里说一次新成员加入：%d %d %d", s, d, j)
+			t.Fatalf("应通知管理员一次注册、一次设备，并在群里说两次新成员加入（个人邀请注册、团队申请获批）：%d %d %d", s, d, j)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

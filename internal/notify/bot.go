@@ -434,6 +434,13 @@ func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
 			return
 		}
 		text = signupResult(d, approve)
+		if d.Member != nil {
+			defer func() {
+				if err := b.AnnounceJoined(ctx, *d.Member); err != nil {
+					b.logf("发送新成员加入消息失败：%v", err)
+				}
+			}()
+		}
 	case "da":
 		d, err := b.Core.DecideDeviceAuth(ctx, &actor, ws.ID, id, approve)
 		if err != nil {
