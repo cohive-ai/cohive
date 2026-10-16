@@ -1,0 +1,246 @@
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, ApiError, type Me } from "../api";
+import { Notice } from "../components";
+import { absoluteTime, roleLabel, toolsText } from "../format";
+import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
+import { ChangePasswordForm } from "./Password";
+
+export function MePage() {
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+
+  if (me.isPending) return <Notice>正在读取…</Notice>;
+  if (me.isError) return <Notice tone="danger">读取失败：{me.error.message}</Notice>;
+  const m = me.data;
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-5">
+      <h1 className="text-lg font-semibold">个人中心</h1>
+
+      <Section title="基本信息">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+          <dt className="text-muted">成员名</dt>
+          <dd className="font-mono">{m.member}</dd>
+          <dt className="text-muted">显示名</dt>
+          <dd>{m.display_name || <span className="text-muted">未设置</span>}</dd>
+          <dt className="text-muted">工作空间</dt>
+          <dd>{m.workspace}</dd>
+          <dt className="text-muted">角色</dt>
+          <dd>{roleLabel(m.role)}</dd>
+        </dl>
+      </Section>
+
+      <Section title="绑定新电脑" description="让这台电脑上的编程工具以你的身份使用协作服务。">
+        <p className="mb-2 text-sm">在电脑终端执行下面的命令，会自动打开浏览器，在浏览器里点“授权”即可：</p>
+        <CopyField label="绑定命令" value={`cohive login --server ${window.location.origin}`} />
+        <p className="mt-3 text-sm text-muted">
+          已经登录过的电脑，执行 <code className="rounded bg-sunken px-1 font-mono text-ink">cohive web</code>{" "}
+          可以免密打开这个网页。
+        </p>
+      </Section>
+
+      <MyDevices />
+
+      <Telegram me={m} />
+
+      <Section title="修改密码">
+        <ChangePasswordForm hasPassword={m.has_password} />
+      </Section>
+    </div>
+  );
+}
+
+function MyDevices() {
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ["me", "devices"], queryFn: api.myDevices });
+
+  return (
+    <Section title="我的设备" description="每台绑定过的电脑。丢失或不再使用的电脑请吊销，吊销后它上面的登录立即失效。">
+      {list.isPending ? (
+        <p className="text-sm text-muted">正在读取…</p>
+      ) : list.isError ? (
+        <p className="text-sm text-danger">读取失败：{list.error.message}</p>
+      ) : list.data.items.length === 0 ? (
+        <p className="text-sm text-muted">还没有绑定任何电脑。按上面的命令绑定第一台。</p>
+      ) : (
+        <ul className="divide-y divide-line rounded border border-line">
+          {list.data.items.map((d) => (
+            <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5 text-sm">
+              <div className="min-w-0 flex-1">
+                <p className="break-words font-medium">{d.name || "未命名"}</p>
+                <p className="text-xs text-muted">
+                  {toolsText(d.tools)} · {absoluteTime(d.created_at)} 添加
+                </p>
+              </div>
+              {d.revoked_at ? (
+                <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">已吊销</span>
+              ) : (
+                <>
+                  <span className="rounded bg-teal-soft px-1.5 py-px text-xs text-teal">使用中</span>
+                  <ConfirmButton
+                    label="吊销"
+                    title="吊销这台设备？"
+                    message={
+                      <>
+                        吊销后，“{d.name || "未命名"}”上的编程工具会立即失去访问权限，需要重新执行 cohive login
+                        才能再用。
+                      </>
+                    }
+                    confirmLabel="确认吊销"
+                    action={async () => {
+                      await api.revokeMyDevice(d.id);
+                      await qc.invalidateQueries({ queryKey: ["me", "devices"] });
+                    }}
+                  />
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+interface LinkAttempt {
+  id: number | string;
+  url: string;
+  startedAt: number;
+}
+
+const LINK_POLL_MS = 2000;
+const LINK_TIMEOUT_MS = 10 * 60 * 1000;
+
+function Telegram({ me }: { me: Me }) {
+  const qc = useQueryClient();
+  const [attempt, setAttempt] = useState<LinkAttempt | null>(null);
+  const [state, setState] = useState<{ status: string; detail?: string } | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const linked = !!me.telegram?.linked;
+
+  // 每 2 秒查一次连接结果，最多等 10 分钟
+  useEffect(() => {
+    if (!attempt) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      if (stopped) return;
+      if (Date.now() - attempt.startedAt > LINK_TIMEOUT_MS) {
+        setState({ status: "timeout" });
+        return;
+      }
+      try {
+        const res = await api.linkStatus(attempt.id);
+        if (stopped) return;
+        setState(res);
+        setError("");
+        if (res.status !== "pending") {
+          if (res.status === "linked") qc.invalidateQueries({ queryKey: ["me"] });
+          return;
+        }
+      } catch (err) {
+        if (stopped) return;
+        if (err instanceof ApiError && err.status === 401) return;
+        // 网络抖动时继续等
+        setError(`查询连接结果失败：${errMsg(err)}，稍后自动重试。`);
+      }
+      timer = setTimeout(tick, LINK_POLL_MS);
+    };
+    timer = setTimeout(tick, LINK_POLL_MS);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [attempt, qc]);
+
+  const connect = async () => {
+    setBusy(true);
+    setError("");
+    setState(null);
+    // 先同步打开空白窗口，避免等接口返回后再打开被浏览器拦截
+    const win = window.open("", "_blank");
+    try {
+      const res = await api.startLink();
+      if (win) {
+        win.opener = null;
+        win.location.href = res.url;
+      }
+      setAttempt({ id: res.id, url: res.url, startedAt: Date.now() });
+      setState({ status: "pending" });
+    } catch (err) {
+      win?.close();
+      setError(
+        err instanceof ApiError && err.status === 503
+          ? "协作服务没有启用 Telegram 机器人，请联系管理员。"
+          : `无法发起连接：${errMsg(err)}`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const status = state?.status;
+  const waiting = status === "pending";
+
+  return (
+    <Section
+      title="通讯工具"
+      description="连接 Telegram 后，群里的问题单通知会 @ 到你，管理员也能在群里直接点按钮审批。"
+    >
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="font-medium">Telegram</span>
+        {linked ? (
+          <span className="rounded bg-teal-soft px-1.5 py-px text-xs text-teal">
+            已连接{me.telegram?.username ? ` @${me.telegram.username}` : ""}
+          </span>
+        ) : (
+          <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">未连接</span>
+        )}
+        <span className="ml-auto">
+          {linked ? (
+            <ConfirmButton
+              label="解除连接"
+              title="解除 Telegram 连接？"
+              message="解除后群里的通知不会再 @ 到你。之后可以随时重新连接。"
+              confirmLabel="确认解除"
+              action={async () => {
+                await api.unlinkTelegram();
+                setAttempt(null);
+                setState(null);
+                await qc.invalidateQueries({ queryKey: ["me"] });
+              }}
+            />
+          ) : (
+            <button type="button" onClick={connect} disabled={busy || waiting} className={btn.primary}>
+              {busy ? "正在打开…" : waiting ? "等待在 Telegram 里完成…" : "连接 Telegram"}
+            </button>
+          )}
+        </span>
+      </div>
+
+      {attempt && waiting && !linked && (
+        <div className="mt-3 rounded border border-line bg-bg px-3 py-2 text-sm">
+          <p>已在新窗口打开 Telegram 机器人，请在 Telegram 里点“开始”。完成后这里会自动更新。</p>
+          <p className="mt-1 text-muted">
+            没有自动打开？
+            <a href={attempt.url} target="_blank" rel="noopener noreferrer" className="text-teal hover:underline">
+              点这里打开机器人
+            </a>
+          </p>
+          {state?.detail && <p className="mt-1 text-muted">{state.detail}</p>}
+        </div>
+      )}
+      {status === "linked" && (
+        <p className="mt-3 text-sm text-teal">已连接 Telegram。{state?.detail}</p>
+      )}
+      {(status === "failed" || status === "expired" || status === "timeout") && (
+        <p className="mt-3 text-sm text-danger">
+          {status === "failed" ? "连接失败。" : "连接请求已过期，请重新点“连接 Telegram”。"}
+          {state?.detail}
+        </p>
+      )}
+      <ErrorText>{error}</ErrorText>
+    </Section>
+  );
+}

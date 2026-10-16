@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, clearToken } from "./api";
+import { api } from "./api";
 import { toolLabel } from "./format";
 
 // 工具标识：哪个工具做的，是协作记录里的关键信息
@@ -37,11 +38,17 @@ export function StatusTag({ status, label }: { status: string; label: string }) 
 }
 
 export function Layout() {
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me() });
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const signOut = () => {
-    clearToken();
+  const [leaving, setLeaving] = useState(false);
+  const signOut = async () => {
+    setLeaving(true);
+    try {
+      await api.logout();
+    } catch {
+      // 退出失败（例如会话早已失效）也照样回到登录页
+    }
     qc.clear();
     navigate({ to: "/login" });
   };
@@ -58,23 +65,38 @@ export function Layout() {
             </svg>
             <span className="font-semibold tracking-wide">Cohive</span>
           </Link>
-          <nav className="flex gap-4 text-sm">
+          <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <Link to="/" className={nav} activeProps={active} activeOptions={{ exact: true }}>
-              谁手上有球
+              看板
             </Link>
-            <Link to="/issues" className={nav} activeProps={active} activeOptions={{ exact: true }}>
-              全部问题单
+            <Link to="/issues" className={nav} activeProps={active}>
+              问题单
             </Link>
+            <Link to="/me" className={nav} activeProps={active}>
+              个人中心
+            </Link>
+            {me.data?.role === "admin" && (
+              <Link to="/admin" className={nav} activeProps={active}>
+                管理
+              </Link>
+            )}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             {me.data && (
-              <span className="flex items-center gap-2 text-muted">
-                以 <span className="text-ink">{me.data.member}</span> 身份查看
+              <span className="flex min-w-0 items-center gap-2 text-muted">
+                <span className="truncate">
+                  <span className="text-ink">{me.data.display_name || me.data.member}</span>
+                  {me.data.workspace && <span className="hidden sm:inline"> · {me.data.workspace}</span>}
+                </span>
                 <ToolMark tool={me.data.tool} withLabel={false} />
               </span>
             )}
-            <button onClick={signOut} className="rounded px-2 py-1 text-muted hover:bg-sunken hover:text-ink">
-              退出
+            <button
+              onClick={signOut}
+              disabled={leaving}
+              className="rounded px-2 py-1 text-muted hover:bg-sunken hover:text-ink disabled:opacity-50"
+            >
+              {leaving ? "正在退出…" : "退出"}
             </button>
           </div>
         </div>
