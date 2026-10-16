@@ -27,6 +27,11 @@ const usage = `用法：cohive-server <命令>
   notify test --workspace <名称>                   往工作空间的群里发一条测试消息
   notify retry --workspace <名称>                  把发送失败的通知重新排队
 
+加入申请（机器人不可用时的备用；平时管理员在群里点按钮审批）：
+  join list [--workspace <名称>] [--all]           列出待审申请
+  join approve --id <编号>                         批准
+  join reject --id <编号>                          拒绝
+
 成员、令牌与服务（都可加 --workspace <名称>，缺省为 default）：
   member add --name <名称> [--display <显示名>]    添加成员
   member set --name <名称> --telegram <用户名>      登记 Telegram 用户名，用于群里 @ 提醒
@@ -74,6 +79,8 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		return admin(ctx, out, args)
 	case "notify":
 		return notifyCmd(ctx, out, args[1:])
+	case "join":
+		return joinCmd(ctx, out, args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(out, usage)
 		return nil

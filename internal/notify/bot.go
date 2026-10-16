@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -102,11 +103,29 @@ func HandleLogin(ctx context.Context, u Update, botName string, logins LoginIssu
 		html.EscapeString(res.Workspace.Name), res.Code, html.EscapeString(server), res.Code), true
 }
 
-// Bot 用长轮询接收机器人消息并回复 /chatid、/whoami、/login。
+// chatAPI 是机器人用到的 Telegram 操作，由 *Telegram 实现，测试时可替换。
+type chatAPI interface {
+	Reply(ctx context.Context, chatID, replyTo int64, text string) error
+	SendText(ctx context.Context, chatID int64, text string) error
+	SendButtons(ctx context.Context, chatID int64, text string, buttons [][]Button) (int64, error)
+	EditMessage(ctx context.Context, chatID, messageID int64, text string, buttons [][]Button) error
+	AnswerCallback(ctx context.Context, callbackID, text string) error
+}
+
+// Onboarding 是机器人用到的业务操作，由 core.Service 实现。
+type Onboarding interface {
+	LoginIssuer
+	RequestJoin(ctx context.Context, chatID string, tgUserID int64, username, display string) (core.JoinResult, error)
+	DecideJoin(ctx context.Context, requestID, deciderTgUserID int64, approve bool) (core.JoinDecision, error)
+}
+
+// Bot 用长轮询接收机器人消息，处理 /chatid、/whoami、/login、/join 与按钮点击。
 type Bot struct {
-	TG     *Telegram
-	Logins LoginIssuer // 为空时不处理 /login
-	Logf   func(format string, args ...any)
+	TG   *Telegram
+	Core Onboarding // 为空时只处理 /chatid、/whoami
+	API  chatAPI    // 为空时使用 TG
+	Name string     // 机器人用户名；为空时启动时向 Telegram 查询
+	Logf func(format string, args ...any)
 }
 
 func (b *Bot) logf(format string, args ...any) {
@@ -119,9 +138,15 @@ func (b *Bot) logf(format string, args ...any) {
 
 // Run 一直运行到 ctx 结束。出错时等待一会儿再继续，不会退出。
 func (b *Bot) Run(ctx context.Context) {
-	name, err := b.TG.GetMe(ctx)
-	if err != nil {
-		b.logf("Telegram 机器人信息获取失败，机器人命令暂不可用：%v", err)
+	if b.API == nil {
+		b.API = b.TG
+	}
+	if b.Name == "" {
+		name, err := b.TG.GetMe(ctx)
+		if err != nil {
+			b.logf("Telegram 机器人信息获取失败，带 @机器人名 的命令暂不可用：%v", err)
+		}
+		b.Name = name
 	}
 	var offset int64
 	for ctx.Err() == nil {
@@ -136,15 +161,137 @@ func (b *Bot) Run(ctx context.Context) {
 		}
 		for _, u := range ups {
 			offset = u.UpdateID + 1
-			reply, ok := HandleCommand(u, name)
-			if !ok && b.Logins != nil {
-				reply, ok = HandleLogin(ctx, u, name, b.Logins)
-			}
-			if !ok {
-				continue
-			}
-			if err := b.TG.Reply(ctx, u.Message.Chat.ID, u.Message.MessageID, reply); err != nil {
-				b.logf("回复 Telegram 命令失败：%v", err)
+			b.Handle(ctx, u)
+		}
+	}
+}
+
+// Handle 处理一条更新：消息命令或按钮点击。
+func (b *Bot) Handle(ctx context.Context, u Update) {
+	if u.CallbackQuery != nil {
+		b.handleCallback(ctx, u.CallbackQuery)
+		return
+	}
+	if u.Message == nil {
+		return
+	}
+	reply, ok := HandleCommand(u, b.Name)
+	if !ok && b.Core != nil {
+		reply, ok = HandleLogin(ctx, u, b.Name, b.Core)
+	}
+	if !ok && b.Core != nil {
+		reply, ok = b.handleJoin(ctx, u)
+	}
+	if !ok || reply == "" {
+		return
+	}
+	if err := b.API.Reply(ctx, u.Message.Chat.ID, u.Message.MessageID, reply); err != nil {
+		b.logf("回复 Telegram 命令失败：%v", err)
+	}
+}
+
+// command 取出消息里发给本机器人的命令名（例如 /join）与参数；不是命令或发给别的机器人时返回空。
+func (b *Bot) command(m *TGMessage) (string, []string) {
+	fields := strings.Fields(m.Text)
+	if len(fields) == 0 || !strings.HasPrefix(fields[0], "/") {
+		return "", nil
+	}
+	cmd, target, _ := strings.Cut(fields[0], "@")
+	if target != "" && !strings.EqualFold(target, b.Name) {
+		return "", nil
+	}
+	return cmd, fields[1:]
+}
+
+// mentionUser 生成提及某人的文字：有用户名时 @ 用户名，否则用显示名。
+func mentionUser(username, display string) string {
+	if username != "" {
+		return "@" + html.EscapeString(username)
+	}
+	if display != "" {
+		return html.EscapeString(display)
+	}
+	return "新成员"
+}
+
+func (b *Bot) handleJoin(ctx context.Context, u Update) (string, bool) {
+	m := u.Message
+	if cmd, _ := b.command(m); cmd != "/join" || m.From == nil {
+		return "", false
+	}
+	if m.Chat.Type == "private" {
+		return "请在你们团队的工作空间群里发 /join 申请加入。", true
+	}
+	res, err := b.Core.RequestJoin(ctx, strconv.FormatInt(m.Chat.ID, 10), m.From.ID, m.From.Username, m.From.FirstName)
+	switch {
+	case errors.Is(err, core.ErrNoWorkspaceForChat):
+		return "这个群还没有对应的 Cohive 工作空间。请管理员在群里发 /chatid 拿到群编号，配置好群通知后再试。", true
+	case err != nil:
+		b.logf("处理 /join 失败：%v", err)
+		return "暂时无法处理加入申请，请稍后再试。", true
+	case res.AlreadyMember != nil:
+		return fmt.Sprintf("你已经是工作空间 %s 的成员（成员名 %s）。在仓库里执行 cohive login 即可登录。",
+			html.EscapeString(res.Workspace.Name), html.EscapeString(res.AlreadyMember.Name)), true
+	case res.Member != nil:
+		return fmt.Sprintf("%s 已加入工作空间 %s，成员名 %s。\n下一步：在仓库里执行 cohive login，按提示在私聊里确认即可。",
+			mentionUser(m.From.Username, m.From.FirstName), html.EscapeString(res.Workspace.Name), html.EscapeString(res.Member.Name)), true
+	}
+	j := res.Request
+	text := fmt.Sprintf("%s 申请加入工作空间 %s。\n请管理员审批：",
+		mentionUser(j.TelegramUsername, j.DisplayName), html.EscapeString(res.Workspace.Name))
+	id := strconv.FormatInt(j.ID, 10)
+	if _, err := b.API.SendButtons(ctx, m.Chat.ID, text, [][]Button{{
+		{Text: "批准", Data: "join:" + id + ":y"}, {Text: "拒绝", Data: "join:" + id + ":n"},
+	}}); err != nil {
+		b.logf("发送审批消息失败：%v", err)
+		return "加入申请已记录，但审批消息发送失败，请联系管理员。", true
+	}
+	return "", true
+}
+
+func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
+	answer := func(text string) {
+		if err := b.API.AnswerCallback(ctx, cb.ID, text); err != nil {
+			b.logf("回应按钮点击失败：%v", err)
+		}
+	}
+	parts := strings.Split(cb.Data, ":")
+	if b.Core == nil || len(parts) != 3 || parts[0] != "join" {
+		answer("")
+		return
+	}
+	id, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || (parts[2] != "y" && parts[2] != "n") {
+		answer("")
+		return
+	}
+	d, err := b.Core.DecideJoin(ctx, id, cb.From.ID, parts[2] == "y")
+	switch {
+	case errors.Is(err, core.ErrNotAdmin), errors.Is(err, core.ErrJoinDecided):
+		answer(err.Error())
+		return
+	case err != nil:
+		b.logf("处理审批失败：%v", err)
+		answer("处理失败，请稍后再试")
+		return
+	}
+	who := mentionUser(d.Request.TelegramUsername, d.Request.DisplayName)
+	verdict := "已拒绝"
+	if d.Member != nil {
+		verdict = "已批准，成员名 " + html.EscapeString(d.Member.Name)
+	}
+	answer(strings.SplitN(verdict, "，", 2)[0])
+	if cb.Message != nil {
+		text := fmt.Sprintf("%s 申请加入工作空间 %s：%s（审批人 %s）", who, html.EscapeString(d.Workspace.Name),
+			verdict, html.EscapeString(d.Decider.Name))
+		if err := b.API.EditMessage(ctx, cb.Message.Chat.ID, cb.Message.MessageID, text, nil); err != nil {
+			b.logf("更新审批消息失败：%v", err)
+		}
+		if d.Member != nil {
+			welcome := fmt.Sprintf("%s 欢迎加入工作空间 %s！下一步：在仓库里执行 cohive login，按提示在私聊里确认即可。",
+				who, html.EscapeString(d.Workspace.Name))
+			if err := b.API.SendText(ctx, cb.Message.Chat.ID, welcome); err != nil {
+				b.logf("发送欢迎消息失败：%v", err)
 			}
 		}
 	}
