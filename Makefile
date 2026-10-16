@@ -14,7 +14,7 @@ test:
 
 # 构建看板，产物写入 web/dist，由服务端嵌入
 web:
-	cd web && pnpm install --frozen-lockfile && pnpm build
+	cd web && pnpm install --frozen-lockfile && pnpm build && pnpm test
 
 # 看板开发模式：http://localhost:5173，接口转发到本机 8787 端口的协作服务
 web-dev:

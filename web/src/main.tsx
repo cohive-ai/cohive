@@ -9,7 +9,6 @@ import {
   Outlet,
   redirect,
   RouterProvider,
-  type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { api, ApiError, setUnauthorizedHandler, UnauthorizedError } from "./api";
 import { Layout, Notice } from "./components";
@@ -22,7 +21,7 @@ import { DeviceAuthPage } from "./pages/DeviceAuth";
 import { MePage } from "./pages/Me";
 import { PasswordPage } from "./pages/Password";
 import { AdminPage, adminTabs, type AdminTab } from "./pages/Admin";
-import { btn } from "./ui";
+import { LoadError } from "./LoadError";
 import "./styles.css";
 
 const queryClient = new QueryClient({
@@ -41,17 +40,6 @@ function NotFound() {
       <Notice>
         这个页面不存在。<Link to="/" className="text-teal hover:underline">回到看板</Link>
       </Notice>
-    </div>
-  );
-}
-
-function LoadError({ error, reset }: ErrorComponentProps) {
-  return (
-    <div className="mx-auto max-w-md px-4 py-16">
-      <Notice tone="danger">页面加载失败：{error instanceof Error ? error.message : String(error)}</Notice>
-      <button type="button" onClick={() => reset()} className={`${btn.secondary} mt-3`}>
-        重试
-      </button>
     </div>
   );
 }
