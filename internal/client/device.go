@@ -18,11 +18,10 @@ import (
 
 // DeviceStart 是发起设备授权登录的结果。
 type DeviceStart struct {
-	RequestID   int64  `json:"request_id"`
-	PollSecret  string `json:"poll_secret"`
-	Link        string `json:"link"`
-	MatchNumber int    `json:"match_number"`
-	ExpiresIn   int    `json:"expires_in"`
+	RequestID  int64  `json:"request_id"`
+	PollSecret string `json:"poll_secret"`
+	Link       string `json:"link"`
+	ExpiresIn  int    `json:"expires_in"`
 }
 
 // DevicePoll 是一次轮询的结果；Status 为 approved 时 Tokens 是各工具的令牌。

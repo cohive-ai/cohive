@@ -6,9 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/binary"
 	"errors"
-	"math/big"
 	"regexp"
 	"strings"
 	"time"
@@ -30,21 +28,18 @@ var (
 	ErrDeviceGone = errors.New("这次登录请求已失效，请在终端重新执行 cohive login")
 	// ErrDeviceTaken 表示登录链接已被另一个 Telegram 账号打开过。
 	ErrDeviceTaken = errors.New("这个登录链接已被别的 Telegram 账号打开过，本次登录已作废。请在终端重新执行 cohive login")
-	// ErrDeviceWrongNumber 表示选的数字和终端显示的不一致。
-	ErrDeviceWrongNumber = errors.New("数字和终端显示的不一致，本次登录已作废。请在终端重新执行 cohive login")
 )
 
 // DeviceStart 是终端发起登录后拿到的信息。PollSecret 只在这里出现一次。
 type DeviceStart struct {
-	RequestID   int64
-	PollSecret  string
-	Nonce       string
-	MatchNumber int
-	ExpiresIn   time.Duration
+	RequestID  int64
+	PollSecret string
+	Nonce      string
+	ExpiresIn  time.Duration
 }
 
 // DeviceView 是机器人私聊里展示的登录确认内容。
-// 需要先选工作空间时 Choices 非空、Numbers 为空；否则 Numbers 是打乱的三个数字，其中一个与终端一致。
+// 需要先选工作空间时 Choices 非空；否则 Workspace、MemberName 是本次登录的身份，等待点“确认登录”。
 type DeviceView struct {
 	ID         int64
 	DeviceName string
@@ -53,7 +48,6 @@ type DeviceView struct {
 	Workspace  string
 	MemberName string
 	Choices    []store.BoundMember
-	Numbers    []int
 }
 
 // DevicePoll 是终端轮询的结果。Status 为 approved 时附带各工具的令牌（只交付这一次）。
@@ -121,14 +115,9 @@ func (s *Service) StartDeviceLogin(ctx context.Context, tools []string, deviceNa
 	if err != nil {
 		return DeviceStart{}, err
 	}
-	n, err := rand.Int(rand.Reader, big.NewInt(90))
-	if err != nil {
-		return DeviceStart{}, err
-	}
 	d, err := store.CreateDeviceLogin(ctx, s.Pool, store.DeviceLogin{
 		PollSecretHash: hashPollSecret(secret),
 		StartNonce:     nonce,
-		MatchNumber:    10 + int(n.Int64()),
 		Tools:          uniq,
 		DeviceName:     cleanDeviceName(deviceName),
 		WorkspaceName:  workspace,
@@ -137,28 +126,7 @@ func (s *Service) StartDeviceLogin(ctx context.Context, tools []string, deviceNa
 	if err != nil {
 		return DeviceStart{}, err
 	}
-	return DeviceStart{RequestID: d.ID, PollSecret: secret, Nonce: DeviceStartPrefix + nonce,
-		MatchNumber: d.MatchNumber, ExpiresIn: DeviceLoginTTL}, nil
-}
-
-// numberChoices 返回三个两位数，其中一个是 d.MatchNumber。干扰数字和顺序由服务端保存的
-// 轮询密钥哈希推出，同一请求每次展示都相同：反复打开链接无法靠比较几组数字找出正确的那个。
-func numberChoices(d store.DeviceLogin) []int {
-	seed := sha256.Sum256(append([]byte("cohive-device-choices:"), d.PollSecretHash...))
-	out := []int{d.MatchNumber}
-	for i := 0; len(out) < 3; i++ {
-		n := 10 + int(binary.BigEndian.Uint16(seed[2*i%30:])%90)
-		if n != out[0] && (len(out) < 2 || n != out[1]) {
-			out = append(out, n)
-		}
-		if i > 14 { // 哈希用尽的极端情况，按顺序补足
-			seed = sha256.Sum256(seed[:])
-			i = -1
-		}
-	}
-	pos := int(seed[31] % 3) // 正确数字所在的位置
-	out[0], out[pos] = out[pos], out[0]
-	return out
+	return DeviceStart{RequestID: d.ID, PollSecret: secret, Nonce: DeviceStartPrefix + nonce, ExpiresIn: DeviceLoginTTL}, nil
 }
 
 // pickBound 在 Telegram 账号绑定的成员里找出本次登录对应的成员；未指定且有多个时返回 nil。
@@ -233,7 +201,7 @@ func claim(d *store.DeviceLogin, tgUserID int64) error {
 func deviceView(d store.DeviceLogin, b *store.BoundMember) DeviceView {
 	v := DeviceView{ID: d.ID, DeviceName: d.DeviceName, CreatedAt: d.CreatedAt, Tools: d.Tools}
 	if b != nil {
-		v.Workspace, v.MemberName, v.Numbers = b.WorkspaceName, b.Name, numberChoices(d)
+		v.Workspace, v.MemberName = b.WorkspaceName, b.Name
 	}
 	return v
 }
@@ -299,8 +267,8 @@ func (s *Service) ChooseDeviceWorkspace(ctx context.Context, id, tgUserID, works
 	return v, err
 }
 
-// ConfirmDeviceLogin 处理数字按钮：选对则批准，选错则作废。
-func (s *Service) ConfirmDeviceLogin(ctx context.Context, id, tgUserID int64, number int) (DeviceView, error) {
+// ConfirmDeviceLogin 处理“确认登录”按钮：只有打开链接的那个账号能确认。
+func (s *Service) ConfirmDeviceLogin(ctx context.Context, id, tgUserID int64) (DeviceView, error) {
 	var v DeviceView
 	err := s.deviceStep(ctx, func(tx pgx.Tx) (store.DeviceLogin, error) {
 		return store.DeviceLoginForUpdate(ctx, tx, id)
@@ -315,10 +283,6 @@ func (s *Service) ConfirmDeviceLogin(ctx context.Context, id, tgUserID int64, nu
 		b, err := pickBound(bound, d.WorkspaceName)
 		if err != nil || b == nil {
 			return ErrDeviceGone, nil
-		}
-		if number != d.MatchNumber {
-			d.Status = store.DeviceDenied
-			return ErrDeviceWrongNumber, nil
 		}
 		d.Status, d.MemberID, d.WorkspaceName = store.DeviceApproved, &b.ID, b.WorkspaceName
 		v = DeviceView{ID: d.ID, DeviceName: d.DeviceName, Tools: d.Tools, Workspace: b.WorkspaceName, MemberName: b.Name}

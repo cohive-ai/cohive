@@ -11,20 +11,20 @@ import (
 )
 
 var readyView = core.DeviceView{ID: 5, DeviceName: "lee<Mac>", Tools: []string{"claude-code", "codex"},
-	Workspace: "payments", MemberName: "lee", Numbers: []int{31, 57, 84}}
+	Workspace: "payments", MemberName: "lee"}
 
-func TestStartDeviceLoginShowsNumbers(t *testing.T) {
+func TestStartDeviceLoginShowsConfirm(t *testing.T) {
 	c := &fakeCore{device: readyView}
 	api := &fakeAPI{}
 	newBot(c, api).Handle(context.Background(), msg("/start dl_abc", "private", 42, "lee"))
 	if len(c.decided) != 3 || c.decided[1] != "dl_abc" || c.decided[2] != int64(42) {
 		t.Fatalf("应以私聊发送人身份打开登录请求：%v", c.decided)
 	}
-	if len(api.buttons) != 1 || !strings.Contains(api.buttons[0], "lee&lt;Mac&gt;") || !strings.Contains(api.buttons[0], "终端上显示的数字") {
+	if len(api.buttons) != 1 || !strings.Contains(api.buttons[0], "lee&lt;Mac&gt;") || !strings.Contains(api.buttons[0], "只确认你自己") {
 		t.Fatalf("应发出带转义设备名的确认消息：%v", api.buttons)
 	}
-	if len(api.btnData) != 2 || len(api.btnData[0]) != 3 || api.btnData[0][1].Data != "dl:5:57" || api.btnData[1][0].Data != "dlx:5" {
-		t.Fatalf("按钮应是三个数字加取消：%+v", api.btnData)
+	if len(api.btnData) != 1 || len(api.btnData[0]) != 2 || api.btnData[0][0].Data != "dl:5:y" || api.btnData[0][1].Data != "dlx:5" {
+		t.Fatalf("按钮应是确认登录和取消：%+v", api.btnData)
 	}
 }
 
@@ -68,26 +68,26 @@ func TestDeviceCallbacks(t *testing.T) {
 
 	c := &fakeCore{device: readyView}
 	api := &fakeAPI{}
-	newBot(c, api).Handle(ctx, callback("dl:5:57", 42))
-	if c.decided[0] != "confirm" || c.decided[1] != int64(5) || c.decided[2] != int64(42) || c.decided[3] != 57 {
-		t.Fatalf("应以点击者身份确认数字：%v", c.decided)
+	newBot(c, api).Handle(ctx, callback("dl:5:y", 42))
+	if c.decided[0] != "confirm" || c.decided[1] != int64(5) || c.decided[2] != int64(42) {
+		t.Fatalf("应以点击者身份确认：%v", c.decided)
 	}
 	if len(api.edits) != 1 || !strings.Contains(api.edits[0], "已确认") || api.editKeys[0] != nil || api.answers[0] != "已确认" {
 		t.Fatalf("确认后应改消息、去掉按钮：%v %v", api.edits, api.answers)
 	}
 
-	c = &fakeCore{deviceErr: core.ErrDeviceWrongNumber}
+	c = &fakeCore{deviceErr: core.ErrDeviceTaken}
 	api = &fakeAPI{}
-	newBot(c, api).Handle(ctx, callback("dl:5:31", 42))
+	newBot(c, api).Handle(ctx, callback("dl:5:y", 42))
 	if len(api.edits) != 1 || !strings.Contains(api.edits[0], "作废") || api.editKeys[0] != nil {
-		t.Fatalf("选错应改消息说明已作废：%v", api.edits)
+		t.Fatalf("失效时应改消息说明已作废：%v", api.edits)
 	}
 
 	c = &fakeCore{device: readyView}
 	api = &fakeAPI{}
 	newBot(c, api).Handle(ctx, callback("dlw:5:3", 42))
-	if c.decided[0] != "choose" || c.decided[3] != int64(3) || len(api.editKeys) != 1 || len(api.editKeys[0]) != 2 {
-		t.Fatalf("选工作空间后应换成数字按钮：%v %+v", c.decided, api.editKeys)
+	if c.decided[0] != "choose" || c.decided[3] != int64(3) || len(api.editKeys) != 1 || len(api.editKeys[0]) != 1 || api.editKeys[0][0][0].Data != "dl:5:y" {
+		t.Fatalf("选工作空间后应换成确认按钮：%v %+v", c.decided, api.editKeys)
 	}
 
 	c = &fakeCore{}

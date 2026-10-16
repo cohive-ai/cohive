@@ -212,7 +212,7 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 	return loginWithDevice(ctx, out, srv, ws, tools, *open, len(repo.Tools) > 0 && srv == repo.Server)
 }
 
-// loginWithDevice 走设备授权：终端显示链接、二维码与数字，成员在机器人私聊里选中这个数字即完成登录。
+// loginWithDevice 走设备授权：终端显示链接与二维码，成员在机器人私聊里点“确认登录”即完成登录。
 func loginWithDevice(ctx context.Context, out io.Writer, srv, ws string, tools []string, open, repoReady bool) error {
 	host, _ := os.Hostname()
 	st, err := client.StartDevice(ctx, srv, tools, host, ws)
@@ -223,7 +223,7 @@ func loginWithDevice(ctx context.Context, out io.Writer, srv, ws string, tools [
 	if qr, err := client.QRText(st.Link); err == nil {
 		fmt.Fprintf(out, "  或用手机扫码：\n\n%s\n", qr)
 	}
-	fmt.Fprintf(out, "  在机器人私聊里点选这个数字：%d\n\n", st.MatchNumber)
+	fmt.Fprint(out, "  在机器人私聊里核对工作空间与设备名，点“确认登录”。\n\n")
 	if open {
 		_ = openURL(st.Link)
 	}
@@ -257,7 +257,7 @@ func loginWithDevice(ctx context.Context, out io.Writer, srv, ws string, tools [
 		case "approved":
 			return saveDeviceLogins(out, srv, p, repoReady)
 		case "denied":
-			return errors.New("登录没有通过：在机器人里点了取消、选错了数字，或链接被别的账号打开过。请重新执行 cohive login")
+			return errors.New("登录没有通过：在机器人里点了取消，或链接被别的账号打开过。请重新执行 cohive login")
 		case "expired":
 			return errors.New("登录请求已过期，请重新执行 cohive login")
 		case "delivered":

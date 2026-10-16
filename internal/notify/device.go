@@ -40,7 +40,7 @@ func (b *Bot) deviceErrText(err error) string {
 	switch {
 	case errors.Is(err, core.ErrNotBound):
 		return "你的 Telegram 账号还没有加入任何 Cohive 工作空间。请先在团队群里发 /join 申请加入，批准后回到终端重新执行 cohive login。"
-	case errors.Is(err, core.ErrDeviceGone), errors.Is(err, core.ErrDeviceTaken), errors.Is(err, core.ErrDeviceWrongNumber):
+	case errors.Is(err, core.ErrDeviceGone), errors.Is(err, core.ErrDeviceTaken):
 		return err.Error()
 	case errors.As(err, &ie):
 		return html.EscapeString(err.Error())
@@ -49,14 +49,14 @@ func (b *Bot) deviceErrText(err error) string {
 	return "暂时无法处理登录请求，请稍后再试。"
 }
 
-// deviceMessage 生成登录确认消息：先选工作空间，或在三个数字里选终端显示的那个。
+// deviceMessage 生成登录确认消息：先选工作空间，或点“确认登录”。
 func deviceMessage(v core.DeviceView) (string, [][]Button) {
 	id := strconv.FormatInt(v.ID, 10)
 	var t strings.Builder
 	fmt.Fprintf(&t, "<b>确认登录 Cohive</b>\n设备名（终端自报）：%s\n发起时间：%s\n工具：%s", html.EscapeString(v.DeviceName),
 		v.CreatedAt.Local().Format("01-02 15:04:05"), html.EscapeString(strings.Join(v.Tools, "、")))
 	cancel := []Button{{Text: "取消", Data: "dlx:" + id}}
-	if len(v.Numbers) == 0 {
+	if len(v.Choices) > 0 {
 		t.WriteString("\n\n你加入了多个工作空间，请先选择本次登录的工作空间：")
 		var rows [][]Button
 		for _, c := range v.Choices {
@@ -65,16 +65,12 @@ func deviceMessage(v core.DeviceView) (string, [][]Button) {
 		}
 		return t.String(), append(rows, cancel)
 	}
-	fmt.Fprintf(&t, "\n工作空间：%s（成员名 %s）\n\n请点选<b>终端上显示的数字</b>，选错会作废本次登录。\n只确认你自己刚刚在终端发起的登录；如果链接是别人发给你的，请点“取消”。",
+	fmt.Fprintf(&t, "\n工作空间：%s（成员名 %s）\n\n<b>只确认你自己刚刚在终端发起的登录。</b>如果链接是别人发给你的，确认就等于把你的身份交给他的电脑，请点“取消”。",
 		html.EscapeString(v.Workspace), html.EscapeString(v.MemberName))
-	row := make([]Button, len(v.Numbers))
-	for i, n := range v.Numbers {
-		row[i] = Button{Text: strconv.Itoa(n), Data: "dl:" + id + ":" + strconv.Itoa(n)}
-	}
-	return t.String(), [][]Button{row, cancel}
+	return t.String(), [][]Button{{{Text: "确认登录", Data: "dl:" + id + ":y"}, cancel[0]}}
 }
 
-// handleDeviceCallback 处理登录确认消息上的按钮：dlw 选工作空间、dl 选数字、dlx 取消。
+// handleDeviceCallback 处理登录确认消息上的按钮：dlw 选工作空间、dl 确认、dlx 取消。
 func (b *Bot) handleDeviceCallback(ctx context.Context, cb *TGCallback, parts []string, answer func(string)) {
 	id, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
@@ -116,13 +112,8 @@ func (b *Bot) handleDeviceCallback(ctx context.Context, cb *TGCallback, parts []
 		}
 		answer("")
 		edit(deviceMessage(v))
-	case parts[0] == "dl" && len(parts) == 3:
-		n, err := strconv.Atoi(parts[2])
-		if err != nil {
-			answer("")
-			return
-		}
-		v, err := b.Core.ConfirmDeviceLogin(ctx, id, uid, n)
+	case parts[0] == "dl" && len(parts) == 3 && parts[2] == "y":
+		v, err := b.Core.ConfirmDeviceLogin(ctx, id, uid)
 		if err != nil {
 			fail(err)
 			return

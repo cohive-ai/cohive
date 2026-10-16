@@ -250,11 +250,10 @@ func deviceRoutes(mux *http.ServeMux, svc *core.Service, botName func() string) 
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"request_id":   st.RequestID,
-			"poll_secret":  st.PollSecret,
-			"link":         "https://t.me/" + name + "?start=" + st.Nonce,
-			"match_number": st.MatchNumber,
-			"expires_in":   int(st.ExpiresIn.Seconds()),
+			"request_id":  st.RequestID,
+			"poll_secret": st.PollSecret,
+			"link":        "https://t.me/" + name + "?start=" + st.Nonce,
+			"expires_in":  int(st.ExpiresIn.Seconds()),
 		})
 	})
 	mux.HandleFunc("POST /api/v1/device/poll", func(w http.ResponseWriter, r *http.Request) {

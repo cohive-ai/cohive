@@ -120,7 +120,7 @@ type Onboarding interface {
 	DecideJoin(ctx context.Context, requestID, deciderTgUserID int64, approve bool) (core.JoinDecision, error)
 	OpenDeviceLogin(ctx context.Context, startParam string, tgUserID int64) (core.DeviceView, error)
 	ChooseDeviceWorkspace(ctx context.Context, id, tgUserID, workspaceID int64) (core.DeviceView, error)
-	ConfirmDeviceLogin(ctx context.Context, id, tgUserID int64, number int) (core.DeviceView, error)
+	ConfirmDeviceLogin(ctx context.Context, id, tgUserID int64) (core.DeviceView, error)
 	CancelDeviceLogin(ctx context.Context, id, tgUserID int64) error
 }
 

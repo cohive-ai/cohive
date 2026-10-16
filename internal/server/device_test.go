@@ -42,11 +42,10 @@ func TestDeviceLoginAPI(t *testing.T) {
 	srv := httptest.NewServer(server.New(f.svc, builtWeb, server.Options{BotName: func() string { return "CohiveBot" }}))
 	defer srv.Close()
 	var st struct {
-		RequestID   int64  `json:"request_id"`
-		PollSecret  string `json:"poll_secret"`
-		Link        string `json:"link"`
-		MatchNumber int    `json:"match_number"`
-		ExpiresIn   int    `json:"expires_in"`
+		RequestID  int64  `json:"request_id"`
+		PollSecret string `json:"poll_secret"`
+		Link       string `json:"link"`
+		ExpiresIn  int    `json:"expires_in"`
 	}
 	if code := postJSON(t, srv.URL+"/api/v1/device/start", map[string]any{"tools": []string{"claude-code", "codex"}, "device_name": "mac"}, &st); code != http.StatusOK {
 		t.Fatalf("发起失败：%d", code)
@@ -78,7 +77,7 @@ func TestDeviceLoginAPI(t *testing.T) {
 	if _, err := f.svc.OpenDeviceLogin(ctx, nonce, uid); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.svc.ConfirmDeviceLogin(ctx, st.RequestID, uid, st.MatchNumber); err != nil {
+	if _, err := f.svc.ConfirmDeviceLogin(ctx, st.RequestID, uid); err != nil {
 		t.Fatal(err)
 	}
 

@@ -10,7 +10,7 @@ const (
 	DevicePending   = "pending"   // 等待在机器人私聊里确认
 	DeviceApproved  = "approved"  // 已确认，等待终端领取令牌
 	DeviceDelivered = "delivered" // 令牌已交付
-	DeviceDenied    = "denied"    // 被取消或选错数字
+	DeviceDenied    = "denied"    // 被取消，或链接被第二个账号打开
 	DeviceExpired   = "expired"
 )
 
@@ -19,7 +19,6 @@ type DeviceLogin struct {
 	ID             int64
 	PollSecretHash []byte
 	StartNonce     string
-	MatchNumber    int
 	Tools          []string
 	DeviceName     string
 	WorkspaceName  string
@@ -30,12 +29,12 @@ type DeviceLogin struct {
 	CreatedAt      time.Time
 }
 
-const deviceColumns = `id, poll_secret_hash, start_nonce, match_number, tools, device_name, workspace_name,
+const deviceColumns = `id, poll_secret_hash, start_nonce, tools, device_name, workspace_name,
 	telegram_user_id, member_id, status, expires_at, created_at`
 
 func scanDevice(row interface{ Scan(...any) error }) (DeviceLogin, error) {
 	var d DeviceLogin
-	err := row.Scan(&d.ID, &d.PollSecretHash, &d.StartNonce, &d.MatchNumber, &d.Tools, &d.DeviceName, &d.WorkspaceName,
+	err := row.Scan(&d.ID, &d.PollSecretHash, &d.StartNonce, &d.Tools, &d.DeviceName, &d.WorkspaceName,
 		&d.TelegramUserID, &d.MemberID, &d.Status, &d.ExpiresAt, &d.CreatedAt)
 	return d, notFound(err)
 }
@@ -43,9 +42,9 @@ func scanDevice(row interface{ Scan(...any) error }) (DeviceLogin, error) {
 // CreateDeviceLogin 保存一次设备授权登录请求。
 func CreateDeviceLogin(ctx context.Context, q DBTX, d DeviceLogin) (DeviceLogin, error) {
 	return scanDevice(q.QueryRow(ctx, `INSERT INTO device_logins
-		(poll_secret_hash, start_nonce, match_number, tools, device_name, workspace_name, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING `+deviceColumns,
-		d.PollSecretHash, d.StartNonce, d.MatchNumber, d.Tools, d.DeviceName, d.WorkspaceName, d.ExpiresAt))
+		(poll_secret_hash, start_nonce, tools, device_name, workspace_name, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+deviceColumns,
+		d.PollSecretHash, d.StartNonce, d.Tools, d.DeviceName, d.WorkspaceName, d.ExpiresAt))
 }
 
 // DeviceLoginByNonceForUpdate 在事务内按深链参数读取并锁定请求。

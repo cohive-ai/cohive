@@ -17,7 +17,7 @@ func startDevice(t *testing.T, e env, workspace string) core.DeviceStart {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(st.Nonce, core.DeviceStartPrefix) || len(st.Nonce) > 64 || st.MatchNumber < 10 || st.MatchNumber > 99 {
+	if !strings.HasPrefix(st.Nonce, core.DeviceStartPrefix) || len(st.Nonce) > 64 {
 		t.Fatalf("发起结果不符：%+v", st)
 	}
 	return st
@@ -40,15 +40,11 @@ func TestDeviceLoginFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.MemberName != "lee-codex" || v.DeviceName != "lee-mac.local42" || len(v.Numbers) != 3 || !slices.Contains(v.Numbers, st.MatchNumber) ||
+	if v.MemberName != "lee-codex" || v.DeviceName != "lee-mac.local42" || len(v.Choices) != 0 ||
 		!slices.Equal(v.Tools, []string{"claude-code", "codex"}) {
 		t.Fatalf("确认内容不符：%+v", v)
 	}
-	// 重复打开同一链接，三个数字和顺序不变，无法靠比较几组数字找出正确的
-	if v2, err := e.svc.OpenDeviceLogin(ctx, st.Nonce, tgUser); err != nil || !slices.Equal(v.Numbers, v2.Numbers) {
-		t.Fatalf("重复打开数字应不变：%v %v %v", v.Numbers, v2.Numbers, err)
-	}
-	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser, st.MatchNumber); err != nil {
+	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser); err != nil {
 		t.Fatal(err)
 	}
 
@@ -64,26 +60,6 @@ func TestDeviceLoginFlow(t *testing.T) {
 	}
 	if p, _ := e.svc.PollDeviceLogin(ctx, st.RequestID, st.PollSecret); p.Status != store.DeviceDelivered || p.Tokens != nil {
 		t.Fatalf("令牌只交付一次：%+v", p)
-	}
-}
-
-func TestDeviceLoginWrongNumber(t *testing.T) {
-	ctx := context.Background()
-	e := newEnv(t)
-	bindTelegram(t, e, e.b.MemberID)
-	st := startDevice(t, e, "")
-	if _, err := e.svc.OpenDeviceLogin(ctx, st.Nonce, tgUser); err != nil {
-		t.Fatal(err)
-	}
-	wrong := st.MatchNumber + 1
-	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser, wrong); !errors.Is(err, core.ErrDeviceWrongNumber) {
-		t.Fatalf("选错数字应作废：%v", err)
-	}
-	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser, st.MatchNumber); !errors.Is(err, core.ErrDeviceGone) {
-		t.Fatalf("作废后不能再确认：%v", err)
-	}
-	if p, _ := e.svc.PollDeviceLogin(ctx, st.RequestID, st.PollSecret); p.Status != store.DeviceDenied {
-		t.Fatalf("终端应看到被拒绝：%+v", p)
 	}
 }
 
@@ -104,7 +80,7 @@ func TestDeviceLoginOpenedByOther(t *testing.T) {
 		t.Fatalf("链接被第二个账号打开应作废：%v", err)
 	}
 	// 别人伪造按钮也不行
-	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, other, st.MatchNumber); !errors.Is(err, core.ErrDeviceGone) {
+	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, other); !errors.Is(err, core.ErrDeviceGone) {
 		t.Fatalf("非打开人不能确认：%v", err)
 	}
 	if p, _ := e.svc.PollDeviceLogin(ctx, st.RequestID, st.PollSecret); p.Status != store.DeviceDenied {
@@ -151,17 +127,17 @@ func TestDeviceLoginChooseWorkspace(t *testing.T) {
 
 	st := startDevice(t, e, "")
 	v, err := e.svc.OpenDeviceLogin(ctx, st.Nonce, tgUser)
-	if err != nil || len(v.Choices) != 2 || v.Numbers != nil {
+	if err != nil || len(v.Choices) != 2 {
 		t.Fatalf("加入多个工作空间时应先选：%+v %v", v, err)
 	}
-	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser, st.MatchNumber); !errors.Is(err, core.ErrDeviceGone) {
+	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser); !errors.Is(err, core.ErrDeviceGone) {
 		t.Fatalf("没选工作空间不能确认：%v", err)
 	}
 	v, err = e.svc.ChooseDeviceWorkspace(ctx, st.RequestID, tgUser, ws2.ID)
-	if err != nil || v.Workspace != "payments" || v.MemberName != "lee" || len(v.Numbers) != 3 {
-		t.Fatalf("选定后应出数字：%+v %v", v, err)
+	if err != nil || v.Workspace != "payments" || v.MemberName != "lee" || len(v.Choices) != 0 {
+		t.Fatalf("选定后应等待确认：%+v %v", v, err)
 	}
-	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser, st.MatchNumber); err != nil {
+	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser); err != nil {
 		t.Fatal(err)
 	}
 	p, err := e.svc.PollDeviceLogin(ctx, st.RequestID, st.PollSecret)
@@ -169,9 +145,9 @@ func TestDeviceLoginChooseWorkspace(t *testing.T) {
 		t.Fatalf("令牌应属于 payments 的 lee：%+v %v", p, err)
 	}
 
-	// 终端指定了工作空间时直接出数字
+	// 终端指定了工作空间时不必再选
 	st = startDevice(t, e, "default")
-	if v, err := e.svc.OpenDeviceLogin(ctx, st.Nonce, tgUser); err != nil || v.Workspace != "default" || len(v.Numbers) != 3 {
+	if v, err := e.svc.OpenDeviceLogin(ctx, st.Nonce, tgUser); err != nil || v.Workspace != "default" || len(v.Choices) != 0 {
 		t.Fatalf("指定工作空间时应直接出数字：%+v %v", v, err)
 	}
 }
@@ -200,7 +176,7 @@ func TestDeviceLoginApprovedButNotCollected(t *testing.T) {
 	if _, err := e.svc.OpenDeviceLogin(ctx, st.Nonce, tgUser); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser, st.MatchNumber); err != nil {
+	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser); err != nil {
 		t.Fatal(err)
 	}
 	// 确认后超过领取宽限期才来轮询：不再交付
@@ -209,26 +185,6 @@ func TestDeviceLoginApprovedButNotCollected(t *testing.T) {
 	}
 	if p, _ := e.svc.PollDeviceLogin(ctx, st.RequestID, st.PollSecret); p.Status != store.DeviceExpired || p.Tokens != nil {
 		t.Fatalf("超过宽限期应过期且不交付：%+v", p)
-	}
-}
-
-func TestDeviceNumbersSpread(t *testing.T) {
-	e := newEnv(t)
-	pos := map[int]int{}
-	for i := 0; i < 30; i++ {
-		st := startDevice(t, e, "")
-		bindTelegram(t, e, e.b.MemberID)
-		v, err := e.svc.OpenDeviceLogin(context.Background(), st.Nonce, tgUser)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(v.Numbers) != 3 || v.Numbers[0] == v.Numbers[1] || v.Numbers[1] == v.Numbers[2] || v.Numbers[0] == v.Numbers[2] {
-			t.Fatalf("应是三个不同的数：%v", v.Numbers)
-		}
-		pos[slices.Index(v.Numbers, st.MatchNumber)]++
-	}
-	if len(pos) != 3 {
-		t.Fatalf("正确数字应出现在不同位置：%v", pos)
 	}
 }
 

@@ -18,7 +18,7 @@ import (
 const usage = `用法：cohive <命令>
 
   login [--server <地址>] [--tools claude-code,codex] [--workspace <名称>]
-                     登录：终端给出链接和数字，在 Telegram 机器人私聊里点选这个数字即可。
+                     登录：终端给出链接和二维码，在 Telegram 机器人私聊里点“确认登录”即可。
                      在已执行过 cohive init 的仓库里执行时，服务地址、工作空间与工具都从仓库配置读取
   login --code <登录码> --tool <claude-code|codex> [--server <地址>]
                      备用：用私聊机器人 /login 得到的一次性登录码登录

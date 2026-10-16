@@ -18,12 +18,11 @@ CREATE TABLE join_requests (
 -- 同一工作空间同一账号只能有一条待审申请
 CREATE UNIQUE INDEX join_requests_pending ON join_requests (workspace_id, telegram_user_id) WHERE status = 'pending';
 
--- 设备授权登录：终端发起，机器人私聊里选数字确认，终端凭轮询密钥取令牌
+-- 设备授权登录：终端发起，机器人私聊里点确认，终端凭轮询密钥取令牌
 CREATE TABLE device_logins (
     id                 bigserial PRIMARY KEY,
     poll_secret_hash   bytea NOT NULL,
     start_nonce        text NOT NULL UNIQUE,
-    match_number       integer NOT NULL,
     tools              text[] NOT NULL,
     device_name        text NOT NULL DEFAULT '',
     workspace_name     text NOT NULL DEFAULT '',

@@ -26,21 +26,24 @@ func fastDevice(t *testing.T) *string {
 	return opened
 }
 
-// approveDevice 模拟成员在机器人私聊里打开链接并点数字；pick 根据终端数字决定点哪个。
-func (s testServer) approveDevice(t *testing.T, pick func(match int) int) {
+// approveDevice 模拟成员在机器人私聊里打开链接；confirm 为真时点“确认登录”，否则点“取消”。
+func (s testServer) approveDevice(t *testing.T, confirm bool) {
 	ctx := context.Background()
 	for i := 0; i < 300; i++ {
 		var id int64
 		var nonce string
-		var match int
-		err := s.svc.Pool.QueryRow(ctx, `SELECT id, start_nonce, match_number FROM device_logins
-			WHERE status = 'pending' ORDER BY id DESC LIMIT 1`).Scan(&id, &nonce, &match)
+		err := s.svc.Pool.QueryRow(ctx, `SELECT id, start_nonce FROM device_logins
+			WHERE status = 'pending' ORDER BY id DESC LIMIT 1`).Scan(&id, &nonce)
 		if err == nil {
 			if _, err := s.svc.OpenDeviceLogin(ctx, "dl_"+nonce, s.uid); err != nil {
 				t.Error(err)
 				return
 			}
-			_, _ = s.svc.ConfirmDeviceLogin(ctx, id, s.uid, pick(match))
+			if confirm {
+				_, _ = s.svc.ConfirmDeviceLogin(ctx, id, s.uid)
+			} else {
+				_ = s.svc.CancelDeviceLogin(ctx, id, s.uid)
+			}
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -77,7 +80,7 @@ func TestDeviceLoginFromRepo(t *testing.T) {
 		t.Fatalf("应先请用户确认仓库里的服务地址：%v\n%s", err, out)
 	}
 
-	go s.approveDevice(t, func(m int) int { return m })
+	go s.approveDevice(t, true)
 	sub := filepath.Join(repo, "src", "pkg")
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
@@ -94,7 +97,7 @@ func TestDeviceLoginFromRepo(t *testing.T) {
 	if !strings.HasPrefix(*opened, "https://t.me/CohiveBot?start=dl_") || !strings.Contains(out, *opened) {
 		t.Fatalf("应打开并显示确认链接：%q\n%s", *opened, out)
 	}
-	if !strings.Contains(out, "█") || !strings.Contains(out, "点选这个数字") || !strings.Contains(out, "已经配置好") {
+	if !strings.Contains(out, "█") || !strings.Contains(out, "确认登录") || !strings.Contains(out, "已经配置好") {
 		t.Fatalf("应显示二维码、数字和后续提示：%s", out)
 	}
 	if strings.Contains(out, "cohive_") {
@@ -111,14 +114,14 @@ func TestDeviceLoginFromRepo(t *testing.T) {
 	}
 }
 
-func TestDeviceLoginWrongNumber(t *testing.T) {
+func TestDeviceLoginCancelled(t *testing.T) {
 	configDir(t)
 	fastDevice(t)
 	s := newTestServer(t)
-	go s.approveDevice(t, func(m int) int { return m + 1 })
+	go s.approveDevice(t, false)
 	out, err := run(t, "login", "--server", s.url, "--tools", "codex", "--open=false")
 	if err == nil || !strings.Contains(err.Error(), "没有通过") {
-		t.Fatalf("选错数字应失败：%v\n%s", err, out)
+		t.Fatalf("取消应失败：%v\n%s", err, out)
 	}
 }
 
@@ -155,11 +158,11 @@ func TestDeviceLoginRejectsBadLink(t *testing.T) {
 	for _, link := range []string{`\\evil\share\x.exe`, "file:///etc/passwd", "https://t.me/CohiveBot?start=dl_x&y=1", "-a Calculator"} {
 		fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"request_id":1,"poll_secret":"s","match_number":42,"expires_in":600,"link":` + strconv.Quote(link) + `}`))
+			_, _ = w.Write([]byte(`{"request_id":1,"poll_secret":"s","expires_in":600,"link":` + strconv.Quote(link) + `}`))
 		}))
 		out, err := run(t, "login", "--server", fake.URL, "--open=true")
 		fake.Close()
-		if err == nil || *opened != "" || strings.Contains(out, "42") {
+		if err == nil || *opened != "" || strings.Contains(out, "█") {
 			t.Fatalf("非法链接 %q 应拒绝且不打开：%v %q\n%s", link, err, *opened, out)
 		}
 	}

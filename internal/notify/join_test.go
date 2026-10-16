@@ -74,8 +74,8 @@ func (f *fakeCore) ChooseDeviceWorkspace(_ context.Context, id, uid, ws int64) (
 	f.decided = append(f.decided, "choose", id, uid, ws)
 	return f.device, f.deviceErr
 }
-func (f *fakeCore) ConfirmDeviceLogin(_ context.Context, id, uid int64, n int) (core.DeviceView, error) {
-	f.decided = append(f.decided, "confirm", id, uid, n)
+func (f *fakeCore) ConfirmDeviceLogin(_ context.Context, id, uid int64) (core.DeviceView, error) {
+	f.decided = append(f.decided, "confirm", id, uid)
 	return f.device, f.deviceErr
 }
 func (f *fakeCore) CancelDeviceLogin(_ context.Context, id, uid int64) error {
