@@ -36,3 +36,13 @@ func CountAdmins(ctx context.Context, q DBTX, wsID int64) (int, error) {
 	err := q.QueryRow(ctx, `SELECT count(*) FROM members WHERE workspace_id = $1 AND role = 'admin'`, wsID).Scan(&n)
 	return n, err
 }
+
+// LockAdmins 在事务内锁住工作空间的全部管理员行。
+func LockAdmins(ctx context.Context, q DBTX, wsID int64) error {
+	rows, err := q.Query(ctx, `SELECT id FROM members WHERE workspace_id = $1 AND role = 'admin' FOR UPDATE`, wsID)
+	if err != nil {
+		return err
+	}
+	rows.Close()
+	return rows.Err()
+}

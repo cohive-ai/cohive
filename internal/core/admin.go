@@ -19,6 +19,18 @@ func (s *Service) SetRole(ctx context.Context, actor *store.Member, memberID int
 		if err != nil {
 			return err
 		}
+		// 锁住本工作空间的全部管理员行：两名管理员同时互相降级时排队执行，后一个会看到前一个的结果
+		if err := store.LockAdmins(ctx, tx, m.WorkspaceID); err != nil {
+			return err
+		}
+		if actor != nil {
+			// 按库里当前的角色判断，不用请求开始时读到的（可能已被别人降级）
+			fresh, err := store.MemberByID(ctx, tx, actor.ID)
+			if err != nil {
+				return err
+			}
+			actor = &fresh
+		}
 		if err := requireAdmin(actor, m.WorkspaceID); err != nil {
 			return err
 		}

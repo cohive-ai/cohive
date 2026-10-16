@@ -42,7 +42,6 @@ func (e *AmbiguousLoginError) Error() string {
 // 一个固定的哈希，成员不存在时也做一次比较，让响应时间不暴露成员名是否存在。
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("cohive-dummy-password"), bcrypt.DefaultCost)
 
-
 // Session 是新建的网页会话；ID 只在这里出现一次，写进 Cookie。
 type Session struct {
 	ID     string
