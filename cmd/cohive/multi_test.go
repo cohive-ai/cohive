@@ -174,6 +174,11 @@ func TestLegacyCredentials(t *testing.T) {
 	if _, err := run(t, "login", "--server", s.url, "--tools", "claude-code"); err == nil || !strings.Contains(err.Error(), "--force") {
 		t.Fatalf("旧版配对补登应提示 --force：%v", err)
 	}
+	// ann 已是 ops 的在册成员：init 不能误报“不是成员”，应提示旧版配对、重新配对
+	_, err = run(t, "init", "--dir", t.TempDir(), "--server", s.url, "--workspace", "ops", "--tools", "codex")
+	if err == nil || !strings.Contains(err.Error(), "旧版配对") || !strings.Contains(err.Error(), "--force") || strings.Contains(err.Error(), "不是") {
+		t.Fatalf("旧版配对的电脑 init 新工作空间应提示重新配对：%v", err)
+	}
 	opened := fastDevice(t)
 	if _, err := run(t, "web"); err != nil || !strings.HasPrefix(*opened, s.url+"/auth/once/") {
 		t.Fatalf("旧版配对的电脑用设备令牌兼容 cohive web：%v %q", err, *opened)
@@ -198,4 +203,23 @@ func proxyFirstError(t *testing.T, args ...string) string {
 		t.Fatal("转发器没有退出")
 	}
 	return out.String()
+}
+
+// 只有管理员手工签发的令牌（没有配对过这台电脑）时，init 别的工作空间提示配对，而不是“不是成员”。
+func TestInitWithOnlyManualToken(t *testing.T) {
+	configDir(t)
+	s := newTestServer(t)
+	s.joinWorkspace(t, "ops")
+	tok := s.token(t, "codex")
+	var out strings.Builder
+	if err := runCLI(context.Background(), strings.NewReader(tok+"\n"), &out, []string{"login", "--server", s.url, "--token-stdin"}); err != nil {
+		t.Fatalf("手工令牌登录：%v\n%s", err, out.String())
+	}
+	_, err := run(t, "init", "--dir", t.TempDir(), "--workspace", "ops", "--tools", "codex")
+	if err == nil || !strings.Contains(err.Error(), "手工签发") || strings.Contains(err.Error(), "不是") {
+		t.Fatalf("应提示配对这台电脑：%v", err)
+	}
+	if got := proxyFirstError(t, "--server", s.url, "--workspace", "ops", "--tool", "codex"); !strings.Contains(got, "cohive login") || strings.Contains(got, "不是") {
+		t.Fatalf("转发器也应提示登录而不是误报不是成员：%s", got)
+	}
 }

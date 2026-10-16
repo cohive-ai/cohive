@@ -161,7 +161,8 @@ func pickTarget(ctx context.Context, creds *client.Credentials, server, workspac
 		return "", "", fmt.Errorf("本机还没有登录 %s：先执行 cohive login --server %s", srv, srv)
 	}
 	var names []string
-	if dev, ok := creds.Device(srv); ok {
+	dev, hasDev := creds.Device(srv)
+	if hasDev {
 		wss, err := client.DeviceWorkspaces(ctx, srv, dev.Secret)
 		if err != nil {
 			return "", "", err
@@ -184,7 +185,15 @@ func pickTarget(ctx context.Context, creds *client.Credentials, server, workspac
 				return srv, workspace, nil
 			}
 		}
-		return "", "", fmt.Errorf("你还不是工作空间 %s 的成员（或本机没有它的登录）：请联系它的管理员，加入后再执行 cohive init", workspace)
+		// 只有设备密钥能向服务端确认“我在哪些工作空间”；没有它时本机只知道登录过的工作空间，
+		// 不能断定“不是成员”，先说清楚是这台电脑的配对方式不够用
+		if _, legacy := creds.LegacyDevice(srv); legacy {
+			return "", "", fmt.Errorf("这台电脑是旧版配对（没有设备密钥），不能为工作空间 %s 签发令牌：请执行 cohive login --server %s --force 重新配对（需要管理员批准），再执行 cohive init", workspace, srv)
+		}
+		if !hasDev {
+			return "", "", fmt.Errorf("本机没有工作空间 %s 的登录（只有管理员手工签发的令牌）：请执行 cohive login --server %s 配对这台电脑，再执行 cohive init", workspace, srv)
+		}
+		return "", "", fmt.Errorf("你还不是工作空间 %s 的成员：请联系它的管理员，加入后再执行 cohive init", workspace)
 	}
 	switch len(names) {
 	case 0:
