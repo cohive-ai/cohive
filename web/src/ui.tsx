@@ -89,17 +89,20 @@ export function Callout({ children, tone = "amber" }: { children: React.ReactNod
 
 export const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-// 原生 dialog：自带焦点约束与 Esc 关闭
+// 原生 dialog：自带焦点约束与 Esc 关闭。dismissible 为 false 时不允许按 Esc 关闭
+// （例如操作进行中、或内容只显示一次必须先确认），否则浏览器会关掉对话框而页面状态还以为它开着。
 export function Dialog({
   open,
   onClose,
   title,
   children,
+  dismissible = true,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  dismissible?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -114,6 +117,9 @@ export function Dialog({
       ref={ref}
       aria-labelledby={titleId}
       onClose={onClose}
+      onCancel={(e) => {
+        if (!dismissible) e.preventDefault();
+      }}
       className="m-auto w-[min(calc(100vw-2rem),30rem)] rounded-lg border border-line bg-surface p-5 text-ink backdrop:bg-black/40"
     >
       {open && (
@@ -178,7 +184,7 @@ export function ConfirmButton({
       >
         {label}
       </button>
-      <Dialog open={open} onClose={close} title={title}>
+      <Dialog open={open} onClose={close} title={title} dismissible={!busy}>
         <div className="text-sm text-muted">{message}</div>
         <ErrorText>{error}</ErrorText>
         <div className="mt-5 flex justify-end gap-2">
