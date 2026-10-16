@@ -23,7 +23,8 @@ const usage = `用法：cohive <命令>
   login --resume     领取之前等待管理员批准的设备授权
   login --token-stdin --server <地址>
                      备用：从标准输入读入管理员签发的令牌
-  web                在浏览器里免密打开 Cohive 网页（用这台电脑的配对）
+  web [--server <地址>] [--workspace <名称>]
+                     在浏览器里免密打开 Cohive 网页（用这台电脑的配对；在仓库里执行时按仓库配置选择）
   init [--tools claude-code,codex] [--server <地址>] [--workspace <名称>]
                      在当前项目里写入 Cohive 的 MCP 配置、确认规则与 /cohive 技能
   status             列出本机保存的登录（不显示令牌）
