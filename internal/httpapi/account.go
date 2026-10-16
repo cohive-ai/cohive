@@ -57,6 +57,10 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 
 	mux.HandleFunc("POST /api/v1/auth/password", func(w http.ResponseWriter, r *http.Request) {
+		// 只能在网页上改：令牌在终端和编程工具里，不能拿它给没设过密码的成员直接设密码
+		if !sessionOnly(w, r) {
+			return
+		}
 		var in struct {
 			Old string `json:"old_password"`
 			New string `json:"new_password"`
