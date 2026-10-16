@@ -63,7 +63,7 @@ func post(ctx context.Context, server, path, token string, in, out any) (int, er
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode == http.StatusUnauthorized && token != "" {
-		return resp.StatusCode, errors.New("本机保存的令牌无效或已吊销")
+		return resp.StatusCode, errors.New("本机保存的令牌无效或已吊销：请执行 cohive login --force 重新配对这台电脑")
 	}
 	if resp.StatusCode != http.StatusOK {
 		var e struct{ Error string }
