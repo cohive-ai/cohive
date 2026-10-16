@@ -123,7 +123,7 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 	if stale(n, is) {
 		return store.MarkNotificationSkipped(ctx, tx, n.ID, "问题单已有新进展，此通知已过时")
 	}
-	list, err := store.ListMembers(ctx, tx, n.WorkspaceID)
+	list, err := store.ListAllMembers(ctx, tx, n.WorkspaceID)
 	if err != nil {
 		return err
 	}

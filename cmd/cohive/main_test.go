@@ -18,10 +18,11 @@ import (
 )
 
 type testServer struct {
-	url      string
-	svc      *core.Service
-	uid      int64
-	memberID int64
+	url       string
+	svc       *core.Service
+	uid       int64
+	memberID  int64
+	accountID int64
 }
 
 // newTestServer 起一个真实的协作服务，并把成员 lee-codex 绑定到 Telegram 用户编号 42。
@@ -41,13 +42,13 @@ func newTestServer(t *testing.T) testServer {
 		t.Fatal(err)
 	}
 	uid := int64(42)
-	if err := store.SetMemberTelegramUserID(ctx, pool, m.ID, &uid); err != nil {
+	if err := store.SetAccountTelegramUserID(ctx, pool, m.AccountID, &uid); err != nil {
 		t.Fatal(err)
 	}
 	svc := &core.Service{Pool: pool}
 	srv := httptest.NewServer(server.New(svc, fstest.MapFS{}, server.Options{}))
 	t.Cleanup(srv.Close)
-	return testServer{url: srv.URL, svc: svc, uid: uid, memberID: m.ID}
+	return testServer{url: srv.URL, svc: svc, uid: uid, memberID: m.ID, accountID: m.AccountID}
 }
 
 // token 直接为 lee-codex 签发一个不属于设备的令牌（相当于管理员手工签发）。
@@ -63,7 +64,7 @@ func (s testServer) token(t *testing.T, tool string) string {
 // approve 模拟成员在浏览器里授权最近一次待授权的设备。
 func (s testServer) approve(t *testing.T, ok bool) {
 	ctx := context.Background()
-	m, err := store.MemberByID(ctx, s.svc.Pool, s.memberID)
+	m, err := store.AccountByID(ctx, s.svc.Pool, s.accountID)
 	if err != nil {
 		t.Error(err)
 		return
@@ -89,7 +90,7 @@ func (s testServer) adminApprove(t *testing.T) {
 	if err := s.svc.Pool.QueryRow(context.Background(), `SELECT id FROM device_auths WHERE status = 'awaiting_admin'`).Scan(&id); err != nil {
 		t.Fatalf("没有等待批准的设备：%v", err)
 	}
-	if _, err := s.svc.DecideDeviceAuth(context.Background(), nil, id, true); err != nil {
+	if _, err := s.svc.DecideDeviceAuth(context.Background(), nil, 0, id, true); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -10,8 +10,9 @@ import (
 
 // 已废弃的入会与登录方式（群里 /join、私聊 /login 登录码、cohive link、--code、加入审批开关）
 // 不应再出现在面向用户的代码与页面里。
+// “加入申请”在 M5b 重新启用，含义是已有账号凭团队邀请申请加入另一个工作空间（设计稿第 3.3 节），不再列为旧说法。
 func TestNoStaleOnboardingText(t *testing.T) {
-	stale := []string{"/join", "私聊机器人发 /login", "cohive link", "--code", "加入申请", "join-approval", "领取登录码"}
+	stale := []string{"/join", "私聊机器人发 /login", "cohive link", "--code", "join-approval", "领取登录码"}
 	roots := []string{"../../internal", "../../cmd", "../../web/src"}
 	for _, root := range roots {
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {

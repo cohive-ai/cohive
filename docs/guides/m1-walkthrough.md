@@ -61,6 +61,8 @@ export COHIVE_DATABASE_URL='postgres://cohive:cohive@localhost:55432/cohive?sslm
 ./bin/cohive-server service add --name order-api --owner lee-codex
 ```
 
+> `member add` 按登录名建账号（全服务器唯一）并加入工作空间（缺省 `default`，可加 `--workspace`）；同一个账号再加入别的工作空间时用同一个登录名。
+
 ```bash
 ./bin/cohive-server token issue --member lee-claude --tool claude-code
 ```

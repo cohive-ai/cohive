@@ -3,62 +3,64 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
-// ---- 成员 ----
-
-const memberColumns = `id, workspace_id, name, display_name, telegram_username, telegram_user_id, role`
-
-func scanMember(row interface{ Scan(...any) error }) (Member, error) {
-	var m Member
-	err := row.Scan(&m.ID, &m.WorkspaceID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role)
-	return m, notFound(err)
-}
-
-// MemberByID 返回成员。
-func MemberByID(ctx context.Context, q DBTX, id int64) (Member, error) {
-	return scanMember(q.QueryRow(ctx, `SELECT `+memberColumns+` FROM members WHERE id = $1`, id))
-}
-
-// MemberByTelegramUserID 返回工作空间里连接到该 Telegram 账号的成员。
-func MemberByTelegramUserID(ctx context.Context, q DBTX, wsID, tgUserID int64) (Member, error) {
-	return scanMember(q.QueryRow(ctx, `SELECT `+memberColumns+` FROM members
-		WHERE workspace_id = $1 AND telegram_user_id = $2`, wsID, tgUserID))
-}
-
-// HasAdmin 返回工作空间里是否有管理员。
-func HasAdmin(ctx context.Context, q DBTX, wsID int64) (bool, error) {
-	var ok bool
-	err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM members WHERE workspace_id = $1 AND role = 'admin')`, wsID).Scan(&ok)
-	return ok, err
-}
-
 // ---- 设备 ----
 
-// Device 是成员的一台电脑。
+// Device 是账号的一台电脑；设备属于人，可用于他所在的全部工作空间。
 type Device struct {
-	ID         int64
-	MemberID   int64
-	MemberName string // 只读，列表时关联得到
-	Name       string
-	CreatedAt  time.Time
-	RevokedAt  *time.Time
-	Tools      []string // 只读：仍有效的令牌对应的工具
+	ID          int64
+	AccountID   int64
+	AccountName string // 只读，列表时关联得到
+	Name        string
+	CreatedAt   time.Time
+	RevokedAt   *time.Time
+	LastUsedAt  *time.Time
+	HasSecret   bool          // 是否已领取设备密钥（M5 配对的旧设备、已批准未领取的设备没有）
+	Tokens      []DeviceToken // 只读：仍有效的令牌
 }
 
-// CreateDevice 新建设备。
-func CreateDevice(ctx context.Context, q DBTX, memberID int64, name string) (Device, error) {
-	d := Device{MemberID: memberID, Name: name}
-	err := q.QueryRow(ctx, `INSERT INTO devices (member_id, name) VALUES ($1, $2) RETURNING id, created_at`,
-		memberID, name).Scan(&d.ID, &d.CreatedAt)
+// DeviceToken 是设备上一枚有效令牌所属的工作空间与工具。
+type DeviceToken struct {
+	Workspace string
+	Tool      string
+}
+
+// CreateDevice 新建设备（批准设备授权时调用；设备密钥领取时才生成）。
+func CreateDevice(ctx context.Context, q DBTX, accountID int64, name string) (Device, error) {
+	d := Device{AccountID: accountID, Name: name}
+	err := q.QueryRow(ctx, `INSERT INTO devices (account_id, name) VALUES ($1, $2) RETURNING id, created_at`,
+		accountID, name).Scan(&d.ID, &d.CreatedAt)
 	return d, err
 }
 
-// IssueDeviceToken 在设备上为成员的某个工具签发令牌；同一设备同一工具的旧令牌一并吊销。
+// SetDeviceSecret 保存设备密钥的哈希。
+func SetDeviceSecret(ctx context.Context, q DBTX, deviceID int64, secretHash []byte) error {
+	return execOne(ctx, q, `UPDATE devices SET secret_hash = $2 WHERE id = $1`, deviceID, secretHash)
+}
+
+// DeviceBySecret 按设备密钥找到未吊销、账号未停用的设备，并记下使用时间；找不到时返回 ErrUnauthorized。
+func DeviceBySecret(ctx context.Context, q DBTX, secretHash []byte) (Device, Account, error) {
+	var d Device
+	var a Account
+	err := q.QueryRow(ctx, `UPDATE devices d SET last_used_at = now() FROM accounts a
+		WHERE d.secret_hash = $1 AND d.revoked_at IS NULL AND a.id = d.account_id AND a.disabled_at IS NULL
+		RETURNING d.id, d.account_id, d.name, d.created_at, `+accountColumns, secretHash).
+		Scan(&d.ID, &d.AccountID, &d.Name, &d.CreatedAt,
+			&a.ID, &a.Name, &a.DisplayName, &a.TelegramUsername, &a.TelegramUserID, &a.ServerAdmin, &a.DisabledAt, &a.CreatedAt)
+	if errors.Is(notFound(err), ErrNotFound) {
+		return Device{}, Account{}, ErrUnauthorized
+	}
+	d.AccountName, d.HasSecret = a.Name, true
+	return d, a, err
+}
+
+// IssueDeviceToken 在设备上为成员资格的某个工具签发令牌；同一设备、同一成员资格、同一工具的旧令牌一并吊销。
 func IssueDeviceToken(ctx context.Context, q DBTX, memberID, deviceID int64, tool string) (string, error) {
 	if _, err := q.Exec(ctx, `UPDATE tokens SET revoked_at = now()
-		WHERE device_id = $1 AND tool = $2 AND revoked_at IS NULL`, deviceID, tool); err != nil {
+		WHERE device_id = $1 AND member_id = $2 AND tool = $3 AND revoked_at IS NULL`, deviceID, memberID, tool); err != nil {
 		return "", err
 	}
 	plain, id, err := IssueToken(ctx, q, memberID, tool)
@@ -84,7 +86,16 @@ func LockActiveDevice(ctx context.Context, q DBTX, deviceID int64) error {
 	return nil
 }
 
-// RevokeDeviceByID 吊销设备及其令牌（不校验工作空间，供内部清理用）。
+// GetDevice 返回设备（不含令牌列表）。
+func GetDevice(ctx context.Context, q DBTX, id int64) (Device, error) {
+	var d Device
+	err := q.QueryRow(ctx, `SELECT d.id, d.account_id, a.name, d.name, d.created_at, d.revoked_at, d.last_used_at,
+		d.secret_hash IS NOT NULL FROM devices d JOIN accounts a ON a.id = d.account_id WHERE d.id = $1`, id).
+		Scan(&d.ID, &d.AccountID, &d.AccountName, &d.Name, &d.CreatedAt, &d.RevokedAt, &d.LastUsedAt, &d.HasSecret)
+	return d, notFound(err)
+}
+
+// RevokeDeviceByID 吊销设备及其令牌；已吊销时什么都不做。
 func RevokeDeviceByID(ctx context.Context, q DBTX, deviceID int64) error {
 	if _, err := q.Exec(ctx, `UPDATE devices SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL`, deviceID); err != nil {
 		return err
@@ -93,16 +104,27 @@ func RevokeDeviceByID(ctx context.Context, q DBTX, deviceID int64) error {
 	return err
 }
 
-// ListDevices 列出工作空间的设备（含已吊销），可按成员过滤（memberID 为 0 时不过滤）。
-func ListDevices(ctx context.Context, q DBTX, wsID, memberID int64) ([]Device, error) {
-	rows, err := q.Query(ctx, `
-		SELECT d.id, d.member_id, m.name, d.name, d.created_at, d.revoked_at,
-			coalesce(array_agg(t.tool ORDER BY t.tool) FILTER (WHERE t.id IS NOT NULL), '{}')
-		FROM devices d
-		JOIN members m ON m.id = d.member_id
-		LEFT JOIN tokens t ON t.device_id = d.id AND t.revoked_at IS NULL
-		WHERE m.workspace_id = $1 AND ($2 = 0 OR d.member_id = $2)
-		GROUP BY d.id, m.name ORDER BY d.id`, wsID, memberID)
+// RevokeAccountDevices 吊销账号的全部设备与全部令牌（停用时）。
+func RevokeAccountDevices(ctx context.Context, q DBTX, accountID int64) error {
+	if _, err := q.Exec(ctx, `UPDATE devices SET revoked_at = now() WHERE account_id = $1 AND revoked_at IS NULL`, accountID); err != nil {
+		return err
+	}
+	_, err := q.Exec(ctx, `UPDATE tokens t SET revoked_at = now() FROM members m
+		WHERE t.member_id = m.id AND m.account_id = $1 AND t.revoked_at IS NULL`, accountID)
+	return err
+}
+
+const deviceListSQL = `
+	SELECT d.id, d.account_id, a.name, d.name, d.created_at, d.revoked_at, d.last_used_at, d.secret_hash IS NOT NULL,
+		coalesce(array_agg(w.name || '/' || t.tool ORDER BY w.name, t.tool) FILTER (WHERE t.id IS NOT NULL), '{}')
+	FROM devices d
+	JOIN accounts a ON a.id = d.account_id
+	LEFT JOIN tokens t ON t.device_id = d.id AND t.revoked_at IS NULL
+	LEFT JOIN members tm ON tm.id = t.member_id
+	LEFT JOIN workspaces w ON w.id = tm.workspace_id`
+
+func collectDevices(ctx context.Context, q DBTX, where string, args ...any) ([]Device, error) {
+	rows, err := q.Query(ctx, deviceListSQL+` WHERE `+where+` GROUP BY d.id, a.name ORDER BY d.id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -110,26 +132,28 @@ func ListDevices(ctx context.Context, q DBTX, wsID, memberID int64) ([]Device, e
 	var out []Device
 	for rows.Next() {
 		var d Device
-		if err := rows.Scan(&d.ID, &d.MemberID, &d.MemberName, &d.Name, &d.CreatedAt, &d.RevokedAt, &d.Tools); err != nil {
+		var toks []string
+		if err := rows.Scan(&d.ID, &d.AccountID, &d.AccountName, &d.Name, &d.CreatedAt, &d.RevokedAt, &d.LastUsedAt,
+			&d.HasSecret, &toks); err != nil {
 			return nil, err
+		}
+		for _, t := range toks {
+			ws, tool, _ := strings.Cut(t, "/")
+			d.Tokens = append(d.Tokens, DeviceToken{Workspace: ws, Tool: tool})
 		}
 		out = append(out, d)
 	}
 	return out, rows.Err()
 }
 
-// RevokeDevice 吊销工作空间里的设备及其全部令牌；设备不存在或已吊销时返回 ErrNotFound。
-func RevokeDevice(ctx context.Context, q DBTX, wsID, deviceID int64) error {
-	tag, err := q.Exec(ctx, `UPDATE devices d SET revoked_at = now() FROM members m
-		WHERE d.id = $2 AND m.id = d.member_id AND m.workspace_id = $1 AND d.revoked_at IS NULL`, wsID, deviceID)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	_, err = q.Exec(ctx, `UPDATE tokens SET revoked_at = now() WHERE device_id = $1 AND revoked_at IS NULL`, deviceID)
-	return err
+// ListAccountDevices 列出账号的设备（含已吊销）。
+func ListAccountDevices(ctx context.Context, q DBTX, accountID int64) ([]Device, error) {
+	return collectDevices(ctx, q, `d.account_id = $1`, accountID)
+}
+
+// ListWorkspaceDevices 列出工作空间在册成员的设备（含已吊销）。
+func ListWorkspaceDevices(ctx context.Context, q DBTX, wsID int64) ([]Device, error) {
+	return collectDevices(ctx, q, `d.account_id IN (SELECT account_id FROM members WHERE workspace_id = $1 AND status = 'active')`, wsID)
 }
 
 // ---- 邀请 ----
@@ -148,7 +172,7 @@ type Invite struct {
 	Role        string
 	MaxUses     int
 	Uses        int
-	CreatedBy   *int64
+	CreatedBy   *int64 // 账号
 	ExpiresAt   time.Time
 	RevokedAt   *time.Time
 	CreatedAt   time.Time
@@ -228,11 +252,14 @@ const (
 	SignupRejected = "rejected"
 )
 
-// Signup 是团队邀请的注册申请。
+// Signup 是团队邀请的一条待审申请：新人的“注册申请”（有登录名与密码哈希），
+// 或已有账号的“加入申请”（AccountID 非空，Name 等为该账号的）。
 type Signup struct {
 	ID           int64
 	InviteID     int64
 	WorkspaceID  int64
+	AccountID    *int64 // 加入申请时为申请人；注册申请获批后回填
+	Existing     bool   // 是否为已有账号的加入申请
 	Name         string
 	DisplayName  string
 	PasswordHash string
@@ -241,38 +268,66 @@ type Signup struct {
 	CreatedAt    time.Time
 }
 
-const signupColumns = `id, invite_id, workspace_id, name, display_name, password_hash, status, member_id, created_at`
+// 加入申请时名字取账号的：申请行上的 name 为空
+const signupColumns = `s.id, s.invite_id, s.workspace_id, s.account_id, s.name IS NULL,
+	coalesce(s.name, a.name, ''), CASE WHEN s.name IS NULL THEN coalesce(a.display_name, '') ELSE s.display_name END,
+	coalesce(s.password_hash, ''),
+	s.status, s.member_id, s.created_at`
+
+const signupFrom = ` FROM signups s LEFT JOIN accounts a ON a.id = s.account_id `
 
 func scanSignup(row interface{ Scan(...any) error }) (Signup, error) {
 	var s Signup
-	err := row.Scan(&s.ID, &s.InviteID, &s.WorkspaceID, &s.Name, &s.DisplayName, &s.PasswordHash, &s.Status, &s.MemberID, &s.CreatedAt)
+	err := row.Scan(&s.ID, &s.InviteID, &s.WorkspaceID, &s.AccountID, &s.Existing, &s.Name, &s.DisplayName, &s.PasswordHash,
+		&s.Status, &s.MemberID, &s.CreatedAt)
 	return s, notFound(err)
 }
 
-// CreateSignup 保存注册申请。
+// CreateSignup 保存新人的注册申请。
 func CreateSignup(ctx context.Context, q DBTX, s Signup) (Signup, error) {
-	return scanSignup(q.QueryRow(ctx, `INSERT INTO signups (invite_id, workspace_id, name, display_name, password_hash)
-		VALUES ($1, $2, $3, $4, $5) RETURNING `+signupColumns, s.InviteID, s.WorkspaceID, s.Name, s.DisplayName, s.PasswordHash))
+	var id int64
+	if err := q.QueryRow(ctx, `INSERT INTO signups (invite_id, workspace_id, name, display_name, password_hash)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id`, s.InviteID, s.WorkspaceID, s.Name, s.DisplayName, s.PasswordHash).Scan(&id); err != nil {
+		return Signup{}, err
+	}
+	return GetSignup(ctx, q, id)
 }
 
-// GetSignupForUpdate 在事务内读取并锁定注册申请。
+// CreateJoinRequest 保存已有账号的加入申请。
+func CreateJoinRequest(ctx context.Context, q DBTX, inviteID, wsID, accountID int64) (Signup, error) {
+	var id int64
+	if err := q.QueryRow(ctx, `INSERT INTO signups (invite_id, workspace_id, account_id)
+		VALUES ($1, $2, $3) RETURNING id`, inviteID, wsID, accountID).Scan(&id); err != nil {
+		return Signup{}, err
+	}
+	return GetSignup(ctx, q, id)
+}
+
+// GetSignup 读取申请。
+func GetSignup(ctx context.Context, q DBTX, id int64) (Signup, error) {
+	return scanSignup(q.QueryRow(ctx, `SELECT `+signupColumns+signupFrom+`WHERE s.id = $1`, id))
+}
+
+// GetSignupForUpdate 在事务内读取并锁定申请。
 func GetSignupForUpdate(ctx context.Context, q DBTX, id int64) (Signup, error) {
-	return scanSignup(q.QueryRow(ctx, `SELECT `+signupColumns+` FROM signups WHERE id = $1 FOR UPDATE`, id))
+	return scanSignup(q.QueryRow(ctx, `SELECT `+signupColumns+signupFrom+`WHERE s.id = $1 FOR UPDATE OF s`, id))
 }
 
-// PendingSignupByName 返回工作空间里该成员名的待审申请。
-func PendingSignupByName(ctx context.Context, q DBTX, wsID int64, name string) (Signup, error) {
-	return scanSignup(q.QueryRow(ctx, `SELECT `+signupColumns+` FROM signups WHERE workspace_id = $1 AND name = $2 AND status = 'pending'`, wsID, name))
+// PendingSignupByName 返回该登录名的新人待审申请（登录名全局占位）。
+func PendingSignupByName(ctx context.Context, q DBTX, name string) (Signup, error) {
+	return scanSignup(q.QueryRow(ctx, `SELECT `+signupColumns+signupFrom+`
+		WHERE s.name = $1 AND s.status = 'pending' AND s.account_id IS NULL`, name))
 }
 
-// PendingSignupsByName 返回所有工作空间里该成员名的待审申请（登录时提示“待审批”用）。
-func PendingSignupsByName(ctx context.Context, q DBTX, name string) ([]Signup, error) {
-	return listSignups(ctx, q, `SELECT `+signupColumns+` FROM signups WHERE name = $1 AND status = 'pending'`, name)
+// PendingJoinRequest 返回账号在工作空间里待审的加入申请。
+func PendingJoinRequest(ctx context.Context, q DBTX, wsID, accountID int64) (Signup, error) {
+	return scanSignup(q.QueryRow(ctx, `SELECT `+signupColumns+signupFrom+`
+		WHERE s.workspace_id = $1 AND s.account_id = $2 AND s.status = 'pending'`, wsID, accountID))
 }
 
-// ListPendingSignups 列出工作空间的待审注册申请。
+// ListPendingSignups 列出工作空间的待审申请（注册与加入）。
 func ListPendingSignups(ctx context.Context, q DBTX, wsID int64) ([]Signup, error) {
-	return listSignups(ctx, q, `SELECT `+signupColumns+` FROM signups WHERE workspace_id = $1 AND status = 'pending' ORDER BY id`, wsID)
+	return listSignups(ctx, q, `SELECT `+signupColumns+signupFrom+`WHERE s.workspace_id = $1 AND s.status = 'pending' ORDER BY s.id`, wsID)
 }
 
 func listSignups(ctx context.Context, q DBTX, sql string, arg any) ([]Signup, error) {
@@ -292,10 +347,10 @@ func listSignups(ctx context.Context, q DBTX, sql string, arg any) ([]Signup, er
 	return out, rows.Err()
 }
 
-// DecideSignup 写回审批结果。
-func DecideSignup(ctx context.Context, q DBTX, id int64, status string, memberID, decidedBy *int64) error {
-	_, err := q.Exec(ctx, `UPDATE signups SET status = $2, member_id = $3, decided_by = $4, decided_at = now() WHERE id = $1`,
-		id, status, memberID, decidedBy)
+// DecideSignup 写回审批结果；accountID 为获批后的账号（拒绝时为空，加入申请时保持原值）。
+func DecideSignup(ctx context.Context, q DBTX, id int64, status string, accountID, memberID, decidedBy *int64) error {
+	_, err := q.Exec(ctx, `UPDATE signups SET status = $2, account_id = coalesce($3, account_id), member_id = $4,
+		decided_by = $5, decided_at = now() WHERE id = $1`, id, status, accountID, memberID, decidedBy)
 	return err
 }
 
@@ -319,64 +374,29 @@ type DeviceAuth struct {
 	Tools          []string
 	DeviceName     string
 	Status         string
-	MemberID       *int64
-	MemberName     string // 只读，关联得到
-	WorkspaceID    *int64
-	DeviceID       *int64
-	DecidedBy      *int64
+	AccountID      *int64 // 授权的账号（浏览器里点授权后才有）
+	AccountName    string // 只读，关联得到
+	DisplayName    string // 只读，关联得到
+	DeviceID       *int64 // 批准时建的设备
+	DecidedBy      *int64 // 批准的账号
 	CreatedAt      time.Time
 	ExpiresAt      time.Time
 }
 
-const authColumns = `a.id, a.nonce, a.poll_secret_hash, a.tools, a.device_name, a.status, a.member_id, coalesce(m.name, ''),
-	a.workspace_id, a.device_id, a.decided_by, a.created_at, a.expires_at`
+const authColumns = `x.id, x.nonce, x.poll_secret_hash, x.tools, x.device_name, x.status, x.account_id,
+	coalesce(acc.name, ''), coalesce(acc.display_name, ''), x.device_id, x.decided_by, x.created_at, x.expires_at`
 
-const authFrom = ` FROM device_auths a LEFT JOIN members m ON m.id = a.member_id `
+const authFrom = ` FROM device_auths x LEFT JOIN accounts acc ON acc.id = x.account_id `
 
 func scanAuth(row interface{ Scan(...any) error }) (DeviceAuth, error) {
 	var a DeviceAuth
-	err := row.Scan(&a.ID, &a.Nonce, &a.PollSecretHash, &a.Tools, &a.DeviceName, &a.Status, &a.MemberID, &a.MemberName,
-		&a.WorkspaceID, &a.DeviceID, &a.DecidedBy, &a.CreatedAt, &a.ExpiresAt)
+	err := row.Scan(&a.ID, &a.Nonce, &a.PollSecretHash, &a.Tools, &a.DeviceName, &a.Status, &a.AccountID, &a.AccountName,
+		&a.DisplayName, &a.DeviceID, &a.DecidedBy, &a.CreatedAt, &a.ExpiresAt)
 	return a, notFound(err)
 }
 
-// CreateDeviceAuth 保存设备授权请求。
-func CreateDeviceAuth(ctx context.Context, q DBTX, a DeviceAuth) (int64, error) {
-	var id int64
-	err := q.QueryRow(ctx, `INSERT INTO device_auths (nonce, poll_secret_hash, tools, device_name, expires_at)
-		VALUES ($1, $2, $3, $4, $5) RETURNING id`, a.Nonce, a.PollSecretHash, a.Tools, a.DeviceName, a.ExpiresAt).Scan(&id)
-	return id, err
-}
-
-// GetDeviceAuth 按编号读取（forUpdate 为真时锁行）。
-func GetDeviceAuth(ctx context.Context, q DBTX, id int64, forUpdate bool) (DeviceAuth, error) {
-	sql := `SELECT ` + authColumns + authFrom + `WHERE a.id = $1`
-	if forUpdate {
-		sql += ` FOR UPDATE OF a`
-	}
-	return scanAuth(q.QueryRow(ctx, sql, id))
-}
-
-// DeviceAuthByNonce 按授权页参数读取（forUpdate 为真时锁行）。
-func DeviceAuthByNonce(ctx context.Context, q DBTX, nonce string, forUpdate bool) (DeviceAuth, error) {
-	sql := `SELECT ` + authColumns + authFrom + `WHERE a.nonce = $1`
-	if forUpdate {
-		sql += ` FOR UPDATE OF a`
-	}
-	return scanAuth(q.QueryRow(ctx, sql, nonce))
-}
-
-// UpdateDeviceAuth 写回状态、成员、工作空间、设备与审批人。
-func UpdateDeviceAuth(ctx context.Context, q DBTX, a DeviceAuth) error {
-	_, err := q.Exec(ctx, `UPDATE device_auths SET status = $2, member_id = $3, workspace_id = $4, device_id = $5,
-		decided_by = $6, expires_at = $7 WHERE id = $1`, a.ID, a.Status, a.MemberID, a.WorkspaceID, a.DeviceID, a.DecidedBy, a.ExpiresAt)
-	return err
-}
-
-// ListAwaitingDeviceAuths 列出工作空间里等待管理员批准的设备。
-func ListAwaitingDeviceAuths(ctx context.Context, q DBTX, wsID int64) ([]DeviceAuth, error) {
-	rows, err := q.Query(ctx, `SELECT `+authColumns+authFrom+`WHERE a.workspace_id = $1 AND a.status = 'awaiting_admin'
-		AND a.expires_at > now() ORDER BY a.id`, wsID)
+func collectAuths(ctx context.Context, q DBTX, sql string, args ...any) ([]DeviceAuth, error) {
+	rows, err := q.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -392,18 +412,59 @@ func ListAwaitingDeviceAuths(ctx context.Context, q DBTX, wsID int64) ([]DeviceA
 	return out, rows.Err()
 }
 
-// CountEverDevices 返回成员有过的设备数（含已吊销）。首台设备免审只看“从未有过设备”，
-// 吊销全部设备后再配对不算首台。
-func CountEverDevices(ctx context.Context, q DBTX, memberID int64) (int, error) {
-	var n int
-	err := q.QueryRow(ctx, `SELECT count(*) FROM devices WHERE member_id = $1`, memberID).Scan(&n)
-	return n, err
+// CreateDeviceAuth 保存设备授权请求。
+func CreateDeviceAuth(ctx context.Context, q DBTX, a DeviceAuth) (int64, error) {
+	var id int64
+	err := q.QueryRow(ctx, `INSERT INTO device_auths (nonce, poll_secret_hash, tools, device_name, expires_at)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id`, a.Nonce, a.PollSecretHash, a.Tools, a.DeviceName, a.ExpiresAt).Scan(&id)
+	return id, err
 }
 
-// LockMember 在事务内锁住成员行，让同一成员的并发操作（例如两次设备授权）排队执行。
-func LockMember(ctx context.Context, q DBTX, memberID int64) error {
-	var id int64
-	return notFound(q.QueryRow(ctx, `SELECT id FROM members WHERE id = $1 FOR UPDATE`, memberID).Scan(&id))
+// GetDeviceAuth 按编号读取（forUpdate 为真时锁行）。
+func GetDeviceAuth(ctx context.Context, q DBTX, id int64, forUpdate bool) (DeviceAuth, error) {
+	sql := `SELECT ` + authColumns + authFrom + `WHERE x.id = $1`
+	if forUpdate {
+		sql += ` FOR UPDATE OF x`
+	}
+	return scanAuth(q.QueryRow(ctx, sql, id))
+}
+
+// DeviceAuthByNonce 按授权页参数读取（forUpdate 为真时锁行）。
+func DeviceAuthByNonce(ctx context.Context, q DBTX, nonce string, forUpdate bool) (DeviceAuth, error) {
+	sql := `SELECT ` + authColumns + authFrom + `WHERE x.nonce = $1`
+	if forUpdate {
+		sql += ` FOR UPDATE OF x`
+	}
+	return scanAuth(q.QueryRow(ctx, sql, nonce))
+}
+
+// UpdateDeviceAuth 写回状态、账号、设备与审批人。
+func UpdateDeviceAuth(ctx context.Context, q DBTX, a DeviceAuth) error {
+	_, err := q.Exec(ctx, `UPDATE device_auths SET status = $2, account_id = $3, device_id = $4,
+		decided_by = $5, expires_at = $6 WHERE id = $1`, a.ID, a.Status, a.AccountID, a.DeviceID, a.DecidedBy, a.ExpiresAt)
+	return err
+}
+
+// ListAwaitingDeviceAuths 列出等待管理员批准的设备申请：wsID 非 0 时只列申请人在该工作空间在册的。
+func ListAwaitingDeviceAuths(ctx context.Context, q DBTX, wsID int64) ([]DeviceAuth, error) {
+	return collectAuths(ctx, q, `SELECT `+authColumns+authFrom+`WHERE x.status = 'awaiting_admin' AND x.expires_at > now()
+		AND ($1 = 0 OR x.account_id IN (SELECT account_id FROM members WHERE workspace_id = $1 AND status = 'active'))
+		ORDER BY x.id`, wsID)
+}
+
+// DenyPendingDeviceAuths 把账号等待中的设备申请改为拒绝（停用时）。
+func DenyPendingDeviceAuths(ctx context.Context, q DBTX, accountID int64) error {
+	_, err := q.Exec(ctx, `UPDATE device_auths SET status = 'denied'
+		WHERE account_id = $1 AND status IN ('pending', 'awaiting_admin')`, accountID)
+	return err
+}
+
+// CountEverDevices 返回账号有过的设备数（含已吊销、已批准未领取的）。首台设备免审只看“从未有过设备”，
+// 吊销全部设备后再配对不算首台。
+func CountEverDevices(ctx context.Context, q DBTX, accountID int64) (int, error) {
+	var n int
+	err := q.QueryRow(ctx, `SELECT count(*) FROM devices WHERE account_id = $1`, accountID).Scan(&n)
+	return n, err
 }
 
 // ---- 通讯工具连接 ----
@@ -419,7 +480,7 @@ const (
 // LinkRequest 是一次通讯工具连接请求。
 type LinkRequest struct {
 	ID        int64
-	MemberID  int64
+	AccountID int64
 	Provider  string
 	Nonce     string
 	Status    string
@@ -427,18 +488,18 @@ type LinkRequest struct {
 	ExpiresAt time.Time
 }
 
-const linkColumns = `id, member_id, provider, nonce, status, detail, expires_at`
+const linkColumns = `id, account_id, provider, nonce, status, detail, expires_at`
 
 func scanLink(row interface{ Scan(...any) error }) (LinkRequest, error) {
 	var l LinkRequest
-	err := row.Scan(&l.ID, &l.MemberID, &l.Provider, &l.Nonce, &l.Status, &l.Detail, &l.ExpiresAt)
+	err := row.Scan(&l.ID, &l.AccountID, &l.Provider, &l.Nonce, &l.Status, &l.Detail, &l.ExpiresAt)
 	return l, notFound(err)
 }
 
 // CreateLinkRequest 保存连接请求。
 func CreateLinkRequest(ctx context.Context, q DBTX, l LinkRequest) (LinkRequest, error) {
-	return scanLink(q.QueryRow(ctx, `INSERT INTO link_requests (member_id, provider, nonce, expires_at)
-		VALUES ($1, $2, $3, $4) RETURNING `+linkColumns, l.MemberID, l.Provider, l.Nonce, l.ExpiresAt))
+	return scanLink(q.QueryRow(ctx, `INSERT INTO link_requests (account_id, provider, nonce, expires_at)
+		VALUES ($1, $2, $3, $4) RETURNING `+linkColumns, l.AccountID, l.Provider, l.Nonce, l.ExpiresAt))
 }
 
 // LinkRequestByNonceForUpdate 按链接参数读取并锁定连接请求。
@@ -447,13 +508,50 @@ func LinkRequestByNonceForUpdate(ctx context.Context, q DBTX, provider, nonce st
 		WHERE provider = $1 AND nonce = $2 FOR UPDATE`, provider, nonce))
 }
 
-// GetLinkRequest 读取成员自己的连接请求。
-func GetLinkRequest(ctx context.Context, q DBTX, memberID, id int64) (LinkRequest, error) {
-	return scanLink(q.QueryRow(ctx, `SELECT `+linkColumns+` FROM link_requests WHERE id = $1 AND member_id = $2`, id, memberID))
+// GetLinkRequest 读取账号自己的连接请求。
+func GetLinkRequest(ctx context.Context, q DBTX, accountID, id int64) (LinkRequest, error) {
+	return scanLink(q.QueryRow(ctx, `SELECT `+linkColumns+` FROM link_requests WHERE id = $1 AND account_id = $2`, id, accountID))
 }
 
 // FinishLinkRequest 写回连接结果。
 func FinishLinkRequest(ctx context.Context, q DBTX, id int64, status, detail string) error {
 	_, err := q.Exec(ctx, `UPDATE link_requests SET status = $2, detail = $3 WHERE id = $1`, id, status, detail)
 	return err
+}
+
+// ---- 群里的审批消息 ----
+
+// BotPost 是机器人在某个群里发的一条审批消息。
+type BotPost struct {
+	Kind        string
+	RefID       int64
+	WorkspaceID int64
+	ChatID      int64
+	MessageID   int64
+}
+
+// InsertBotPost 记下审批消息，处理后据此把各群里的消息改成结果。
+func InsertBotPost(ctx context.Context, q DBTX, p BotPost) error {
+	_, err := q.Exec(ctx, `INSERT INTO bot_posts (kind, ref_id, workspace_id, chat_id, message_id) VALUES ($1, $2, $3, $4, $5)`,
+		p.Kind, p.RefID, p.WorkspaceID, p.ChatID, p.MessageID)
+	return err
+}
+
+// ListBotPosts 列出某条申请的审批消息。
+func ListBotPosts(ctx context.Context, q DBTX, kind string, refID int64) ([]BotPost, error) {
+	rows, err := q.Query(ctx, `SELECT kind, ref_id, workspace_id, chat_id, message_id FROM bot_posts
+		WHERE kind = $1 AND ref_id = $2 ORDER BY id`, kind, refID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BotPost
+	for rows.Next() {
+		var p BotPost
+		if err := rows.Scan(&p.Kind, &p.RefID, &p.WorkspaceID, &p.ChatID, &p.MessageID); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }

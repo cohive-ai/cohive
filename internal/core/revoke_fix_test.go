@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -13,17 +12,17 @@ import (
 func TestRevokedBeforeDelivery(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
-	me, _ := store.MemberByID(ctx, e.svc.Pool, e.a.MemberID)
+	me := acct(t, e, e.a)
 	st, _ := e.svc.StartDeviceAuth(ctx, []string{"codex"}, "a")
 	a, err := e.svc.AuthorizeDevice(ctx, me, st.Nonce, true)
 	if err != nil || a.DeviceID == nil {
 		t.Fatalf("授权：%+v %v", a, err)
 	}
-	if err := e.svc.RevokeDevice(ctx, me, *a.DeviceID); err != nil {
+	if err := e.svc.RevokeDevice(ctx, me, 0, *a.DeviceID); err != nil {
 		t.Fatal(err)
 	}
 	p, err := e.svc.PollDeviceAuth(ctx, st.RequestID, st.PollSecret)
-	if err != nil || p.Status != store.AuthDenied || p.Tokens != nil {
+	if err != nil || p.Status != store.AuthDenied || p.Workspaces != nil || p.DeviceSecret != "" {
 		t.Fatalf("设备已吊销，不应交付令牌：%+v %v", p, err)
 	}
 	var n int
@@ -36,13 +35,16 @@ func TestRevokedBeforeDelivery(t *testing.T) {
 func TestTokenOfRevokedDeviceRejected(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
-	me, _ := store.MemberByID(ctx, e.svc.Pool, e.a.MemberID)
+	me := acct(t, e, e.a)
 	st, _ := e.svc.StartDeviceAuth(ctx, []string{"codex"}, "a")
 	if _, err := e.svc.AuthorizeDevice(ctx, me, st.Nonce, true); err != nil {
 		t.Fatal(err)
 	}
 	p, _ := e.svc.PollDeviceAuth(ctx, st.RequestID, st.PollSecret)
-	who, err := store.LookupToken(ctx, e.svc.Pool, p.Tokens["codex"])
+	if _, err := store.LookupToken(ctx, e.svc.Pool, tokenOf(p, "default", "codex")); err != nil {
+		t.Fatal(err)
+	}
+	dev, _, err := e.svc.AuthenticateDevice(ctx, p.DeviceSecret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,10 +52,10 @@ func TestTokenOfRevokedDeviceRejected(t *testing.T) {
 	if _, err := e.svc.Pool.Exec(ctx, `UPDATE devices SET revoked_at = now() WHERE id = $1`, p.DeviceID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.LookupToken(ctx, e.svc.Pool, p.Tokens["codex"]); !errors.Is(err, store.ErrUnauthorized) {
+	if _, err := store.LookupToken(ctx, e.svc.Pool, tokenOf(p, "default", "codex")); !errors.Is(err, store.ErrUnauthorized) {
 		t.Fatalf("设备已吊销的令牌应无效：%v", err)
 	}
-	if _, err := e.svc.AddDeviceTools(ctx, who, []string{"claude-code"}); !errors.Is(err, core.ErrNoDevice) {
+	if _, err := e.svc.IssueWorkspaceTokens(ctx, dev, "default", []string{"claude-code"}); !errors.Is(err, store.ErrUnauthorized) {
 		t.Fatalf("已吊销的设备不能补签：%v", err)
 	}
 }
@@ -62,7 +64,7 @@ func TestTokenOfRevokedDeviceRejected(t *testing.T) {
 func TestApprovedButExpiredRevokesDevice(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
-	me, _ := store.MemberByID(ctx, e.svc.Pool, e.a.MemberID)
+	me := acct(t, e, e.a)
 	st, _ := e.svc.StartDeviceAuth(ctx, []string{"codex"}, "a")
 	a, err := e.svc.AuthorizeDevice(ctx, me, st.Nonce, true)
 	if err != nil {
@@ -71,7 +73,7 @@ func TestApprovedButExpiredRevokesDevice(t *testing.T) {
 	if _, err := e.svc.Pool.Exec(ctx, `UPDATE device_auths SET expires_at = now() - interval '1 second' WHERE id = $1`, st.RequestID); err != nil {
 		t.Fatal(err)
 	}
-	if p, _ := e.svc.PollDeviceAuth(ctx, st.RequestID, st.PollSecret); p.Status != store.AuthExpired || p.Tokens != nil {
+	if p, _ := e.svc.PollDeviceAuth(ctx, st.RequestID, st.PollSecret); p.Status != store.AuthExpired || p.Workspaces != nil {
 		t.Fatalf("过期：%+v", p)
 	}
 	var revoked bool

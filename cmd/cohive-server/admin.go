@@ -10,12 +10,13 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// admin 处理 workspace、member、token、service 四组管理命令。
-// 除 workspace 组外都可用 --workspace 指定工作空间，缺省为 default。
+// admin 处理 workspace、account、member、token、service 几组管理命令。
+// member、token、service 组可用 --workspace 指定工作空间，缺省为 default。
 func admin(ctx context.Context, out io.Writer, args []string) error {
 	if len(args) < 2 {
 		fmt.Fprint(out, usage)
@@ -31,6 +32,9 @@ func admin(ctx context.Context, out io.Writer, args []string) error {
 	if group == "workspace" {
 		return workspaceCmd(ctx, out, pool, sub, rest)
 	}
+	if group == "account" {
+		return accountCmd(ctx, out, pool, sub, rest)
+	}
 	wsName, rest, err := extractWorkspace(rest)
 	if err != nil {
 		return err
@@ -44,7 +48,9 @@ func admin(ctx context.Context, out io.Writer, args []string) error {
 	case "member add":
 		return memberAdd(ctx, out, pool, ws, rest)
 	case "member list":
-		return memberList(ctx, out, pool, ws)
+		return memberList(ctx, out, pool, ws, rest)
+	case "member remove":
+		return memberRemove(ctx, out, pool, ws, rest)
 	case "member set":
 		return memberSet(ctx, out, pool, ws, rest)
 	case "token issue":
@@ -116,48 +122,132 @@ func required(pairs ...string) error {
 }
 
 func memberAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
-	var name, display string
+	var name, display, role string
 	if err := parse("member add", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&name, "name", "", "成员名（登录与指派时使用）")
-		fs.StringVar(&display, "display", "", "显示名")
+		fs.StringVar(&name, "name", "", "登录名（全服务器唯一，登录与指派时使用）")
+		fs.StringVar(&display, "display", "", "显示名（新建账号时使用）")
+		fs.StringVar(&role, "role", store.RoleMember, "角色：admin 或 member")
 	}); err != nil {
 		return err
 	}
 	if err := required("name", name); err != nil {
 		return err
 	}
-	if _, err := store.MemberByName(ctx, pool, ws, name); err == nil {
-		return fmt.Errorf("成员 %q 已存在", name)
+	if role != store.RoleAdmin && role != store.RoleMember {
+		return fmt.Errorf("角色只能是 admin 或 member，收到 %q", role)
 	}
-	m, err := store.CreateMember(ctx, pool, ws, name, display)
+	if err := core.CheckName(name); err != nil {
+		return err
+	}
+	acc, err := store.AccountByName(ctx, pool, name)
+	created := false
+	if errors.Is(err, store.ErrNotFound) {
+		acc, err = store.CreateAccount(ctx, pool, name, display)
+		created = true
+	}
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "已添加成员 %s（编号 %d）\n", m.Name, m.ID)
+	if acc.Disabled() {
+		return fmt.Errorf("账号 %s 已停用，不能加入", name)
+	}
+	m, err := store.AddMembership(ctx, pool, acc.ID, ws, role, nil)
+	if errors.Is(err, store.ErrAlreadyMember) {
+		return fmt.Errorf("%s 已经是这个工作空间的成员", name)
+	}
+	if err != nil {
+		return err
+	}
+	if created {
+		fmt.Fprintf(out, "已新建账号 %s 并加入工作空间（成员编号 %d）。账号还没有密码，可用 admin reset-password 生成\n", m.Name, m.ID)
+	} else {
+		fmt.Fprintf(out, "已把账号 %s 加入工作空间（成员编号 %d）\n", m.Name, m.ID)
+	}
 	return nil
 }
 
-func memberList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64) error {
-	list, err := store.ListMembers(ctx, pool, ws)
+func memberList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
+	var all bool
+	if err := parse("member list", args, func(fs *flag.FlagSet) {
+		fs.BoolVar(&all, "all", false, "包括已移出的")
+	}); err != nil {
+		return err
+	}
+	list, err := store.ListAllMembers(ctx, pool, ws)
 	if err != nil {
 		return err
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "编号\t成员名\t显示名\t角色\tTelegram 用户名\tTelegram 编号")
+	fmt.Fprintln(tw, "编号\t登录名\t显示名\t角色\t状态\tTelegram 用户名\tTelegram 编号")
 	for _, m := range list {
+		if !all && m.Status != store.MemberActive {
+			continue
+		}
 		tgID := ""
 		if m.TelegramUserID != nil {
 			tgID = strconv.FormatInt(*m.TelegramUserID, 10)
 		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\n", m.ID, m.Name, m.DisplayName, roleLabel(m.Role), m.TelegramUsername, tgID)
+		state := "在册"
+		switch {
+		case m.Status != store.MemberActive:
+			state = "已移出"
+		case m.AccountDisabled:
+			state = "已停用"
+		}
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", m.ID, m.Name, m.DisplayName, roleLabel(m.Role), state, m.TelegramUsername, tgID)
 	}
 	return tw.Flush()
+}
+
+func memberRemove(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
+	var name, to, as string
+	if err := parse("member remove", args, func(fs *flag.FlagSet) {
+		fs.StringVar(&name, "name", "", "要移出的成员登录名")
+		fs.StringVar(&to, "handover-to", "", "接手人登录名：名下待处理问题单与服务全部转给他")
+		fs.StringVar(&as, "as", "", "记作操作人的本工作空间管理员登录名")
+	}); err != nil {
+		return err
+	}
+	if err := required("name", name, "handover-to", to, "as", as); err != nil {
+		return err
+	}
+	svc := &core.Service{Pool: pool}
+	m, err := store.MemberByName(ctx, pool, ws, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("成员 %q 不存在或已移出", name)
+	}
+	if err != nil {
+		return err
+	}
+	r, err := store.MemberByName(ctx, pool, ws, to)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("接手人 %q 不是这个工作空间的成员", to)
+	}
+	if err != nil {
+		return err
+	}
+	h, err := svc.GetHandover(ctx, nil, ws, m.ID)
+	if err != nil {
+		return err
+	}
+	plan := core.HandoverPlan{As: as}
+	for _, it := range h.Issues {
+		plan.Issues = append(plan.Issues, core.PlanIssue{IssueID: it.IssueID, As: it.As, ToMemberID: r.ID, ExpectedVersion: it.Version})
+	}
+	for _, n := range h.Services {
+		plan.Services = append(plan.Services, core.PlanService{Name: n, ToMemberID: r.ID})
+	}
+	if err := svc.ApplyHandover(ctx, nil, ws, m.ID, plan, true); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "已移出 %s：%d 张问题单、%d 个服务转给 %s，他在这个工作空间的令牌已吊销\n", name, len(plan.Issues), len(plan.Services), to)
+	return nil
 }
 
 func tokenIssue(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
 	var member, tool string
 	if err := parse("token issue", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&member, "member", "", "成员名")
+		fs.StringVar(&member, "member", "", "登录名")
 		fs.StringVar(&tool, "tool", "", "工具名，例如 claude-code、codex")
 	}); err != nil {
 		return err
@@ -220,7 +310,7 @@ func serviceAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 	var name, owner string
 	if err := parse("service add", args, func(fs *flag.FlagSet) {
 		fs.StringVar(&name, "name", "", "服务名")
-		fs.StringVar(&owner, "owner", "", "负责人成员名")
+		fs.StringVar(&owner, "owner", "", "负责人的登录名")
 	}); err != nil {
 		return err
 	}
@@ -233,6 +323,9 @@ func serviceAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 	}
 	if err != nil {
 		return err
+	}
+	if m.AccountDisabled {
+		return fmt.Errorf("成员 %q 已停用，不能登记为负责人", owner)
 	}
 	if err := store.UpsertService(ctx, pool, ws, name, m.ID); err != nil {
 		return err

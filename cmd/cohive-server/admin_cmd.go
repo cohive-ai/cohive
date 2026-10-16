@@ -17,10 +17,9 @@ func adminCmd(ctx context.Context, out io.Writer, args []string) error {
 		fmt.Fprint(out, usage)
 		return errors.New("admin 只支持 reset-password")
 	}
-	var name, workspace string
+	var name string
 	fs := flag.NewFlagSet("admin reset-password", flag.ContinueOnError)
-	fs.StringVar(&name, "name", "", "成员名")
-	fs.StringVar(&workspace, "workspace", "default", "工作空间名")
+	fs.StringVar(&name, "name", "", "登录名")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -32,17 +31,13 @@ func adminCmd(ctx context.Context, out io.Writer, args []string) error {
 		return err
 	}
 	defer pool.Close()
-	wsID, err := resolveWorkspace(ctx, pool, workspace)
-	if err != nil {
-		return err
-	}
-	pw, err := (&core.Service{Pool: pool}).ResetPassword(ctx, wsID, name)
+	pw, err := (&core.Service{Pool: pool}).ResetPassword(ctx, name)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("工作空间 %s 里没有成员 %s", workspace, name)
+		return fmt.Errorf("没有登录名为 %s 的账号", name)
 	}
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "已重置 %s 的密码，新密码（只显示这一次）：\n\n  %s\n\n登录网页后须立即修改；该成员原有的网页登录已全部失效。\n", name, pw)
+	fmt.Fprintf(out, "已重置 %s 的密码，新密码（只显示这一次）：\n\n  %s\n\n登录网页后须立即修改；该账号原有的网页登录已全部失效。\n", name, pw)
 	return nil
 }

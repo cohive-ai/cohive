@@ -104,6 +104,7 @@ export interface Issue {
   updated_at: string;
 }
 
+
 export interface BoardIssue extends Issue {
   holder?: string;
   needs: string;
@@ -112,6 +113,8 @@ export interface BoardIssue extends Issue {
 export interface Member {
   name: string;
   display_name?: string;
+  // 账号已被服务器管理员停用（成员资格仍在册）
+  disabled?: boolean;
 }
 
 export interface Board {
@@ -131,35 +134,59 @@ export interface IssueEvent {
   payload?: Record<string, unknown>;
 }
 
-export interface Me {
-  member: string;
+export type Role = "admin" | "member";
+
+// 账号所在的一个工作空间及他在里面的角色
+export interface WorkspaceRef {
+  name: string;
+  role: Role | string;
+}
+
+// 全局账号：一个人一个账号，可以是多个工作空间的成员
+export interface Account {
+  id: number;
+  name: string;
   display_name?: string;
-  workspace: string;
-  role: string;
-  tool: string;
-  must_change_password: boolean;
+  server_admin: boolean;
+  disabled: boolean;
   has_password: boolean;
   telegram?: { username?: string; linked: boolean };
+}
+
+export interface Me {
+  account: Account;
+  must_change_password: boolean;
   // 本次登录方式：password 账号密码、device 已配对电脑免密（cohive web）、token 编程工具令牌
   login_method?: "password" | "device" | "token";
+  tool: string;
+  workspaces: WorkspaceRef[];
 }
 
 export interface LoginResult {
-  member: string;
-  workspace: string;
-  role: string;
+  account: Account;
   must_change_password: boolean;
+  workspaces: WorkspaceRef[];
 }
 
 export interface InviteInfo {
   workspace: string;
   kind: string;
+  role?: string;
   valid: boolean;
+  // 带着网页会话打开时才有
+  signed_in_as?: string;
+  already_member?: boolean;
 }
 
 export interface RegisterResult {
   status: "active" | "pending";
-  member?: string;
+  account?: Account;
+  workspace?: WorkspaceRef;
+}
+
+export interface AcceptResult {
+  status: "active" | "pending";
+  workspace: { name: string; role?: string };
 }
 
 // 工具列表：约定里没写明是数组还是逗号分隔的字符串，两种都接受
@@ -171,18 +198,24 @@ export interface DeviceAuth {
   created_at: string;
   status: string;
   first_device: boolean;
+  // 批准后这台电脑可用于的工作空间（本人在册的全部工作空间）
+  workspaces?: string[];
+}
+
+export interface DeviceToken {
+  workspace: string;
+  tool: string;
 }
 
 export interface Device {
   id: number;
+  account?: string;
   name: string;
   created_at: string;
   revoked_at?: string | null;
-  tools: Tools;
-}
-
-export interface AdminDevice extends Device {
-  member: string;
+  last_used_at?: string | null;
+  tokens?: DeviceToken[] | null;
+  workspaces?: string[] | null;
 }
 
 export interface LinkStart {
@@ -197,6 +230,8 @@ export interface LinkStatus {
 
 export interface PendingSignup {
   id: number;
+  // new 新人注册；existing 已有账号申请加入
+  kind: "new" | "existing" | string;
   name: string;
   display_name?: string;
   created_at: string;
@@ -204,21 +239,57 @@ export interface PendingSignup {
 
 export interface PendingDevice {
   id: number;
-  member: string;
+  account: string;
+  display_name?: string;
   device_name: string;
   tools: Tools;
   created_at: string;
+  workspaces?: string[] | null;
 }
 
 export interface AdminMember {
-  id: number;
-  name: string;
+  member_id: number;
+  account: string;
   display_name?: string;
   role: string;
+  // active 在册；removed 已移出
+  status: string;
+  disabled: boolean;
   telegram_username?: string;
   telegram_linked: boolean;
   devices: number;
   has_password: boolean;
+  pending_issues: number;
+  owned_services: number;
+}
+
+export interface AccountLookup {
+  name: string;
+  display_name?: string;
+  member_status: "none" | "active" | "removed";
+  disabled: boolean;
+}
+
+export interface HandoverIssue {
+  id: number;
+  title: string;
+  status: string;
+  status_label: string;
+  // owner 他是负责人；source 他是发起人
+  as: "owner" | "source";
+  version: number;
+}
+
+export interface Handover {
+  member_id: number;
+  account: string;
+  issues: HandoverIssue[];
+  services: { name: string }[];
+}
+
+export interface HandoverPlan {
+  issues: { id: number; as: "owner" | "source"; to_member_id: number; expected_version: number }[];
+  services: { name: string; to_member_id: number }[];
 }
 
 export interface Invite {
@@ -254,30 +325,55 @@ export interface WorkspaceSettings {
   bot_enabled: boolean;
 }
 
+export interface ServerWorkspace {
+  name: string;
+  created_at: string;
+  members: number;
+  admins: string[] | null;
+  open_issues: number;
+  telegram_bound: boolean;
+  i_am_member: boolean;
+}
+
+export interface ServerAccount {
+  name: string;
+  display_name?: string;
+  server_admin: boolean;
+  disabled: boolean;
+  telegram_linked: boolean;
+  devices: number;
+  workspaces: { name: string; role: string; status: string }[] | null;
+}
+
+// 工作空间内接口的前缀
+const w = (ws: string) => `/api/v1/w/${seg(ws)}`;
+const adm = (ws: string) => `${w(ws)}/admin`;
+const srv = "/api/v1/server";
+
 export const api = {
-  // 看板与问题单
-  board: () => request<Board>("/api/v1/board"),
-  issues: (params: { q?: string; status?: string }) => {
+  // 看板与问题单（工作空间内）
+  board: (ws: string) => request<Board>(`${w(ws)}/board`),
+  issues: (ws: string, params: { q?: string; status?: string }) => {
     const qs = new URLSearchParams();
     if (params.q) qs.set("q", params.q);
     if (params.status) qs.set("status", params.status);
     const s = qs.toString();
-    return request<{ items: Issue[] }>(`/api/v1/issues${s ? `?${s}` : ""}`);
+    return request<{ items: Issue[] }>(`${w(ws)}/issues${s ? `?${s}` : ""}`);
   },
-  issue: (id: number) => request<{ issue: Issue; events: IssueEvent[] }>(`/api/v1/issues/${id}`),
+  issue: (ws: string, id: number) => request<{ issue: Issue; events: IssueEvent[] }>(`${w(ws)}/issues/${seg(id)}`),
 
   // 账号
   me: () => request<Me>("/api/v1/me"),
-  login: (body: { name: string; password: string; workspace?: string }) =>
-    post<LoginResult>("/api/v1/auth/login", body, false),
+  login: (body: { name: string; password: string }) => post<LoginResult>("/api/v1/auth/login", body, false),
   logout: () => post("/api/v1/auth/logout", undefined, false),
   changePassword: (body: { old_password: string; new_password: string }) =>
     post("/api/v1/auth/password", body, false),
 
-  // 邀请与注册（公开）
+  // 邀请、注册与加入
   invite: (code: string) => request<InviteInfo>(`/api/v1/invites/${seg(code)}`, { session: false }),
   register: (body: { code: string; name: string; display_name: string; password: string }) =>
     post<RegisterResult>("/api/v1/register", body, false),
+  acceptInvite: (code: string) => post<AcceptResult>(`/api/v1/invites/${seg(code)}/accept`, {}),
 
   // 设备授权
   deviceAuth: (nonce: string) => request<DeviceAuth>(`/api/v1/device/auth/${seg(nonce)}`),
@@ -291,18 +387,44 @@ export const api = {
   linkStatus: (id: number | string) => request<LinkStatus>(`/api/v1/me/links/${seg(id)}`),
   unlinkTelegram: () => del("/api/v1/me/links/telegram"),
 
-  // 管理
-  pending: () => request<{ signups: PendingSignup[]; devices: PendingDevice[] }>("/api/v1/admin/pending"),
-  decideSignup: (id: number, approve: boolean) => post(`/api/v1/admin/signups/${seg(id)}`, { approve }),
-  decideDevice: (id: number, approve: boolean) => post(`/api/v1/admin/device-auths/${seg(id)}`, { approve }),
-  members: () => request<{ items: AdminMember[] }>("/api/v1/admin/members"),
-  setMemberRole: (id: number, role: string) => post(`/api/v1/admin/members/${seg(id)}`, { role }),
-  unlinkMemberTelegram: (id: number) => del(`/api/v1/admin/members/${seg(id)}/telegram`),
-  devices: () => request<{ items: AdminDevice[] }>("/api/v1/admin/devices"),
-  revokeDevice: (id: number) => post(`/api/v1/admin/devices/${seg(id)}/revoke`),
-  invites: () => request<{ items: Invite[] }>("/api/v1/admin/invites"),
-  createInvite: (body: NewInvite) => post<CreatedInvite>("/api/v1/admin/invites", body),
-  revokeInvite: (id: number) => post(`/api/v1/admin/invites/${seg(id)}/revoke`),
-  workspace: () => request<WorkspaceSettings>("/api/v1/admin/workspace"),
-  saveWorkspace: (body: Omit<WorkspaceSettings, "name" | "bot_enabled">) => post("/api/v1/admin/workspace", body),
+  // 工作空间管理
+  pending: (ws: string) => request<{ signups: PendingSignup[]; devices: PendingDevice[] }>(`${adm(ws)}/pending`),
+  decideSignup: (ws: string, id: number, approve: boolean) => post(`${adm(ws)}/signups/${seg(id)}`, { approve }),
+  decideDevice: (ws: string, id: number, approve: boolean) => post(`${adm(ws)}/device-auths/${seg(id)}`, { approve }),
+  members: (ws: string, status?: "removed") =>
+    request<{ items: AdminMember[] }>(`${adm(ws)}/members${status ? `?status=${status}` : ""}`),
+  lookupAccount: (ws: string, name: string) => request<AccountLookup>(`${adm(ws)}/accounts/${seg(name)}`),
+  addMember: (ws: string, account: string, role: string) =>
+    post<{ member_id: number }>(`${adm(ws)}/members`, { account, role }),
+  setMemberRole: (ws: string, id: number, role: string) => post(`${adm(ws)}/members/${seg(id)}`, { role }),
+  handover: (ws: string, id: number) => request<Handover>(`${adm(ws)}/members/${seg(id)}/handover`),
+  // remove 为 true 时改派并移出；为 false 时只改派（给已停用的人用）
+  applyHandover: (ws: string, id: number, plan: HandoverPlan, remove: boolean) =>
+    post(`${adm(ws)}/members/${seg(id)}/${remove ? "remove" : "handover"}`, plan),
+  devices: (ws: string) => request<{ items: Device[] }>(`${adm(ws)}/devices`),
+  revokeDevice: (ws: string, id: number) => post(`${adm(ws)}/devices/${seg(id)}/revoke`),
+  invites: (ws: string) => request<{ items: Invite[] }>(`${adm(ws)}/invites`),
+  createInvite: (ws: string, body: NewInvite) => post<CreatedInvite>(`${adm(ws)}/invites`, body),
+  revokeInvite: (ws: string, id: number) => post(`${adm(ws)}/invites/${seg(id)}/revoke`),
+  workspaceSettings: (ws: string) => request<WorkspaceSettings>(`${adm(ws)}/workspace`),
+  saveWorkspaceSettings: (ws: string, body: Omit<WorkspaceSettings, "name" | "bot_enabled">) =>
+    post(`${adm(ws)}/workspace`, body),
+
+  // 服务器管理
+  serverWorkspaces: () => request<{ items: ServerWorkspace[] }>(`${srv}/workspaces`),
+  createWorkspace: (body: { name: string; admin?: string }) => post<{ name: string }>(`${srv}/workspaces`, body),
+  deleteWorkspace: (name: string) => del(`${srv}/workspaces/${seg(name)}`),
+  serverAccounts: (q: string) =>
+    request<{ items: ServerAccount[] }>(`${srv}/accounts${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  setServerAdmin: (name: string, on: boolean) => post(`${srv}/accounts/${seg(name)}`, { server_admin: on }),
+  disableAccount: (name: string) => post(`${srv}/accounts/${seg(name)}/disable`, {}),
+  enableAccount: (name: string) => post(`${srv}/accounts/${seg(name)}/enable`, {}),
+  serverUnlinkTelegram: (name: string) => del(`${srv}/accounts/${seg(name)}/telegram`),
+  serverPendingDevices: () => request<{ items: PendingDevice[] }>(`${srv}/pending-devices`),
+  serverDecideDevice: (id: number, approve: boolean) => post(`${srv}/device-auths/${seg(id)}`, { approve }),
 };
+
+// 接口要求账号密码登录的网页会话（当前是 cohive web 免密会话）
+export function needsPasswordLogin(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 403 && err.body.need_password_login === true;
+}

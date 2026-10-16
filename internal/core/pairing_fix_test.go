@@ -13,13 +13,13 @@ import (
 func TestFirstDeviceIgnoresRevoked(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
-	me, _ := store.MemberByID(ctx, e.svc.Pool, e.a.MemberID)
+	me := acct(t, e, e.a)
 	st, _ := e.svc.StartDeviceAuth(ctx, []string{"codex"}, "a")
 	if a, err := e.svc.AuthorizeDevice(ctx, me, st.Nonce, true); err != nil || a.Status != store.AuthApproved {
 		t.Fatalf("首台应免审：%+v %v", a, err)
 	}
 	p, _ := e.svc.PollDeviceAuth(ctx, st.RequestID, st.PollSecret)
-	if err := e.svc.RevokeDevice(ctx, me, p.DeviceID); err != nil {
+	if err := e.svc.RevokeDevice(ctx, me, 0, p.DeviceID); err != nil {
 		t.Fatal(err)
 	}
 	st2, _ := e.svc.StartDeviceAuth(ctx, []string{"codex"}, "b")
@@ -35,7 +35,7 @@ func TestFirstDeviceIgnoresRevoked(t *testing.T) {
 func TestFirstDeviceConcurrent(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
-	me, _ := store.MemberByID(ctx, e.svc.Pool, e.a.MemberID)
+	me := acct(t, e, e.a)
 	const n = 6
 	nonces := make([]string, n)
 	for i := range nonces {

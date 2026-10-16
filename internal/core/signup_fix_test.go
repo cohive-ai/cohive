@@ -11,7 +11,7 @@ import (
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
-// B4：用两个不同的团队邀请同时申请同一个成员名：一个成功，另一个得到“已有人申请”，不是内部错误。
+// B4：用两个不同的团队邀请同时申请同一个登录名：一个成功，另一个得到“已有人申请”，不是内部错误。
 func TestConcurrentSameNameSignup(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)

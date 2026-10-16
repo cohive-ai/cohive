@@ -19,13 +19,35 @@ func pathID(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
 	return id, true
 }
 
+// deviceJSON 是设备列表的一行；tokens 按工作空间列出仍有效的令牌。
 func deviceJSON(d store.Device) map[string]any {
-	tools := d.Tools
-	if tools == nil {
-		tools = []string{}
+	tokens := make([]map[string]string, 0, len(d.Tokens))
+	workspaces := []string{}
+	seen := map[string]bool{}
+	for _, t := range d.Tokens {
+		tokens = append(tokens, map[string]string{"workspace": t.Workspace, "tool": t.Tool})
+		if !seen[t.Workspace] {
+			seen[t.Workspace] = true
+			workspaces = append(workspaces, t.Workspace)
+		}
 	}
-	return map[string]any{"id": d.ID, "member": d.MemberName, "name": d.Name, "created_at": d.CreatedAt,
-		"revoked_at": d.RevokedAt, "tools": tools}
+	return map[string]any{"id": d.ID, "account": d.AccountName, "name": d.Name, "created_at": d.CreatedAt,
+		"revoked_at": d.RevokedAt, "last_used_at": d.LastUsedAt, "tokens": tokens, "workspaces": workspaces}
+}
+
+// accountJSON 是接口约定里的 Account 结构。
+func accountJSON(a store.Account, hasPassword bool) map[string]any {
+	return map[string]any{"id": a.ID, "name": a.Name, "display_name": a.DisplayName, "server_admin": a.ServerAdmin,
+		"disabled": a.Disabled(), "has_password": hasPassword,
+		"telegram": map[string]any{"username": a.TelegramUsername, "linked": a.TelegramUserID != nil}}
+}
+
+func workspaceRefs(ms []store.Membership) []map[string]string {
+	out := make([]map[string]string, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, map[string]string{"name": m.Workspace, "role": m.Role})
+	}
+	return out
 }
 
 func botName(opts Options) string {
@@ -35,33 +57,35 @@ func botName(opts Options) string {
 	return opts.BotName()
 }
 
-// accountRoutes 注册登录后成员自己的接口：个人信息、改密码、设备、通讯工具连接、设备授权页。
+// accountRoutes 注册账号自己的接口：个人信息、改密码、设备、通讯工具连接、设备授权页、接受邀请。
 func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
-	mux.HandleFunc("GET /api/v1/me", func(w http.ResponseWriter, r *http.Request) {
+	handle(mux, "GET /api/v1/me", aSession|aToken, func(w http.ResponseWriter, r *http.Request) {
 		c := caller(r)
-		ws, err := store.GetWorkspace(r.Context(), svc.Pool, c.Member.WorkspaceID)
+		pw, err := svc.PasswordStatus(r.Context(), c.Account.ID)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		pw, err := svc.PasswordStatus(r.Context(), c.Member.ID)
+		ms, err := svc.Memberships(r.Context(), c.Account.ID)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"member": c.Member.Name, "display_name": c.Member.DisplayName, "workspace": ws.Name, "role": c.Member.Role,
-			"tool": c.Identity.Tool, "must_change_password": pw.MustChange, "has_password": pw.Hash != "",
-			"login_method": loginMethod(c),
-			"telegram":     map[string]any{"username": c.Member.TelegramUsername, "linked": c.Member.TelegramUserID != nil},
-		})
+		out := map[string]any{"account": accountJSON(c.Account, pw.Hash != ""), "must_change_password": pw.MustChange,
+			"login_method": loginMethod(c), "tool": "web", "workspaces": workspaceRefs(ms)}
+		if c.Token != nil {
+			out["tool"] = c.Token.Tool
+			for _, m := range ms {
+				if m.WorkspaceID == c.Token.WorkspaceID {
+					out["workspace"] = map[string]string{"name": m.Workspace, "role": m.Role}
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, out)
 	})
 
-	mux.HandleFunc("POST /api/v1/auth/password", func(w http.ResponseWriter, r *http.Request) {
-		// 只能在网页上改：令牌在终端和编程工具里，不能拿它给没设过密码的成员直接设密码
-		if !sessionOnly(w, r) {
-			return
-		}
+	handle(mux, "POST /api/v1/auth/password", aSession, func(w http.ResponseWriter, r *http.Request) {
+		// 只能在网页上改：令牌在终端和编程工具里，不能拿它给没设过密码的账号直接设密码
 		var in struct {
 			Old string `json:"old_password"`
 			New string `json:"new_password"`
@@ -70,19 +94,16 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			return
 		}
 		c := caller(r)
-		if err := svc.ChangePassword(r.Context(), c.Member, c.Session, in.Old, in.New); err != nil {
+		if err := svc.ChangePassword(r.Context(), c.Account, c.Session, in.Old, in.New); err != nil {
 			writeError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	// cohive web：已配对设备上的令牌换一次性网页登录链接
-	mux.HandleFunc("POST /api/v1/auth/web-login", func(w http.ResponseWriter, r *http.Request) {
-		if !deviceOnly(w, r) {
-			return
-		}
-		code, err := svc.CreateWebLoginCode(r.Context(), caller(r).Identity)
+	// cohive web：设备密钥（或 M5 配对的旧电脑上属于设备的令牌）换一次性网页登录链接
+	handle(mux, "POST /api/v1/auth/web-login", aDevice|aDeviceToken, func(w http.ResponseWriter, r *http.Request) {
+		code, err := svc.CreateWebLoginCode(r.Context(), caller(r).Account.ID)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -90,29 +111,24 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		writeJSON(w, http.StatusOK, map[string]string{"url": origin(r) + "/auth/once/" + code})
 	})
 
-	mux.HandleFunc("GET /api/v1/device/auth/{nonce}", func(w http.ResponseWriter, r *http.Request) {
-		if !sessionOnly(w, r) {
-			return
-		}
-		v, err := svc.ViewDeviceAuth(r.Context(), caller(r).Member, r.PathValue("nonce"))
+	// 设备授权页：只认密码登录的网页会话（免密会话可由本机智能体开出，不应能为新电脑点授权）
+	handle(mux, "GET /api/v1/device/auth/{nonce}", aPassword, func(w http.ResponseWriter, r *http.Request) {
+		v, err := svc.ViewDeviceAuth(r.Context(), caller(r).Account, r.PathValue("nonce"))
 		if err != nil {
 			writeError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"device_name": v.DeviceName, "tools": v.Tools, "created_at": v.CreatedAt,
-			"status": v.Status, "first_device": v.FirstDevice})
+			"status": v.Status, "first_device": v.FirstDevice, "workspaces": v.Workspaces})
 	})
-	mux.HandleFunc("POST /api/v1/device/auth/{nonce}", func(w http.ResponseWriter, r *http.Request) {
-		if !sessionOnly(w, r) {
-			return
-		}
+	handle(mux, "POST /api/v1/device/auth/{nonce}", aPassword, func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Approve bool `json:"approve"`
 		}
 		if !decode(w, r, &in) {
 			return
 		}
-		a, err := svc.AuthorizeDevice(r.Context(), caller(r).Member, r.PathValue("nonce"), in.Approve)
+		a, err := svc.AuthorizeDevice(r.Context(), caller(r).Account, r.PathValue("nonce"), in.Approve)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -123,28 +139,36 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": a.Status})
 	})
 
-	// 已配对的设备补签其他工具的令牌
-	mux.HandleFunc("POST /api/v1/devices/self/tools", func(w http.ResponseWriter, r *http.Request) {
-		if !deviceOnly(w, r) {
-			return
-		}
+	// 设备密钥：为本人在册的工作空间签发令牌（新加入工作空间后不必重新配对）
+	handle(mux, "POST /api/v1/device/tokens", aDevice, func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			Tools []string `json:"tools"`
+			Workspace string   `json:"workspace"`
+			Tools     []string `json:"tools"`
 		}
 		if !decode(w, r, &in) {
 			return
 		}
-		p, err := svc.AddDeviceTools(r.Context(), caller(r).Identity, in.Tools)
+		c := caller(r)
+		wt, err := svc.IssueWorkspaceTokens(r.Context(), *c.Device, in.Workspace, in.Tools)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, deviceTokensJSON(p))
+		writeJSON(w, http.StatusOK, map[string]any{"account": c.Account.Name, "workspace": wt.Workspace, "role": wt.Role,
+			"tokens": wt.Tokens})
+	})
+	handle(mux, "GET /api/v1/device/workspaces", aDevice, func(w http.ResponseWriter, r *http.Request) {
+		c := caller(r)
+		ms, err := svc.Memberships(r.Context(), c.Account.ID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"account": c.Account.Name, "device_id": c.Device.ID, "items": workspaceRefs(ms)})
 	})
 
-	mux.HandleFunc("GET /api/v1/me/devices", func(w http.ResponseWriter, r *http.Request) {
-		c := caller(r)
-		list, err := store.ListDevices(r.Context(), svc.Pool, c.Member.WorkspaceID, c.Member.ID)
+	handle(mux, "GET /api/v1/me/devices", aSession, func(w http.ResponseWriter, r *http.Request) {
+		list, err := svc.MyDevices(r.Context(), caller(r).Account.ID)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -155,21 +179,35 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	})
-	mux.HandleFunc("POST /api/v1/me/devices/{id}/revoke", func(w http.ResponseWriter, r *http.Request) {
+	// 网页个人中心；本机命令行重新配对后也用新设备密钥吊销本机旧设备（吊销是收紧权限的操作）
+	handle(mux, "POST /api/v1/me/devices/{id}/revoke", aSession|aDevice, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r, "id")
 		if !ok {
 			return
 		}
-		m := caller(r).Member
-		m.Role = store.RoleMember // 个人中心只能吊销自己的设备
-		if err := svc.RevokeDevice(r.Context(), m, id); err != nil {
+		// 个人中心只能吊销自己的设备：看不到别人的设备
+		a := caller(r).Account
+		d, err := svc.MyDevices(r.Context(), a.ID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		own := false
+		for _, x := range d {
+			own = own || x.ID == id
+		}
+		if !own {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "设备不存在"})
+			return
+		}
+		if err := svc.RevokeDevice(r.Context(), a, 0, id); err != nil {
 			writeError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	mux.HandleFunc("POST /api/v1/me/links", func(w http.ResponseWriter, r *http.Request) {
+	handle(mux, "POST /api/v1/me/links", aSession, func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Provider string `json:"provider"`
 		}
@@ -181,7 +219,7 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "协作服务没有启用 Telegram 机器人"})
 			return
 		}
-		l, err := svc.StartLink(r.Context(), caller(r).Identity, in.Provider)
+		l, err := svc.StartLink(r.Context(), caller(r).Account.ID, in.Provider)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -189,32 +227,43 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		writeJSON(w, http.StatusOK, map[string]any{"id": l.ID, "url": "https://t.me/" + name + "?start=" + l.Nonce,
 			"expires_in": int(time.Until(l.ExpiresAt).Seconds())})
 	})
-	mux.HandleFunc("GET /api/v1/me/links/{id}", func(w http.ResponseWriter, r *http.Request) {
+	handle(mux, "GET /api/v1/me/links/{id}", aSession, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r, "id")
 		if !ok {
 			return
 		}
-		l, err := svc.LinkStatus(r.Context(), caller(r).Identity, id)
+		l, err := svc.LinkStatus(r.Context(), caller(r).Account.ID, id)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": l.Status, "detail": l.Detail})
 	})
-	mux.HandleFunc("DELETE /api/v1/me/links/telegram", func(w http.ResponseWriter, r *http.Request) {
-		m := caller(r).Member
-		if err := svc.UnlinkTelegram(r.Context(), m, m.ID); err != nil {
+	handle(mux, "DELETE /api/v1/me/links/telegram", aSession, func(w http.ResponseWriter, r *http.Request) {
+		a := caller(r).Account
+		if err := svc.UnlinkTelegram(r.Context(), a, a.ID); err != nil {
 			writeError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
-}
 
-// loginMethod 返回这次请求的登录方式：password（账号密码）、device（cohive web 免密）、token（编程工具令牌）。
-func loginMethod(c Caller) string {
-	if c.Session == "" {
-		return "token"
-	}
-	return c.SessionVia
+	// 已有账号接受邀请：只认密码登录的网页会话（会改变本人的归属，免密会话可由本机智能体开出）
+	handle(mux, "POST /api/v1/invites/{code}/accept", aPassword, func(w http.ResponseWriter, r *http.Request) {
+		res, err := svc.AcceptInvite(r.Context(), caller(r).Account, r.PathValue("code"))
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if res.Signup != nil {
+			sg := *res.Signup
+			announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceSignup(ctx, sg) })
+			writeJSON(w, http.StatusOK, map[string]any{"status": "pending", "workspace": map[string]string{"name": res.Workspace.Name}})
+			return
+		}
+		m := *res.Member
+		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceJoined(ctx, m) })
+		writeJSON(w, http.StatusOK, map[string]any{"status": "active",
+			"workspace": map[string]string{"name": res.Workspace.Name, "role": m.Role}})
+	})
 }

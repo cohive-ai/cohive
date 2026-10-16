@@ -1,23 +1,51 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { api, type IssueEvent } from "../api";
+import { api, ApiError, type IssueEvent } from "../api";
 import { Notice, StatusTag, ToolMark } from "../components";
 import { absoluteTime, actionLabel, relativeTime, severityLabel, statusLabel, toolLabel } from "../format";
+import { WorkspaceLoadError } from "./WorkspaceShell";
 
 export function IssueDetailPage() {
-  const { id } = useParams({ from: "/layout/issues/$id" });
-  const detail = useQuery({ queryKey: ["issue", id], queryFn: () => api.issue(Number(id)), refetchInterval: 5000 });
+  const { ws, id } = useParams({ from: "/layout/w/$ws/issues/$id" });
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  const detail = useQuery({
+    queryKey: ["issue", ws, id],
+    queryFn: () => api.issue(ws, Number(id)),
+    refetchInterval: 5000,
+  });
 
   if (detail.isPending) return <Notice>正在读取问题单…</Notice>;
-  if (detail.isError)
+  if (detail.isError) {
+    const member = !!me.data?.workspaces.some((w) => w.name === ws);
+    // 是成员但查不到：多半是这张单属于别的工作空间（例如旧链接跳到了上次用的工作空间）
+    if (!(detail.error instanceof ApiError && detail.error.status === 404) || !member) {
+      return <WorkspaceLoadError error={detail.error} what="问题单" />;
+    }
+    const others = (me.data?.workspaces ?? []).filter((w) => w.name !== ws);
     return (
       <div className="space-y-3">
-        <Notice tone="danger">{detail.error.message}</Notice>
-        <Link to="/" className="text-sm text-teal">
+        <Notice tone="danger">
+          工作空间“{ws}”里没有问题单 #{id}。
+        </Notice>
+        {others.length > 0 && (
+          <p className="text-sm text-muted">
+            它可能在你所在的其他工作空间里：
+            {others.map((w, i) => (
+              <span key={w.name}>
+                {i > 0 && "、"}
+                <Link to="/w/$ws/issues/$id" params={{ ws: w.name, id }} className="text-teal hover:underline">
+                  {w.name}
+                </Link>
+              </span>
+            ))}
+          </p>
+        )}
+        <Link to="/w/$ws" params={{ ws }} className="text-sm text-teal">
           回到看板
         </Link>
       </div>
     );
+  }
 
   const { issue: is, events } = detail.data;
   const meta: [string, React.ReactNode][] = [
@@ -33,7 +61,7 @@ export function IssueDetailPage() {
 
   return (
     <article>
-      <Link to="/" className="text-sm text-muted hover:text-ink">
+      <Link to="/w/$ws" params={{ ws }} className="text-sm text-muted hover:text-ink">
         回到看板
       </Link>
       <header className="mt-2 mb-6">
@@ -108,6 +136,9 @@ function Field({ title, text, mono }: { title: string; text?: string; mono?: boo
 function Event({ e }: { e: IssueEvent }) {
   const dot = e.tool === "claude-code" ? "bg-tool-claude" : e.tool === "codex" ? "bg-tool-codex" : "bg-muted";
   const assignee = typeof e.payload?.assignee === "string" ? e.payload.assignee : undefined;
+  // 管理员移出成员时的改派：负责人或发起人换成谁
+  const ownerTo = typeof e.payload?.owner_to_name === "string" ? e.payload.owner_to_name : undefined;
+  const sourceTo = typeof e.payload?.source_to_name === "string" ? e.payload.source_to_name : undefined;
   return (
     <li className="relative">
       <span className={`absolute top-1.5 -left-[25px] h-2.5 w-2.5 rounded-full ring-4 ring-bg ${dot}`} aria-hidden="true" />
@@ -116,6 +147,8 @@ function Event({ e }: { e: IssueEvent }) {
         <span className="text-muted">（{toolLabel(e.tool)}）</span>
         {actionLabel[e.action] ?? e.action}
         {assignee && <>给 {assignee}</>}
+        {ownerTo && <>，负责人改为 {ownerTo}</>}
+        {sourceTo && <>，发起人改为 {sourceTo}</>}
         {e.to && e.from && e.from !== e.to && <span className="text-muted">，状态变为{statusLabel[e.to] ?? e.to}</span>}
         {e.payload?.escalated === true && <span className="text-danger">，已标记需要人介入</span>}
       </p>

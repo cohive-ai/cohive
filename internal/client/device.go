@@ -29,22 +29,47 @@ type DeviceStart struct {
 	ExpiresIn  int    `json:"expires_in"`
 }
 
-// DevicePoll 是一次轮询的结果；Status 为 approved 时 Tokens 是各工具的令牌。
-type DevicePoll struct {
-	Status    string            `json:"status"`
-	Member    string            `json:"member"`
+// WorkspaceTokens 是一个工作空间里各工具的令牌。
+type WorkspaceTokens struct {
 	Workspace string            `json:"workspace"`
-	DeviceID  int64             `json:"device_id"`
+	Role      string            `json:"role"`
 	Tokens    map[string]string `json:"tokens"`
+}
+
+// DevicePoll 是一次轮询的结果；Status 为 approved 时带设备密钥与本人每个工作空间的令牌（只交付一次）。
+type DevicePoll struct {
+	Status       string            `json:"status"`
+	Account      string            `json:"account"`
+	DeviceID     int64             `json:"device_id"`
+	DeviceSecret string            `json:"device_secret"`
+	Workspaces   []WorkspaceTokens `json:"workspaces"`
+}
+
+// WorkspaceRef 是账号所在的一个工作空间。
+type WorkspaceRef struct {
+	Name string `json:"name"`
+	Role string `json:"role"`
 }
 
 // ErrDeviceGone 表示服务端已找不到这次授权。
 var ErrDeviceGone = errors.New("这次设备授权已失效，请重新执行 cohive login")
 
-// post 发送 JSON 请求（token 非空时带令牌）；非 200 时把服务端的错误说明作为 error 返回。
+// post 发送 JSON 请求（token 非空时带令牌或设备密钥）；非 200 时把服务端的错误说明作为 error 返回。
 func post(ctx context.Context, server, path, token string, in, out any) (int, error) {
 	body, _ := json.Marshal(in)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server+path, bytes.NewReader(body))
+	return send(ctx, http.MethodPost, server, path, token, bytes.NewReader(body), out)
+}
+
+// get 发送 GET 请求，约定同 post。
+func get(ctx context.Context, server, path, token string, out any) (int, error) {
+	return send(ctx, http.MethodGet, server, path, token, nil, out)
+}
+
+// ErrNotMember 表示账号不是该工作空间的成员。
+var ErrNotMember = errors.New("你还不是这个工作空间的成员，请联系它的管理员")
+
+func send(ctx context.Context, method, server, path, token string, body io.Reader, out any) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, method, server+path, body)
 	if err != nil {
 		return 0, err
 	}
@@ -66,7 +91,7 @@ func post(ctx context.Context, server, path, token string, in, out any) (int, er
 		return resp.StatusCode, nil
 	}
 	if resp.StatusCode == http.StatusUnauthorized && token != "" {
-		return resp.StatusCode, errors.New("本机保存的令牌无效或已吊销：请执行 cohive login --force 重新配对这台电脑")
+		return resp.StatusCode, errors.New("本机保存的设备密钥或令牌无效、已吊销，或账号已停用：请执行 cohive login --force 重新配对这台电脑")
 	}
 	if resp.StatusCode != http.StatusOK {
 		var e struct{ Error string }
@@ -108,22 +133,35 @@ func PollDevice(ctx context.Context, server string, requestID int64, secret stri
 	return p, err
 }
 
-// AddTools 用本机已有的设备令牌为其他工具补签令牌。
-func AddTools(ctx context.Context, server, token string, tools []string) (DevicePoll, error) {
-	var p DevicePoll
-	_, err := post(ctx, server, "/api/v1/devices/self/tools", token, map[string]any{"tools": tools}, &p)
-	return p, err
+// IssueTokens 用设备密钥为本人所在的某个工作空间签发令牌（新加入工作空间后不必重新配对）。
+// 不是该工作空间成员时返回 ErrNotMember。
+func IssueTokens(ctx context.Context, server, secret, workspace string, tools []string) (WorkspaceTokens, error) {
+	var w WorkspaceTokens
+	code, err := post(ctx, server, "/api/v1/device/tokens", secret, map[string]any{"workspace": workspace, "tools": tools}, &w)
+	if code == http.StatusNotFound {
+		return w, fmt.Errorf("工作空间 %s：%w", workspace, ErrNotMember)
+	}
+	return w, err
 }
 
-// RevokeOwnDevice 用本机令牌吊销自己名下的另一台设备（重新配对后清理旧设备）。
-func RevokeOwnDevice(ctx context.Context, server, token string, deviceID int64) error {
-	_, err := post(ctx, server, fmt.Sprintf("/api/v1/me/devices/%d/revoke", deviceID), token, map[string]any{}, &struct{}{})
+// DeviceWorkspaces 用设备密钥列出本人在册的工作空间。
+func DeviceWorkspaces(ctx context.Context, server, secret string) ([]WorkspaceRef, error) {
+	var out struct {
+		Items []WorkspaceRef `json:"items"`
+	}
+	_, err := get(ctx, server, "/api/v1/device/workspaces", secret, &out)
+	return out.Items, err
+}
+
+// RevokeOwnDevice 用本机设备密钥吊销自己名下的另一台设备（重新配对后清理旧设备）。
+func RevokeOwnDevice(ctx context.Context, server, secret string, deviceID int64) error {
+	_, err := post(ctx, server, fmt.Sprintf("/api/v1/me/devices/%d/revoke", deviceID), secret, map[string]any{}, &struct{}{})
 	return err
 }
 
 var oncePath = regexp.MustCompile(`^/auth/once/[A-Za-z0-9_-]{1,64}$`)
 
-// WebLogin 用本机设备令牌换一个一次性网页登录链接。
+// WebLogin 用本机设备密钥（或 M5 配对的旧电脑上属于设备的令牌）换一个一次性网页登录链接。
 func WebLogin(ctx context.Context, server, token string) (string, error) {
 	var out struct {
 		URL string `json:"url"`

@@ -5,6 +5,7 @@ package notify
 import (
 	"fmt"
 	"html"
+	"net/url"
 	"strings"
 
 	"github.com/cohive-ai/cohive/internal/store"
@@ -78,7 +79,8 @@ func Render(ws store.Workspace, is store.Issue, n store.Notification, members ma
 	}
 	lines = append(lines, fmt.Sprintf("在编程工具里用 /cohive %d（Codex 用 $cohive %d）处理", is.ID, is.ID))
 	if ws.PublicURL != "" {
-		lines = append(lines, esc(fmt.Sprintf("%s/issues/%d", strings.TrimRight(ws.PublicURL, "/"), is.ID)))
+		// 网页按工作空间分前缀：/w/{工作空间}/issues/{编号}
+		lines = append(lines, esc(fmt.Sprintf("%s/w/%s/issues/%d", strings.TrimRight(ws.PublicURL, "/"), url.PathEscape(ws.Name), is.ID)))
 	}
 	return strings.Join(lines, "\n")
 }

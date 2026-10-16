@@ -40,7 +40,7 @@ func render(t *testing.T, ws store.Workspace, is store.Issue, event string, acto
 func TestAssignedMessage(t *testing.T) {
 	text := render(t, workspace(true, true, "https://cohive.example.com"), sampleIssue(), "assigned", claude.ID, "claude-code", codex.ID)
 	for _, want := range []string{"#12", "新单交给 lee-codex", "order-api", "lee-claude", "Claude Code", "发出",
-		"下单接口返回 500", "空购物车下单返回 500", "/cohive 12", "$cohive 12", "https://cohive.example.com/issues/12"} {
+		"下单接口返回 500", "空购物车下单返回 500", "/cohive 12", "$cohive 12", "https://cohive.example.com/w/payments/issues/12"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("消息应包含 %q：\n%s", want, text)
 		}

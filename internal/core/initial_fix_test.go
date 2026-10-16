@@ -9,7 +9,7 @@ import (
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
-// B2：别的成员被重置密码后改密码，不能删掉初始管理员的密码文件；初始管理员本人改密后才删。
+// B2：别的账号被重置密码后改密码，不能删掉初始管理员的密码文件；初始管理员本人改密后才删。
 func TestInitialPasswordFileOnlyRemovedByInitialAdmin(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
@@ -18,8 +18,8 @@ func TestInitialPasswordFileOnlyRemovedByInitialAdmin(t *testing.T) {
 	if err != nil || path == "" {
 		t.Fatalf("初始管理员：%q %v", path, err)
 	}
-	other, _ := store.MemberByID(ctx, e.svc.Pool, e.a.MemberID)
-	tmp, err := e.svc.ResetPassword(ctx, other.WorkspaceID, other.Name)
+	other, _ := store.AccountByID(ctx, e.svc.Pool, e.a.AccountID)
+	tmp, err := e.svc.ResetPassword(ctx, other.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,14 +27,12 @@ func TestInitialPasswordFileOnlyRemovedByInitialAdmin(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("别的成员改密码不应删除初始密码文件：%v", err)
+		t.Fatalf("别的账号改密码不应删除初始密码文件：%v", err)
 	}
-	admin, err := store.MemberByName(ctx, e.svc.Pool, other.WorkspaceID, "admin")
+	admin, err := store.AccountByName(ctx, e.svc.Pool, "admin")
 	if err != nil {
 		t.Fatal(err)
 	}
-	admin.WorkspaceID = other.WorkspaceID
-	admin.Name = "admin"
 	if err := e.svc.ChangePassword(ctx, admin, "", initialPw(t, path), "admin-new-password"); err != nil {
 		t.Fatal(err)
 	}

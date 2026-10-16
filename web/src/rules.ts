@@ -32,10 +32,21 @@ export function revokeDeviceMessage(name: string, onlyActive: boolean): string {
   return `吊销后，“${n}”上的编程工具会立即失去访问权限；以后要在这台电脑上再用，需要重新执行 cohive login 并等管理员批准。`;
 }
 
-// 设备授权页上说明“以谁、在哪个工作空间授权”，避免登错账号时把设备授权给别人。
-export function authorizeAsText(me: { member: string; display_name?: string; workspace: string }): string {
-  const who = me.display_name && me.display_name !== me.member ? `${me.member}（${me.display_name}）` : me.member;
-  return `将以成员 ${who} 在工作空间 ${me.workspace} 授权这台电脑。`;
+// 设备授权页上说明“以哪个账号授权”，避免登错账号时把设备授权给别人。
+export function authorizeAsText(account: { name: string; display_name?: string }): string {
+  const who =
+    account.display_name && account.display_name !== account.name
+      ? `${account.name}（${account.display_name}）`
+      : account.name;
+  return `将以账号 ${who} 授权这台电脑。`;
+}
+
+// 设备授权页上说明批准后这台电脑能用于哪些工作空间
+export function deviceScopeText(workspaces: string[] | null | undefined): string {
+  if (!workspaces || workspaces.length === 0) {
+    return "你目前不在任何工作空间里。授权后，等管理员把你加进工作空间，这台电脑就能用于那个工作空间。";
+  }
+  return `批准后这台电脑可用于：${workspaces.join("、")}。`;
 }
 
 // 管理操作只接受账号密码登录：免密登录（cohive web）打开管理页时先提示改用账号密码登录。

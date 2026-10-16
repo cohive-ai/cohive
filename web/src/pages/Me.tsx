@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Me } from "../api";
-import { Notice } from "../components";
-import { absoluteTime, roleLabel, toolsText } from "../format";
+import { DeviceTokens, Notice } from "../components";
+import { absoluteTime, roleLabel } from "../format";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
 import { isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
@@ -20,15 +21,45 @@ export function MePage() {
 
       <Section title="基本信息">
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-          <dt className="text-muted">成员名</dt>
-          <dd className="font-mono">{m.member}</dd>
+          <dt className="text-muted">登录名</dt>
+          <dd className="font-mono">{m.account.name}</dd>
           <dt className="text-muted">显示名</dt>
-          <dd>{m.display_name || <span className="text-muted">未设置</span>}</dd>
-          <dt className="text-muted">工作空间</dt>
-          <dd>{m.workspace}</dd>
-          <dt className="text-muted">角色</dt>
-          <dd>{roleLabel(m.role)}</dd>
+          <dd>{m.account.display_name || <span className="text-muted">未设置</span>}</dd>
+          {m.account.server_admin && (
+            <>
+              <dt className="text-muted">身份</dt>
+              <dd>服务器管理员</dd>
+            </>
+          )}
         </dl>
+      </Section>
+
+      <Section title="我的工作空间" description="你是这些工作空间的成员。同一个账号、同一台电脑可以用于全部工作空间。">
+        {m.workspaces.length === 0 ? (
+          <p className="text-sm text-muted">你还没有加入任何工作空间，请联系管理员。</p>
+        ) : (
+          <ul className="divide-y divide-line rounded border border-line">
+            {m.workspaces.map((w) => (
+              <li key={w.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
+                <Link to="/w/$ws" params={{ ws: w.name }} className="font-medium text-ink hover:text-teal">
+                  {w.name}
+                </Link>
+                <span
+                  className={`rounded px-1.5 py-px text-xs ${
+                    w.role === "admin" ? "bg-amber-soft text-amber" : "bg-sunken text-muted"
+                  }`}
+                >
+                  {roleLabel(w.role)}
+                </span>
+                {w.role === "admin" && (
+                  <Link to="/w/$ws/admin" params={{ ws: w.name }} className="ml-auto text-teal hover:underline">
+                    管理
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
 
       <Section title="绑定新电脑" description="让这台电脑上的编程工具以你的身份使用协作服务。">
@@ -45,7 +76,7 @@ export function MePage() {
       <Telegram me={m} />
 
       <Section title="修改密码">
-        <ChangePasswordForm hasPassword={m.has_password} />
+        <ChangePasswordForm hasPassword={m.account.has_password} />
       </Section>
     </div>
   );
@@ -69,8 +100,11 @@ function MyDevices() {
             <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5 text-sm">
               <div className="min-w-0 flex-1">
                 <p className="break-words font-medium">{d.name || "未命名"}</p>
+                <DeviceTokens tokens={d.tokens} revoked={!!d.revoked_at} />
                 <p className="text-xs text-muted">
-                  {toolsText(d.tools)} · {absoluteTime(d.created_at)} 添加
+                  {absoluteTime(d.created_at)} 添加
+                  {d.last_used_at && ` · 最近使用 ${absoluteTime(d.last_used_at)}`}
+                  {d.revoked_at && ` · ${absoluteTime(d.revoked_at)} 吊销`}
                 </p>
               </div>
               {d.revoked_at ? (
@@ -113,7 +147,7 @@ function Telegram({ me }: { me: Me }) {
   const [state, setState] = useState<{ status: string; detail?: string } | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const linked = !!me.telegram?.linked;
+  const linked = !!me.account.telegram?.linked;
 
   // 每 2 秒查一次连接结果，最多等 10 分钟
   useEffect(() => {
@@ -198,7 +232,7 @@ function Telegram({ me }: { me: Me }) {
         <span className="font-medium">Telegram</span>
         {linked ? (
           <span className="rounded bg-teal-soft px-1.5 py-px text-xs text-teal">
-            已连接{me.telegram?.username ? ` @${me.telegram.username}` : ""}
+            已连接{me.account.telegram?.username ? ` @${me.account.telegram.username}` : ""}
           </span>
         ) : (
           <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">未连接</span>

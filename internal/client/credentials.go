@@ -15,16 +15,90 @@ import (
 type Login struct {
 	Server    string    `json:"server"`
 	Workspace string    `json:"workspace"`
-	Member    string    `json:"member"`
+	Member    string    `json:"member"` // 账号的登录名
 	Tool      string    `json:"tool"`
 	Token     string    `json:"token"`
 	DeviceID  int64     `json:"device_id,omitempty"` // 这台电脑在服务端的设备编号；管理员手工签发的令牌为 0
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Device 是这台电脑在某个协作服务上的设备密钥：证明“这是某账号的一台已批准的电脑”，
+// 用来为本人所在的工作空间签发令牌、cohive web 免密登录。M5 配对的旧电脑没有。
+type Device struct {
+	Server    string    `json:"server"`
+	Account   string    `json:"account"`
+	DeviceID  int64     `json:"device_id"`
+	Secret    string    `json:"secret"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // Credentials 是本机凭据文件的内容。文件权限 600，目录权限 700。
 type Credentials struct {
-	Logins []Login `json:"logins"`
+	Devices []Device `json:"devices,omitempty"`
+	Logins  []Login  `json:"logins"`
+}
+
+// Device 返回这台电脑在该服务上的设备密钥。
+func (c *Credentials) Device(server string) (Device, bool) {
+	server = NormalizeServer(server)
+	for _, d := range c.Devices {
+		if d.Server == server {
+			return d, true
+		}
+	}
+	return Device{}, false
+}
+
+// SetDevice 保存（替换）这台电脑在该服务上的设备密钥。
+func (c *Credentials) SetDevice(d Device) {
+	d.Server = NormalizeServer(d.Server)
+	if d.CreatedAt.IsZero() {
+		d.CreatedAt = time.Now()
+	}
+	for i, x := range c.Devices {
+		if x.Server == d.Server {
+			c.Devices[i] = d
+			return
+		}
+	}
+	c.Devices = append(c.Devices, d)
+}
+
+// LegacyDevice 返回 M5 配对、没有设备密钥的旧设备上的一条登录（有设备编号的令牌）。
+func (c *Credentials) LegacyDevice(server string) (Login, bool) {
+	server = NormalizeServer(server)
+	if _, ok := c.Device(server); ok {
+		return Login{}, false
+	}
+	for _, l := range c.Logins {
+		if l.Server == server && l.DeviceID != 0 {
+			return l, true
+		}
+	}
+	return Login{}, false
+}
+
+// DropDevice 删除某台设备（已吊销）在该服务上的全部登录，返回被删掉的“工作空间/工具”。
+func (c *Credentials) DropDevice(server string, deviceID int64) []string {
+	server = NormalizeServer(server)
+	var keep []Login
+	var dropped []string
+	for _, l := range c.Logins {
+		if l.Server == server && l.DeviceID == deviceID {
+			dropped = append(dropped, l.Workspace+"/"+l.Tool)
+			continue
+		}
+		keep = append(keep, l)
+	}
+	c.Logins = keep
+	var devs []Device
+	for _, d := range c.Devices {
+		if !(d.Server == server && d.DeviceID == deviceID) {
+			devs = append(devs, d)
+		}
+	}
+	c.Devices = devs
+	return dropped
 }
 
 // ConfigDir 返回配置目录，可用 COHIVE_CONFIG_DIR 覆盖（默认 ~/.config/cohive）。

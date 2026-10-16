@@ -1,8 +1,16 @@
 import { useState } from "react";
-import { Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "./api";
-import { toolLabel } from "./format";
+import { api, type DeviceToken, type WorkspaceRef } from "./api";
+import { roleLabel, tokensByWorkspace, toolLabel } from "./format";
+import { btn } from "./ui";
+import {
+  canAdminWorkspace,
+  pickWorkspace,
+  readLastWorkspace,
+  switchWorkspacePath,
+  workspaceFromPath,
+} from "./workspace";
 
 // 工具标识：哪个工具做的，是协作记录里的关键信息
 export function ToolMark({ tool, withLabel = true }: { tool: string; withLabel?: boolean }) {
@@ -41,6 +49,8 @@ export function Layout() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const router = useRouter();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [leaving, setLeaving] = useState(false);
   const signOut = async () => {
     setLeaving(true);
@@ -55,6 +65,16 @@ export function Layout() {
   const nav = "px-1 py-0.5 text-muted hover:text-ink";
   const active = { className: "px-1 py-0.5 text-ink border-b-2 border-teal" };
 
+  const workspaces = me.data?.workspaces ?? [];
+  const current = workspaceFromPath(pathname);
+  // 导航里看板、问题单指向的工作空间：地址里的，否则上次用的或第一个
+  const navWs = current ?? pickWorkspace(workspaces, readLastWorkspace());
+  const showAdmin = !!navWs && canAdminWorkspace(me.data, navWs);
+  const switchTo = (ws: string) => {
+    if (!ws || ws === current) return;
+    router.history.push(switchWorkspacePath(pathname, ws, canAdminWorkspace(me.data, ws)));
+  };
+
   return (
     <div className="min-h-dvh">
       <header className="border-b border-line bg-surface">
@@ -65,29 +85,44 @@ export function Layout() {
             </svg>
             <span className="font-semibold tracking-wide">Cohive</span>
           </Link>
+          {workspaces.length > 0 || current ? (
+            <WorkspaceSwitcher workspaces={workspaces} current={current} onChange={switchTo} />
+          ) : null}
           <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <Link to="/" className={nav} activeProps={active} activeOptions={{ exact: true }}>
-              看板
-            </Link>
-            <Link to="/issues" className={nav} activeProps={active}>
-              问题单
-            </Link>
+            {navWs && (
+              <>
+                <Link
+                  to="/w/$ws"
+                  params={{ ws: navWs }}
+                  className={nav}
+                  activeProps={active}
+                  activeOptions={{ exact: true }}
+                >
+                  看板
+                </Link>
+                <Link to="/w/$ws/issues" params={{ ws: navWs }} className={nav} activeProps={active}>
+                  问题单
+                </Link>
+                {showAdmin && (
+                  <Link to="/w/$ws/admin" params={{ ws: navWs }} className={nav} activeProps={active}>
+                    管理
+                  </Link>
+                )}
+              </>
+            )}
             <Link to="/me" className={nav} activeProps={active}>
               个人中心
             </Link>
-            {me.data?.role === "admin" && (
-              <Link to="/admin" className={nav} activeProps={active}>
-                管理
+            {me.data?.account.server_admin && (
+              <Link to="/server" className={nav} activeProps={active}>
+                服务器管理
               </Link>
             )}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             {me.data && (
               <span className="flex min-w-0 items-center gap-2 text-muted">
-                <span className="truncate">
-                  <span className="text-ink">{me.data.display_name || me.data.member}</span>
-                  {me.data.workspace && <span className="hidden sm:inline"> · {me.data.workspace}</span>}
-                </span>
+                <span className="truncate text-ink">{me.data.account.display_name || me.data.account.name}</span>
                 <ToolMark tool={me.data.tool} withLabel={false} />
               </span>
             )}
@@ -108,10 +143,107 @@ export function Layout() {
   );
 }
 
+// 顶栏的工作空间切换：列出所在的工作空间并标出角色
+function WorkspaceSwitcher({
+  workspaces,
+  current,
+  onChange,
+}: {
+  workspaces: WorkspaceRef[];
+  current: string | null;
+  onChange: (ws: string) => void;
+}) {
+  const known = !current || workspaces.some((w) => w.name === current);
+  return (
+    <label className="flex items-center gap-1 text-sm">
+      <span className="sr-only">切换工作空间</span>
+      <select
+        value={current ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="max-w-[14rem] rounded border border-line bg-bg px-2 py-1 text-sm text-ink"
+      >
+        {!current && (
+          <option value="" disabled>
+            选择工作空间
+          </option>
+        )}
+        {!known && current && <option value={current}>{current}（你不是成员）</option>}
+        {workspaces.map((w) => (
+          <option key={w.name} value={w.name}>
+            {w.name} · {roleLabel(w.role)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+// 一个工作空间都没有时的提示页
+export function NoWorkspace() {
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  return (
+    <div className="mx-auto max-w-xl space-y-3">
+      <Notice>你还没有加入任何工作空间，请联系管理员。</Notice>
+      {me.data?.account.server_admin && (
+        <p className="text-sm">
+          你是服务器管理员，可以
+          <Link to="/server" className="text-teal hover:underline">
+            新建工作空间
+          </Link>
+          。
+        </p>
+      )}
+    </div>
+  );
+}
+
+// 需要账号密码登录的网页会话：说明原因，并提供退出后用账号密码登录（登录后回到 redirectTo）的入口。
+export function NeedPasswordLogin({ message, redirectTo }: { message: React.ReactNode; redirectTo: string }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const relogin = async () => {
+    setBusy(true);
+    try {
+      await api.logout();
+    } catch {
+      // 退出失败也照样去登录页
+    }
+    qc.clear();
+    navigate({ to: "/login", search: { redirect: redirectTo } });
+  };
+  return (
+    <div className="mx-auto max-w-xl space-y-3">
+      <Notice tone="danger">{message}</Notice>
+      <button type="button" onClick={relogin} disabled={busy} className={btn.primary}>
+        {busy ? "正在退出…" : "退出并用账号密码登录"}
+      </button>
+    </div>
+  );
+}
+
 export function Notice({ children, tone = "muted" }: { children: React.ReactNode; tone?: "muted" | "danger" }) {
   return (
     <p className={`rounded border border-line bg-surface px-4 py-3 text-sm ${tone === "danger" ? "text-danger" : "text-muted"}`}>
       {children}
     </p>
+  );
+}
+
+// 设备上的令牌按工作空间列出：pay：Claude Code、Codex
+export function DeviceTokens({ tokens, revoked }: { tokens: DeviceToken[] | null | undefined; revoked: boolean }) {
+  const groups = tokensByWorkspace(tokens);
+  if (groups.length === 0) {
+    return <p className="text-xs text-muted">{revoked ? "令牌已全部失效" : "还没有任何工作空间的令牌"}</p>;
+  }
+  return (
+    <ul className="mt-0.5 space-y-0.5 text-xs">
+      {groups.map((g) => (
+        <li key={g.workspace}>
+          <span className="font-medium">{g.workspace}</span>
+          <span className="text-muted">：{g.tools.join("、")}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

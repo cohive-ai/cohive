@@ -52,7 +52,7 @@ func passwordMatches(ctx context.Context, hash, pw string) (bool, error) {
 }
 
 // DummyPasswordCheck 做一次不会成功的比对，让被锁定或不存在的账号与正常账号耗时相同，
-// 不能借响应时间探测成员名。
+// 不能借响应时间探测登录名。
 func (s *Service) DummyPasswordCheck(ctx context.Context, pw string) {
 	_, _ = passwordMatches(ctx, string(dummyHash), pw)
 }

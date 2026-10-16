@@ -165,9 +165,9 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 		}
 		switch {
 		case in.Owner != "":
-			m, err := store.MemberByName(ctx, tx, who.WorkspaceID, in.Owner)
+			m, err := assignable(ctx, tx, who.WorkspaceID, in.Owner)
 			if err != nil {
-				return inputErr("成员 %q 不存在", in.Owner)
+				return err
 			}
 			is.OwnerID = &m.ID
 		case in.TargetService != "":
@@ -202,6 +202,21 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 		}
 	}
 	return out, err
+}
+
+// assignable 返回可以指派的成员：本工作空间在册、账号未停用。
+func assignable(ctx context.Context, q store.DBTX, wsID int64, name string) (store.Member, error) {
+	m, err := store.MemberByName(ctx, q, wsID, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return m, inputErr("成员 %q 不存在", name)
+	}
+	if err != nil {
+		return m, err
+	}
+	if m.AccountDisabled {
+		return m, inputErr("成员 %q 已停用，不能指派给他", name)
+	}
+	return m, nil
 }
 
 func visible(who store.Identity, is store.Issue) bool {
@@ -251,9 +266,9 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 		switch in.Action {
 		case issue.ActSubmit:
 			if in.Assignee != "" {
-				m, err := store.MemberByName(ctx, tx, who.WorkspaceID, in.Assignee)
+				m, err := assignable(ctx, tx, who.WorkspaceID, in.Assignee)
 				if err != nil {
-					return inputErr("成员 %q 不存在", in.Assignee)
+					return err
 				}
 				is.OwnerID = &m.ID
 				payload["assignee"] = m.Name
@@ -265,9 +280,9 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 			if in.Assignee == "" {
 				return inputErr("转交必须在 assignee 中指定接收人")
 			}
-			m, err := store.MemberByName(ctx, tx, who.WorkspaceID, in.Assignee)
+			m, err := assignable(ctx, tx, who.WorkspaceID, in.Assignee)
 			if err != nil {
-				return inputErr("成员 %q 不存在", in.Assignee)
+				return err
 			}
 			if m.ID == *is.OwnerID {
 				return inputErr("接收人与当前负责人相同")

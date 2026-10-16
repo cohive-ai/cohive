@@ -24,11 +24,16 @@ type Proxy struct {
 	Log    io.Writer
 	// Unavailable 非空时不转发，对每个请求都返回这条提示（例如本机还没登录）。
 	Unavailable string
+	// Refresh 在服务端返回 401 时换一枚新令牌（用设备密钥重签）；为空时不重试。
+	// 每个进程只换一次：重签也失败就报错，不循环。
+	Refresh func(ctx context.Context) (string, error)
 
-	outMu    sync.Mutex
-	stateMu  sync.Mutex
-	protocol string // 初始化时协商的协议版本
-	session  string // 服务端若返回会话编号则带上
+	outMu      sync.Mutex
+	stateMu    sync.Mutex
+	refreshed  bool   // 已用 Refresh 换过令牌
+	refreshErr error  // 换令牌失败的原因，告诉用户
+	protocol   string // 初始化时协商的协议版本
+	session    string // 服务端若返回会话编号则带上
 }
 
 type rpcHead struct {
@@ -104,17 +109,77 @@ func (p *Proxy) fail(out io.Writer, head rpcHead, msg string) {
 	p.write(out, resp)
 }
 
+// token 返回当前令牌。
+func (p *Proxy) token() string {
+	p.stateMu.Lock()
+	defer p.stateMu.Unlock()
+	return p.Token
+}
+
+// renew 在令牌被拒后换一枚新令牌：别的请求已经换过就直接用新的；本进程只调用一次 Refresh。
+func (p *Proxy) renew(ctx context.Context, used string) bool {
+	p.stateMu.Lock()
+	defer p.stateMu.Unlock()
+	if p.Token != used {
+		return true
+	}
+	if p.Refresh == nil || p.refreshed {
+		return false
+	}
+	p.refreshed = true
+	tok, err := p.Refresh(ctx)
+	if err != nil {
+		p.logf("重新签发令牌失败：%v", err)
+		p.refreshErr = err
+		return false
+	}
+	p.logf("令牌已失效，已用这台电脑的设备密钥重新签发")
+	p.Token = tok
+	return true
+}
+
 func (p *Proxy) forward(ctx context.Context, msg []byte, head rpcHead, out io.Writer) {
 	if p.Unavailable != "" {
 		p.fail(out, head, p.Unavailable)
 		return
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Server+"/mcp", bytes.NewReader(msg))
+	resp, err := p.send(ctx, msg)
+	if err == nil && resp.StatusCode == http.StatusUnauthorized {
+		used := resp.Request.Header.Get("Authorization")
+		resp.Body.Close()
+		if p.renew(ctx, strings.TrimPrefix(used, "Bearer ")) {
+			resp, err = p.send(ctx, msg)
+		} else {
+			msg := "Cohive 令牌无效或已吊销：如果你已被移出这个工作空间，请联系管理员；否则请执行 cohive login --force 重新配对这台电脑"
+			p.stateMu.Lock()
+			switch {
+			case errors.Is(p.refreshErr, ErrNotMember):
+				msg = "Cohive 令牌已失效：你已不是这个工作空间的成员（可能已被移出），请联系它的管理员"
+			case p.refreshErr != nil:
+				msg = "Cohive 令牌已失效，重新签发也失败：" + p.refreshErr.Error()
+			}
+			p.stateMu.Unlock()
+			p.fail(out, head, msg)
+			return
+		}
+	}
 	if err != nil {
-		p.fail(out, head, "构造请求失败")
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err
+		}
+		p.fail(out, head, fmt.Sprintf("连接 Cohive 协作服务 %s 失败：%v", p.Server, err))
 		return
 	}
-	req.Header.Set("Authorization", "Bearer "+p.Token)
+	p.handle(resp, head, out)
+}
+
+func (p *Proxy) send(ctx context.Context, msg []byte) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Server+"/mcp", bytes.NewReader(msg))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+p.token())
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	p.stateMu.Lock()
@@ -125,16 +190,10 @@ func (p *Proxy) forward(ctx context.Context, msg []byte, head rpcHead, out io.Wr
 		req.Header.Set("Mcp-Session-Id", p.session)
 	}
 	p.stateMu.Unlock()
+	return p.HTTP.Do(req)
+}
 
-	resp, err := p.HTTP.Do(req)
-	if err != nil {
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			err = ue.Err
-		}
-		p.fail(out, head, fmt.Sprintf("连接 Cohive 协作服务 %s 失败：%v", p.Server, err))
-		return
-	}
+func (p *Proxy) handle(resp *http.Response, head rpcHead, out io.Writer) {
 	defer resp.Body.Close()
 	if sid := resp.Header.Get("Mcp-Session-Id"); sid != "" {
 		p.stateMu.Lock()
@@ -146,7 +205,7 @@ func (p *Proxy) forward(ctx context.Context, msg []byte, head rpcHead, out io.Wr
 	case resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusNoContent:
 		return
 	case resp.StatusCode == http.StatusUnauthorized:
-		p.fail(out, head, "Cohive 令牌无效或已吊销：请执行 cohive login --force 重新配对这台电脑")
+		p.fail(out, head, "Cohive 令牌无效或已吊销：如果你已被移出这个工作空间，请联系管理员；否则请执行 cohive login --force 重新配对这台电脑")
 		return
 	case resp.StatusCode >= 300:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
@@ -218,8 +277,8 @@ var bearerPattern = regexp.MustCompile(`(?i)bearer\s+\S+`)
 
 // sanitize 处理要转给模型看的服务端错误正文：抹掉令牌、截短。
 func (p *Proxy) sanitize(body string) string {
-	if p.Token != "" {
-		body = strings.ReplaceAll(body, p.Token, "***")
+	if tok := p.token(); tok != "" {
+		body = strings.ReplaceAll(body, tok, "***")
 	}
 	body = bearerPattern.ReplaceAllString(body, "Bearer ***")
 	body = strings.TrimSpace(body)

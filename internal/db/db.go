@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -30,6 +31,12 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 // Migrate 按文件名顺序执行尚未执行过的迁移，每个迁移在独立事务中执行并登记。
 // 用 advisory lock 防止多个进程同时迁移。
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
+	return MigrateUpTo(ctx, pool, "")
+}
+
+// MigrateUpTo 只执行文件名不大于 last 的迁移（例如 "0006"）；last 为空时执行全部。
+// 供迁移测试在旧结构上造数据后再执行新迁移。
+func MigrateUpTo(ctx context.Context, pool *pgxpool.Pool, last string) error {
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return err
@@ -55,6 +62,9 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	sort.Strings(names)
 
 	for _, name := range names {
+		if last != "" && strings.TrimPrefix(name, "migrations/") > last+"\xff" {
+			break
+		}
 		var done bool
 		if err := conn.QueryRow(ctx,
 			"SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE name = $1)", name).Scan(&done); err != nil {
