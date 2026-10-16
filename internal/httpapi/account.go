@@ -53,7 +53,7 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			"member": c.Member.Name, "display_name": c.Member.DisplayName, "workspace": ws.Name, "role": c.Member.Role,
 			"tool": c.Identity.Tool, "must_change_password": pw.MustChange, "has_password": pw.Hash != "",
 			"login_method": loginMethod(c),
-			"telegram": map[string]any{"username": c.Member.TelegramUsername, "linked": c.Member.TelegramUserID != nil},
+			"telegram":     map[string]any{"username": c.Member.TelegramUsername, "linked": c.Member.TelegramUserID != nil},
 		})
 	})
 
