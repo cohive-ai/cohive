@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // 成员资格状态
@@ -77,6 +79,10 @@ func AddMembership(ctx context.Context, q DBTX, accountID, wsID int64, role stri
 	case errors.Is(notFound(err), ErrNotFound):
 		if err := q.QueryRow(ctx, `INSERT INTO members (workspace_id, account_id, role, added_by)
 			VALUES ($1, $2, $3, $4) RETURNING id`, wsID, accountID, role, addedBy).Scan(&id); err != nil {
+			var pe *pgconn.PgError
+			if errors.As(err, &pe) && pe.Code == "23505" {
+				return Member{}, ErrAlreadyMember // 同时加入同一个人：唯一约束兜底
+			}
 			return Member{}, err
 		}
 	case err != nil:

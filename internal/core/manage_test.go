@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/issue"
@@ -415,5 +417,57 @@ func TestGroupBoundOnce(t *testing.T) {
 	}
 	if ws, err := svc.WorkspaceByGroup(ctx, -1001); err != nil || ws.ID != p.pay {
 		t.Fatalf("由群反查工作空间：%+v %v", ws, err)
+	}
+}
+
+// 两名管理员同时互相移出：恰好一个成功，至少保留一名管理员，另一个得到明确的拒绝而不是内部错误。
+func TestConcurrentMutualRemoval(t *testing.T) {
+	ctx := context.Background()
+	p := newPeople(t)
+	svc := p.e.svc
+	b, err := svc.AddMember(ctx, &p.payAdmin, p.pay, "ops-admin", store.RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hold, err := svc.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hold.Exec(ctx, `LOCK TABLE members IN EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	type job struct {
+		actor  store.Account
+		target int64
+	}
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, j := range []job{{p.payAdmin, b.ID}, {p.opsAdmin, p.payAdminMember.ID}} {
+		wg.Add(1)
+		go func(j job) {
+			defer wg.Done()
+			errs <- svc.ApplyHandover(ctx, &j.actor, p.pay, j.target, core.HandoverPlan{}, true)
+		}(j)
+	}
+	time.Sleep(300 * time.Millisecond)
+	_ = hold.Rollback(ctx)
+	wg.Wait()
+	close(errs)
+	ok, refused := 0, 0
+	for err := range errs {
+		switch {
+		case err == nil:
+			ok++
+		case isInput(err) || errors.Is(err, core.ErrNotAdmin):
+			refused++
+		default:
+			t.Fatalf("不应返回内部错误：%v", err)
+		}
+	}
+	if ok != 1 || refused != 1 {
+		t.Fatalf("应恰好一个成功：成功 %d，拒绝 %d", ok, refused)
+	}
+	if n, _ := store.CountAdmins(ctx, svc.Pool, p.pay); n != 1 {
+		t.Fatalf("应保留一名管理员：%d", n)
 	}
 }

@@ -271,18 +271,18 @@ func (s *Service) GetHandover(ctx context.Context, actor *store.Account, wsID, m
 // 并吊销他在该工作空间的全部令牌。全部在一个事务里：清单不完整或任何一张单的版本已变化时整体不做。
 func (s *Service) ApplyHandover(ctx context.Context, actor *store.Account, wsID, memberID int64, plan HandoverPlan, remove bool) error {
 	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if remove {
+			// 先锁本空间的管理员行再锁被移出的人，与并发降级、互相移出排队（顺序一致，不会互相等待）
+			if err := store.LockAdmins(ctx, tx, wsID); err != nil {
+				return err
+			}
+		}
 		m, err := store.LockMember(ctx, tx, memberID)
 		if err != nil {
 			return err
 		}
 		if m.WorkspaceID != wsID || m.Status != store.MemberActive {
 			return fmt.Errorf("成员 %d：%w", memberID, store.ErrNotFound)
-		}
-		if remove {
-			// 先锁管理员行再判定操作者，与并发降级、移出排队
-			if err := store.LockAdmins(ctx, tx, wsID); err != nil {
-				return err
-			}
 		}
 		if err := canAdmin(ctx, tx, actor, wsID); err != nil {
 			return err

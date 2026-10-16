@@ -277,18 +277,19 @@ func (s *Service) PollDeviceAuth(ctx context.Context, id int64, secret string) (
 			a.Status, out.Status = store.AuthDenied, store.AuthDenied
 			return store.UpdateDeviceAuth(ctx, tx, a)
 		}
-		// 先锁设备行并确认未吊销，与吊销互斥：批准后、领取前被吊销（含账号被停用）则不交付
-		if err := store.LockActiveDevice(ctx, tx, *a.DeviceID); errors.Is(err, store.ErrDeviceRevoked) {
-			return deny()
-		} else if err != nil {
-			return err
-		}
+		// 加锁顺序统一为“账号 → 设备”（与停用一致），避免互相等待。
+		// 锁设备行并确认未吊销，与吊销互斥：批准后、领取前被吊销（含账号被停用）则不交付
 		acc, err := store.LockAccount(ctx, tx, *a.AccountID)
 		if err != nil {
 			return err
 		}
 		if acc.Disabled() {
 			return deny()
+		}
+		if err := store.LockActiveDevice(ctx, tx, *a.DeviceID); errors.Is(err, store.ErrDeviceRevoked) {
+			return deny()
+		} else if err != nil {
+			return err
 		}
 		devSecret, err := randomString(32)
 		if err != nil {
@@ -346,17 +347,18 @@ func (s *Service) IssueWorkspaceTokens(ctx context.Context, dev store.Device, wo
 	}
 	var out WorkspaceTokens
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
-		if err := store.LockActiveDevice(ctx, tx, dev.ID); errors.Is(err, store.ErrDeviceRevoked) {
-			return store.ErrUnauthorized
-		} else if err != nil {
-			return err
-		}
+		// 加锁顺序：账号 → 设备 → 成员资格（与停用、移出一致）
 		acc, err := store.LockAccount(ctx, tx, dev.AccountID)
 		if err != nil {
 			return err
 		}
 		if acc.Disabled() {
 			return store.ErrUnauthorized
+		}
+		if err := store.LockActiveDevice(ctx, tx, dev.ID); errors.Is(err, store.ErrDeviceRevoked) {
+			return store.ErrUnauthorized
+		} else if err != nil {
+			return err
 		}
 		ws, err := store.WorkspaceByName(ctx, tx, workspace)
 		if errors.Is(err, store.ErrNotFound) {
