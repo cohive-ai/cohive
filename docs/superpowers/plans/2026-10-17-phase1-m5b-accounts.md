@@ -55,7 +55,7 @@
 | 建工作空间 | ✅ | — | — | — | 网页“服务器管理”、命令行 |
 | 删除工作空间（只限没有问题单的空工作空间，见待拍板第 3 条） | ✅ | — | — | — | 网页“服务器管理”、命令行 |
 | 指定 / 撤销工作空间管理员 | ✅ 任一工作空间 | ✅ 本空间（至少保留一名管理员） | — | — | 网页、命令行 |
-| 授予 / 撤销服务器管理员 | ✅（至少保留一名，不能撤销自己最后一个） | — | — | — | 网页“服务器管理”、命令行 |
+| 授予 / 撤销服务器管理员 | ✅（服务器上至少保留一名未停用的服务器管理员） | — | — | — | 网页“服务器管理”、命令行 |
 | 把已有账号直接加入工作空间 | ✅ 任一工作空间 | ✅ 本空间 | — | — | 网页、命令行 |
 | 发个人邀请 / 团队邀请 | ✅ 任一工作空间 | ✅ 本空间 | — | — | 网页、命令行 |
 | 批准 / 拒绝注册与加入申请（团队邀请） | ✅ 任一工作空间 | ✅ 本空间 | — | — | 网页；本空间群里的审批按钮 |
@@ -349,7 +349,7 @@ CREATE UNIQUE INDEX accounts_telegram_user ON accounts (telegram_user_id) WHERE 
 4. 不能移出本空间最后一名在册管理员（锁管理员行判定，同 M5）。
 5. 移出不影响他的账号、设备、Telegram 连接和其他工作空间。他的草稿留着（只有本人可见，移出后也看不到）。
 6. 他的网页会话不注销，但所有 `/w/{该工作空间}/...` 请求立即 404；编程工具里的令牌立即失效。
-7. 命令行兜底：`cohive-server member remove --workspace W --name X --handover-to Y`（全部转给 Y）。
+7. 命令行兜底：`cohive-server member remove --workspace W --name X --handover-to Y --as Z`（全部转给 Y）。`--as` 必须是本空间在册的管理员，改派事件与通知记在他名下——问题单事件与通知的操作人外键都指向成员资格且不可为空，这样不必为命令行改表。
 
 `reassign` 是管理动作，不走编程工具的人工确认（管理员在网页上点确认本身就是人做的决定），也不提供 MCP 工具。
 
@@ -516,7 +516,7 @@ HandoverPlan = {issues:   [{id, as: "owner"|"source", to_member_id, expected_ver
 | `workspace list`、`workspace notify` | 不变（`notify` 加群唯一校验） |
 | `member add --workspace W --name X [--display] [--role]` | 改：账号不存在则新建（无密码，需 `admin reset-password` 后才能登录网页），存在则加入该工作空间 |
 | `member set --workspace W --name X --role R` | 改：只管角色；`--telegram`、`--telegram-id` 移到 `account set` |
-| `member remove --workspace W --name X --handover-to Y` | **新增** |
+| `member remove --workspace W --name X --handover-to Y --as Z` | **新增**；`--as` 为记作操作人的本空间管理员，见 3.8 |
 | `member list --workspace W [--all]` | 改：默认只列在册 |
 | `account list`、`account set --name X [--display] [--telegram] [--telegram-id]` | **新增** |
 | `account disable --name X`、`account enable --name X` | **新增** |
