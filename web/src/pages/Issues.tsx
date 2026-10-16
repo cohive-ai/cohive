@@ -4,13 +4,15 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { Notice, StatusTag, ToolMark } from "../components";
 import { relativeTime, statusOptions } from "../format";
+import { useWs, WorkspaceLoadError } from "./WorkspaceShell";
 
 export function IssuesPage() {
+  const ws = useWs();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const list = useQuery({
-    queryKey: ["issues", q, status],
-    queryFn: () => api.issues({ q, status }),
+    queryKey: ["issues", ws, q, status],
+    queryFn: () => api.issues(ws, { q, status }),
     placeholderData: keepPreviousData,
     refetchInterval: 5000,
   });
@@ -48,7 +50,7 @@ export function IssuesPage() {
       {list.isPending ? (
         <Notice>正在读取…</Notice>
       ) : list.isError ? (
-        <Notice tone="danger">读取失败：{list.error.message}</Notice>
+        <WorkspaceLoadError error={list.error} what="问题单" />
       ) : list.data.items.length === 0 ? (
         <Notice>{q || status ? "没有符合条件的问题单，换个关键词或状态试试。" : "还没有问题单。在编程工具里让智能体起草第一张。"}</Notice>
       ) : (
@@ -70,7 +72,7 @@ export function IssuesPage() {
                 <tr key={is.id} className="border-t border-line first:border-t-0 hover:bg-bg">
                   <td className="hidden px-3 py-2 align-top text-muted sm:table-cell">#{is.id}</td>
                   <td className="px-3 py-2">
-                    <Link to="/issues/$id" params={{ id: String(is.id) }} className="text-ink hover:text-teal">
+                    <Link to="/w/$ws/issues/$id" params={{ ws, id: String(is.id) }} className="text-ink hover:text-teal">
                       <span className="text-muted sm:hidden">#{is.id} </span>
                       {is.title}
                     </Link>

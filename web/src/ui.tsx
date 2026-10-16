@@ -97,12 +97,15 @@ export function Dialog({
   title,
   children,
   dismissible = true,
+  wide = false,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
   dismissible?: boolean;
+  // 内容较多（例如转交清单）时用宽一些的对话框
+  wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -120,7 +123,7 @@ export function Dialog({
       onCancel={(e) => {
         if (!dismissible) e.preventDefault();
       }}
-      className="m-auto w-[min(calc(100vw-2rem),30rem)] rounded-lg border border-line bg-surface p-5 text-ink backdrop:bg-black/40"
+      className={`m-auto ${wide ? "w-[min(calc(100vw-2rem),44rem)]" : "w-[min(calc(100vw-2rem),30rem)]"} rounded-lg border border-line bg-surface p-5 text-ink backdrop:bg-black/40`}
     >
       {open && (
         <>

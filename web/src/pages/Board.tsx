@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type BoardIssue, type Member } from "../api";
 import { Notice, StatusTag, ToolMark } from "../components";
 import { relativeTime } from "../format";
+import { useWs, WorkspaceLoadError } from "./WorkspaceShell";
 
 const DONE = "__done__";
 
@@ -19,7 +20,8 @@ const needsYou: Record<string, string> = {
 };
 
 export function BoardPage() {
-  const board = useQuery({ queryKey: ["board"], queryFn: api.board, refetchInterval: 5000 });
+  const ws = useWs();
+  const board = useQuery({ queryKey: ["board", ws], queryFn: () => api.board(ws), refetchInterval: 5000 });
   const moved = useHandoffs(board.data?.issues);
   const [, tick] = useState(0);
   useEffect(() => {
@@ -28,7 +30,7 @@ export function BoardPage() {
   }, []);
 
   if (board.isPending) return <Notice>正在读取看板…</Notice>;
-  if (board.isError) return <Notice tone="danger">读取看板失败：{board.error.message}</Notice>;
+  if (board.isError) return <WorkspaceLoadError error={board.error} what="看板" />;
 
   const { me, members, issues } = board.data;
   const columns = orderColumns(me, members, issues);
@@ -57,6 +59,11 @@ export function BoardPage() {
             <h2 className="mb-2 flex items-baseline gap-2 px-1">
               <span className={col.key === me ? "font-semibold text-ink" : "font-semibold"}>{col.title}</span>
               {col.subtitle && <span className="text-sm text-muted">{col.subtitle}</span>}
+              {col.disabled && (
+                <span className="rounded bg-sunken px-1.5 py-px text-xs text-danger" title="账号已被服务器管理员停用">
+                  已停用
+                </span>
+              )}
               <span className="ml-auto text-sm text-muted">{col.items.length}</span>
             </h2>
             <div className={`flex min-h-24 flex-col gap-2 rounded-lg p-2 ${col.key === DONE ? "bg-sunken/60" : "bg-sunken"}`}>
@@ -65,7 +72,7 @@ export function BoardPage() {
                   {col.key === DONE ? "最近 7 天没有结束的单子" : "手上没有待处理的单子"}
                 </p>
               ) : (
-                col.items.map((is) => <Card key={is.id} issue={is} me={me} moved={moved.has(is.id)} />)
+                col.items.map((is) => <Card key={is.id} ws={ws} issue={is} me={me} moved={moved.has(is.id)} />)
               )}
             </div>
           </section>
@@ -75,13 +82,13 @@ export function BoardPage() {
   );
 }
 
-function Card({ issue, me, moved }: { issue: BoardIssue; me: string; moved: boolean }) {
+function Card({ ws, issue, me, moved }: { ws: string; issue: BoardIssue; me: string; moved: boolean }) {
   const forMe = issue.holder === me;
   const done = !issue.holder;
   return (
     <Link
-      to="/issues/$id"
-      params={{ id: String(issue.id) }}
+      to="/w/$ws/issues/$id"
+      params={{ ws, id: String(issue.id) }}
       className={`block rounded-md border bg-surface px-3 py-2.5 hover:border-teal ${
         forMe ? "border-line border-l-4 border-l-amber" : "border-line"
       } ${moved ? "handoff" : ""} ${done ? "opacity-75" : ""}`}
@@ -117,6 +124,7 @@ interface Column {
   key: string;
   title: string;
   subtitle?: string;
+  disabled?: boolean;
   items: BoardIssue[];
 }
 
@@ -134,6 +142,7 @@ function orderColumns(me: string, members: Member[], issues: BoardIssue[]): Colu
     key: m.name,
     title: m.name === me ? "你" : m.display_name || m.name,
     subtitle: m.name === me ? m.display_name || m.name : m.display_name ? m.name : undefined,
+    disabled: !!m.disabled,
     items: byHolder.get(m.name) ?? [],
   }));
   cols.push({ key: DONE, title: "已结束", subtitle: "最近 7 天", items: byHolder.get(DONE) ?? [] });

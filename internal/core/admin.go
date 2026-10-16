@@ -427,16 +427,24 @@ func checkPlan(ctx context.Context, tx pgx.Tx, h Handover, plan HandoverPlan) er
 // reassign 由管理员改派问题单的负责人与 / 或发起人：版本号加一，写事件，给新接手人入队群通知。
 func reassign(ctx context.Context, tx pgx.Tx, op store.Member, is store.Issue, owner, source *int64) error {
 	payload := map[string]any{"reason": "removed"}
+	name := func(id int64) string {
+		if m, err := store.MemberByID(ctx, tx, id); err == nil {
+			return m.Name
+		}
+		return ""
+	}
 	if owner != nil {
 		if is.OwnerID != nil {
 			payload["owner_from"] = *is.OwnerID
 		}
 		payload["owner_to"] = *owner
+		payload["owner_to_name"] = name(*owner)
 		is.OwnerID = owner
 	}
 	if source != nil {
 		payload["source_from"] = is.SourceMemberID
 		payload["source_to"] = *source
+		payload["source_to_name"] = name(*source)
 		if err := store.SetIssueSource(ctx, tx, is.ID, *source); err != nil {
 			return err
 		}

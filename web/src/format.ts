@@ -9,6 +9,7 @@ export const actionLabel: Record<string, string> = {
   close: "关闭",
   reopen: "重开",
   comment: "评论",
+  reassign: "改派",
 };
 
 export const statusOptions: { value: string; label: string }[] = [
@@ -56,16 +57,43 @@ export const deviceAuthStatusLabel: Record<string, string> = {
   expired: "已过期",
 };
 
-// 成员名规则（与服务端一致）：小写字母、数字、下划线、横线，1 到 32 位，第一个字符须是字母或数字
+// 登录名规则（与服务端一致，工作空间名同样适用）：小写字母、数字、下划线、横线，1 到 32 位，第一个字符须是字母或数字
 export const memberNamePattern = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 export const minPasswordLength = 10;
 
-// 登录后回跳地址：只接受本站路径，避免被拼成跳去外站
-export function safeRedirect(target: string | undefined, fallback = "/"): string {
-  if (!target || !target.startsWith("/") || target.startsWith("//") || target.startsWith("/\\")) return fallback;
-  if (target === "/login" || target.startsWith("/login?")) return fallback;
+// 登录后回跳地址：只接受本站的相对路径，避免被拼成跳去外站（//evil、/\\evil、带控制字符的地址等）
+export function safeRedirect(target: string | undefined | null, fallback = "/"): string {
+  if (typeof target !== "string" || !target.startsWith("/")) return fallback;
+  if (target.startsWith("//") || target.includes("\\")) return fallback;
+  // 浏览器解析地址时会去掉制表符与换行，"/\t/evil.com" 会变成 "//evil.com"
+  if (/[\u0000-\u001f\u007f]/.test(target)) return fallback;
+  if (target === "/login" || target.startsWith("/login?") || target.startsWith("/login/")) return fallback;
   return target;
 }
+
+// 设备令牌按工作空间分组：[{workspace, tools: ["Claude Code", "Codex"]}]
+export function tokensByWorkspace(
+  tokens: { workspace: string; tool: string }[] | null | undefined,
+): { workspace: string; tools: string[] }[] {
+  const out: { workspace: string; tools: string[] }[] = [];
+  for (const t of tokens ?? []) {
+    let g = out.find((x) => x.workspace === t.workspace);
+    if (!g) {
+      g = { workspace: t.workspace, tools: [] };
+      out.push(g);
+    }
+    const label = toolLabel(t.tool);
+    if (!g.tools.includes(label)) g.tools.push(label);
+  }
+  return out;
+}
+
+// 工作空间名列表的展示：A、B；没有时给出说明
+export const workspaceListText = (list: string[] | null | undefined, empty = "暂无") =>
+  list && list.length ? list.join("、") : empty;
+
+export const signupKindLabel = (kind: string) =>
+  kind === "existing" ? "已有账号申请加入" : kind === "new" ? "新人注册" : kind;
 
 export function relativeTime(iso: string, now = Date.now()): string {
   const sec = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));

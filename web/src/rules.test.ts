@@ -3,6 +3,7 @@ import { ApiError } from "./api";
 import {
   adminNeedsPasswordLogin,
   authorizeAsText,
+  deviceScopeText,
   inviteLookupFailure,
   isTelegramLink,
   revokeDeviceMessage,
@@ -16,11 +17,16 @@ it("只有账号密码登录才能进入管理页", () => {
   expect(adminNeedsPasswordLogin({})).toBe(true);
 });
 
-it("授权页写明以哪个成员、在哪个工作空间授权", () => {
-  expect(authorizeAsText({ member: "ann", display_name: "Ann", workspace: "payments" })).toBe(
-    "将以成员 ann（Ann） 在工作空间 payments 授权这台电脑。",
-  );
-  expect(authorizeAsText({ member: "lee", workspace: "default" })).toBe("将以成员 lee 在工作空间 default 授权这台电脑。");
+it("授权页写明以哪个账号授权", () => {
+  expect(authorizeAsText({ name: "ann", display_name: "Ann" })).toBe("将以账号 ann（Ann） 授权这台电脑。");
+  expect(authorizeAsText({ name: "lee" })).toBe("将以账号 lee 授权这台电脑。");
+  expect(authorizeAsText({ name: "lee", display_name: "lee" })).toBe("将以账号 lee 授权这台电脑。");
+});
+
+it("授权页写明批准后这台电脑可用于哪些工作空间", () => {
+  expect(deviceScopeText(["pay", "ops"])).toBe("批准后这台电脑可用于：pay、ops。");
+  expect(deviceScopeText([])).toContain("不在任何工作空间");
+  expect(deviceScopeText(undefined)).toContain("不在任何工作空间");
 });
 
 it("吊销提示区分是否为唯一在用的设备", () => {

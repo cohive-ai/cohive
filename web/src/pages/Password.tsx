@@ -18,9 +18,9 @@ export function PasswordPage() {
       {forced && <Callout>为了账号安全，请先设置一个新密码，之后才能使用其他页面。</Callout>}
       <div className="rounded-lg border border-line bg-surface p-4 sm:p-5">
         <ChangePasswordForm
-          hasPassword={me.data?.has_password ?? true}
+          hasPassword={me.data?.account.has_password ?? true}
           onDone={() => {
-            if (forced) router.history.push(safeRedirect(redirect, "/me"));
+            if (forced) router.history.push(safeRedirect(redirect, "/"));
           }}
         />
       </div>
@@ -50,7 +50,9 @@ export function ChangePasswordForm({ hasPassword, onDone }: { hasPassword: boole
     setOk("");
     try {
       await api.changePassword({ old_password: oldPassword, new_password: next });
-      qc.setQueryData<Me>(["me"], (cur) => (cur ? { ...cur, must_change_password: false, has_password: true } : cur));
+      qc.setQueryData<Me>(["me"], (cur) =>
+        cur ? { ...cur, must_change_password: false, account: { ...cur.account, has_password: true } } : cur,
+      );
       await qc.invalidateQueries({ queryKey: ["me"] });
       setOld("");
       setNext("");

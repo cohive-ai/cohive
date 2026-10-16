@@ -160,7 +160,8 @@ func TestRemoveWithHandover(t *testing.T) {
 	}
 	evs, _ := store.ListEvents(ctx, svc.Pool, h.asOwner.ID)
 	last := evs[len(evs)-1]
-	if last.Action != issue.ActReassign || last.ActorMemberID != to || last.Payload["owner_to"] != float64(to) {
+	if last.Action != issue.ActReassign || last.ActorMemberID != to || last.Payload["owner_to"] != float64(to) ||
+		last.Payload["owner_to_name"] != "pay-admin" {
 		t.Fatalf("应写改派事件：%+v", last)
 	}
 	ns, _ := store.ListNotificationsForIssue(ctx, svc.Pool, h.asOwner.ID)
