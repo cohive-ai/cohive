@@ -4,7 +4,7 @@ import { api, ApiError, type Me } from "../api";
 import { Notice } from "../components";
 import { absoluteTime, roleLabel, toolsText } from "../format";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
-import { isTelegramLink, shouldRetryPoll } from "../rules";
+import { isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
 
 export function MePage() {
@@ -81,12 +81,7 @@ function MyDevices() {
                   <ConfirmButton
                     label="吊销"
                     title="吊销这台设备？"
-                    message={
-                      <>
-                        吊销后，“{d.name || "未命名"}”上的编程工具会立即失去访问权限，需要重新执行 cohive login
-                        才能再用。
-                      </>
-                    }
+                    message={revokeDeviceMessage(d.name, list.data.items.filter((x) => !x.revoked_at).length === 1)}
                     confirmLabel="确认吊销"
                     action={async () => {
                       await api.revokeMyDevice(d.id);

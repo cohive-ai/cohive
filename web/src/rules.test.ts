@@ -1,6 +1,16 @@
 import { expect, it } from "vitest";
 import { ApiError } from "./api";
-import { inviteLookupFailure, isTelegramLink, shouldRetryPoll } from "./rules";
+import { inviteLookupFailure, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "./rules";
+
+it("吊销提示区分是否为唯一在用的设备", () => {
+  const only = revokeDeviceMessage("mac", true);
+  const more = revokeDeviceMessage("mac", false);
+  expect(only).toContain("唯一在用");
+  expect(only).toContain("管理员批准");
+  expect(more).not.toContain("唯一在用");
+  expect(more).toContain("cohive login");
+  expect(revokeDeviceMessage("", false)).toContain("未命名");
+});
 
 it("轮询只对网络错误和服务端 5xx 重试", () => {
   expect(shouldRetryPoll(new ApiError(0, "网络"))).toBe(true);

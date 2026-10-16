@@ -22,3 +22,12 @@ export function inviteLookupFailure(err: unknown): "invalid" | "busy" | "error" 
   if (err.status >= 400 && err.status < 500) return "invalid";
   return "error";
 }
+
+// 吊销自己设备时的提示：唯一在用的设备吊销后，编程工具全都用不了，再配对还要管理员批准。
+export function revokeDeviceMessage(name: string, onlyActive: boolean): string {
+  const n = name || "未命名";
+  if (onlyActive) {
+    return `“${n}”是你唯一在用的电脑。吊销后你的编程工具都无法再访问协作服务；重新配对电脑需要管理员批准。`;
+  }
+  return `吊销后，“${n}”上的编程工具会立即失去访问权限；以后要在这台电脑上再用，需要重新执行 cohive login 并等管理员批准。`;
+}
