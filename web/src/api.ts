@@ -20,6 +20,9 @@ export function setUnauthorizedHandler(fn: () => void) {
   unauthorizedHandler = fn;
 }
 
+// 单个请求最长等待时间
+export const REQUEST_TIMEOUT_MS = 15_000;
+
 interface RequestOptions {
   method?: "GET" | "POST" | "DELETE";
   body?: unknown;
@@ -35,14 +38,24 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(opts.body ?? {});
   }
+  // 15 秒没有响应就放弃，避免网络卡住时页面一直转圈
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  init.signal = ctrl.signal;
   let res: Response;
+  let body: Record<string, unknown>;
   try {
-    res = await fetch(path, init);
-  } catch {
-    throw new ApiError(0, "无法连接协作服务，请检查网络后重试");
+    try {
+      res = await fetch(path, init);
+    } catch {
+      throw new ApiError(0, ctrl.signal.aborted ? "请求超时，请检查网络后重试" : "无法连接协作服务，请检查网络后重试");
+    }
+    if (res.status === 204) return undefined as T;
+    body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (ctrl.signal.aborted) throw new ApiError(0, "请求超时，请检查网络后重试");
+  } finally {
+    clearTimeout(timer);
   }
-  if (res.status === 204) return undefined as T;
-  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (res.ok) return body as T;
   const message = typeof body.error === "string" && body.error ? body.error : `请求失败（${res.status}）`;
   if (res.status === 401 && opts.session !== false) {
