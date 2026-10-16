@@ -433,8 +433,9 @@ func knownToolsFirst(tokens map[string]string) []string {
 // openWeb 实现 cohive web：用本机设备令牌换一次性登录链接，在浏览器里免密打开网页。
 func openWeb(ctx context.Context, out io.Writer, args []string) error {
 	fs := flag.NewFlagSet("web", flag.ContinueOnError)
-	server := fs.String("server", "", "协作服务地址；本机只配对过一个服务时可省略")
-	dir := fs.String("dir", ".", "仓库目录，用于读取服务地址")
+	server := fs.String("server", "", "协作服务地址；在仓库里或本机只配对过一个服务时可省略")
+	workspace := fs.String("workspace", "", "工作空间名；在仓库里或本机只配对过一个工作空间时可省略")
+	dir := fs.String("dir", ".", "仓库目录，用于读取服务地址与工作空间")
 	open := fs.Bool("open", true, "自动打开浏览器")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -443,26 +444,34 @@ func openWeb(ctx context.Context, out io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
-	srv := client.NormalizeServer(*server)
-	if srv == "" {
-		if repo, err := readRepoTarget(findRepoDir(*dir)); err == nil {
-			srv = repo.Server
+	srv, ws := client.NormalizeServer(*server), *workspace
+	// 没有明确指定时，优先用仓库配置里的服务与工作空间
+	if repo, err := readRepoTarget(findRepoDir(*dir)); err == nil && repo.Server != "" && (srv == "" || srv == repo.Server) {
+		srv = repo.Server
+		if ws == "" {
+			ws = repo.Workspace
 		}
 	}
-	byServer := map[string]client.Login{}
+	type key struct{ server, workspace string }
+	found := map[key]client.Login{}
 	for _, l := range creds.Logins {
-		if l.DeviceID != 0 && (srv == "" || l.Server == srv) {
-			byServer[l.Server] = l
+		if l.DeviceID != 0 && (srv == "" || l.Server == srv) && (ws == "" || l.Workspace == ws) {
+			found[key{l.Server, l.Workspace}] = l
 		}
 	}
-	if len(byServer) == 0 {
-		return errors.New("这台电脑还没有配对：先执行 cohive login")
+	if len(found) == 0 {
+		return errors.New("这台电脑还没有配对这个协作服务或工作空间：先执行 cohive login")
 	}
-	if len(byServer) > 1 {
-		return errors.New("这台电脑配对了多个协作服务，请用 --server 指定")
+	if len(found) > 1 {
+		var list []string
+		for k := range found {
+			list = append(list, fmt.Sprintf("--server %s --workspace %s", k.server, k.workspace))
+		}
+		sort.Strings(list)
+		return fmt.Errorf("这台电脑配对了多个服务或工作空间，请指定其中一个：\n  %s", strings.Join(list, "\n  "))
 	}
 	var dev client.Login
-	for _, l := range byServer {
+	for _, l := range found {
 		dev = l
 	}
 	link, err := client.WebLogin(ctx, dev.Server, dev.Token)
