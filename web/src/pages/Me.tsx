@@ -5,7 +5,7 @@ import { api, ApiError, type Me } from "../api";
 import { DeviceTokens, Notice } from "../components";
 import { absoluteTime, roleLabel } from "../format";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
-import { isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
+import { installCommands, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
 
 export function MePage() {
@@ -62,14 +62,7 @@ export function MePage() {
         )}
       </Section>
 
-      <Section title="绑定新电脑" description="让这台电脑上的编程工具以你的身份使用协作服务。">
-        <p className="mb-2 text-sm">在电脑终端执行下面的命令，会自动打开浏览器，在浏览器里点“授权”即可：</p>
-        <CopyField label="绑定命令" value={`cohive login --server ${window.location.origin}`} />
-        <p className="mt-3 text-sm text-muted">
-          已经登录过的电脑，执行 <code className="rounded bg-sunken px-1 font-mono text-ink">cohive web</code>{" "}
-          可以免密打开这个网页。
-        </p>
-      </Section>
+      <BindComputer />
 
       <MyDevices />
 
@@ -79,6 +72,51 @@ export function MePage() {
         <ChangePasswordForm hasPassword={m.account.has_password} />
       </Section>
     </div>
+  );
+}
+
+// 绑定新电脑：先装命令行（只从本服务下载、核对校验和），再配对
+function BindComputer() {
+  const v = useQuery({ queryKey: ["version"], queryFn: api.version, staleTime: 5 * 60_000 });
+  const origin = window.location.origin;
+  const cmd = installCommands(origin);
+  const code = (t: string) => <code className="rounded bg-sunken px-1 font-mono text-ink">{t}</code>;
+
+  return (
+    <Section title="绑定新电脑" description="让这台电脑上的编程工具以你的身份使用协作服务。">
+      <ol className="space-y-4 text-sm">
+        <li>
+          <p className="mb-2 font-medium">1. 安装命令行 cohive</p>
+          {v.isPending ? (
+            <p className="text-muted">正在读取…</p>
+          ) : v.isError ? (
+            <p className="text-danger">读取安装信息失败：{v.error.message}</p>
+          ) : v.data.cli === null ? (
+            <Notice tone="danger">这台服务器没有附带命令行安装包，请联系管理员。</Notice>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-muted">macOS、Linux：在终端执行</p>
+              <CopyField label="macOS、Linux 安装命令" value={cmd.unix} />
+              <p className="text-muted">Windows：在 PowerShell 执行</p>
+              <CopyField label="Windows 安装命令" value={cmd.windows} />
+              <p className="text-muted">
+                版本 {v.data.cli.version}。只从本服务下载，安装前会核对校验和；装在 {code("~/.local/bin")}（Windows
+                装在当前用户目录），不需要管理员权限。装过的电脑再执行一次即可升级。
+              </p>
+            </div>
+          )}
+        </li>
+        <li>
+          <p className="mb-2 font-medium">2. 配对这台电脑</p>
+          <p className="mb-2">执行下面的命令，会自动打开浏览器，在浏览器里点“授权”即可：</p>
+          <CopyField label="绑定命令" value={`cohive login --server ${origin}`} />
+        </li>
+        <li>
+          <p className="mb-1 font-medium">3. 以后免密打开网页</p>
+          <p className="text-muted">已经配对过的电脑，执行 {code("cohive web")} 可以免密打开这个网页。</p>
+        </li>
+      </ol>
+    </Section>
   );
 }
 

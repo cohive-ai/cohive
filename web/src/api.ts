@@ -350,7 +350,17 @@ const w = (ws: string) => `/api/v1/w/${seg(ws)}`;
 const adm = (ws: string) => `${w(ws)}/admin`;
 const srv = "/api/v1/server";
 
+// 协作服务版本与它附带的命令行安装包；cli 为 null 表示构建时没有附带安装包
+export interface ServerVersion {
+  version: string;
+  commit: string;
+  cli: { version: string; commit: string; platforms: string[] } | null;
+}
+
 export const api = {
+  // 版本与命令行安装包（不需要登录）
+  version: () => request<ServerVersion>("/api/v1/version", { session: false }),
+
   // 看板与问题单（工作空间内）
   board: (ws: string) => request<Board>(`${w(ws)}/board`),
   issues: (ws: string, params: { q?: string; status?: string }) => {
