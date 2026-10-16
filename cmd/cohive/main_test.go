@@ -45,7 +45,7 @@ func newTestServer(t *testing.T) testServer {
 		t.Fatal(err)
 	}
 	svc := &core.Service{Pool: pool}
-	srv := httptest.NewServer(server.New(svc, fstest.MapFS{}, server.Options{}))
+	srv := httptest.NewServer(server.New(svc, fstest.MapFS{}, server.Options{BotName: func() string { return "CohiveBot" }}))
 	t.Cleanup(srv.Close)
 	return testServer{url: srv.URL, svc: svc, uid: uid}
 }
