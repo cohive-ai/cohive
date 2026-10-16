@@ -4,7 +4,7 @@ import { api, ApiError, type Me } from "../api";
 import { Notice } from "../components";
 import { absoluteTime, roleLabel, toolsText } from "../format";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
-import { shouldRetryPoll } from "../rules";
+import { isTelegramLink, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
 
 export function MePage() {
@@ -170,6 +170,9 @@ function Telegram({ me }: { me: Me }) {
     const win = window.open("", "_blank");
     try {
       const res = await api.startLink();
+      if (!isTelegramLink(res.url)) {
+        throw new Error("协作服务返回的连接链接不是 Telegram 机器人链接，已拒绝打开");
+      }
       if (win) {
         win.opener = null;
         win.location.href = res.url;

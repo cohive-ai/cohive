@@ -7,3 +7,9 @@ export function shouldRetryPoll(err: unknown): boolean {
   if (!(err instanceof ApiError)) return true;
   return err.status === 0 || err.status >= 500;
 }
+
+// 连接 Telegram 时只打开机器人链接，服务端返回别的地址一律不打开。
+const telegramLink = /^https:\/\/t\.me\/[A-Za-z0-9_]{5,32}\?start=ln_[A-Za-z0-9_-]{1,64}$/;
+export function isTelegramLink(url: unknown): url is string {
+  return typeof url === "string" && telegramLink.test(url);
+}
