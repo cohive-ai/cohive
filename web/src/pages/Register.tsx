@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../api";
+import { api } from "../api";
 import { memberNamePattern, minPasswordLength } from "../format";
+import { inviteLookupFailure } from "../rules";
 import { AuthShell, btn, Callout, ErrorText, Field, inputClass, errMsg } from "../ui";
 
 export function RegisterPage() {
@@ -14,11 +15,15 @@ export function RegisterPage() {
       {invite.isPending ? (
         <p className="text-sm text-muted">正在核对邀请链接…</p>
       ) : invite.isError ? (
-        invite.error instanceof ApiError && invite.error.status >= 400 && invite.error.status < 500 ? (
+        inviteLookupFailure(invite.error) === "invalid" ? (
           <InvalidInvite />
         ) : (
           <div>
-            <ErrorText>读取邀请失败：{invite.error.message}</ErrorText>
+            <ErrorText>
+              {inviteLookupFailure(invite.error) === "busy"
+                ? "请求过于频繁，请稍等一会儿再点重试。"
+                : `读取邀请失败：${invite.error.message}`}
+            </ErrorText>
             <button type="button" onClick={() => invite.refetch()} className={`${btn.secondary} mt-4`}>
               重试
             </button>

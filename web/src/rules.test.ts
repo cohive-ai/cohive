@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { ApiError } from "./api";
-import { isTelegramLink, shouldRetryPoll } from "./rules";
+import { inviteLookupFailure, isTelegramLink, shouldRetryPoll } from "./rules";
 
 it("轮询只对网络错误和服务端 5xx 重试", () => {
   expect(shouldRetryPoll(new ApiError(0, "网络"))).toBe(true);
@@ -21,4 +21,12 @@ it("只接受 https://t.me/ 开头的机器人连接链接", () => {
   expect(isTelegramLink("javascript:alert(1)")).toBe(false);
   expect(isTelegramLink("https://t.me/cohive_bot?start=da_abc")).toBe(false);
   expect(isTelegramLink(undefined)).toBe(false);
+});
+
+it("查询邀请时 429 是请求过频，不是邀请无效", () => {
+  expect(inviteLookupFailure(new ApiError(429, "太频繁"))).toBe("busy");
+  expect(inviteLookupFailure(new ApiError(404, "无效"))).toBe("invalid");
+  expect(inviteLookupFailure(new ApiError(400, "格式不对"))).toBe("invalid");
+  expect(inviteLookupFailure(new ApiError(0, "网络"))).toBe("error");
+  expect(inviteLookupFailure(new ApiError(502, "网关"))).toBe("error");
 });
