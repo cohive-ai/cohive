@@ -279,6 +279,10 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 		if inv.Kind == store.InviteTeam {
 			sg, err := store.CreateSignup(ctx, tx, store.Signup{InviteID: inv.ID, WorkspaceID: inv.WorkspaceID,
 				Name: name, DisplayName: display, PasswordHash: hash})
+			if isUniqueViolation(err) {
+				// 用不同邀请同时申请同一个名字时，由唯一约束兜底
+				return inputErr("成员名 %s 已有人申请，请换一个", name)
+			}
 			res.Signup = &sg
 			return err
 		}
