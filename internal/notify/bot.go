@@ -42,11 +42,11 @@ func HandleCommand(u Update, botName string) (string, bool) {
 			return "", false
 		}
 		if m.From.Username == "" {
-			return fmt.Sprintf("你的 Telegram 用户编号是 <code>%d</code>。你还没有设置 Telegram 用户名，请先在 Telegram 的设置里设置，否则群通知没法 @ 到你。\n\n请管理员执行，把工作空间名和成员名换成你的：\n<code>cohive-server member set --workspace 工作空间名 --name 成员名 --telegram-id %d</code>",
+			return fmt.Sprintf("你的 Telegram 用户编号是 <code>%d</code>。你还没有设置 Telegram 用户名，请先在 Telegram 的设置里设置，否则群通知没法 @ 到你。\n\n新成员直接在团队群里发 /join 申请加入即可。已有成员要绑定账号，请管理员执行（把工作空间名和成员名换成你的）：\n<code>cohive-server member set --workspace 工作空间名 --name 成员名 --telegram-id %d</code>",
 				m.From.ID, m.From.ID), true
 		}
 		name := html.EscapeString(m.From.Username)
-		return fmt.Sprintf("你的 Telegram 用户名是 <code>%s</code>，用户编号是 <code>%d</code>\n\n请管理员执行，把工作空间名和成员名换成你的：\n<code>cohive-server member set --workspace 工作空间名 --name 成员名 --telegram %s --telegram-id %d</code>",
+		return fmt.Sprintf("你的 Telegram 用户名是 <code>%s</code>，用户编号是 <code>%d</code>\n\n新成员直接在团队群里发 /join 申请加入即可。已有成员要绑定账号，请管理员执行（把工作空间名和成员名换成你的）：\n<code>cohive-server member set --workspace 工作空间名 --name 成员名 --telegram %s --telegram-id %d</code>",
 			name, m.From.ID, name, m.From.ID), true
 	}
 	return "", false
