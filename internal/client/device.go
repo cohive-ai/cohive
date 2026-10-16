@@ -62,6 +62,9 @@ func post(ctx context.Context, server, path, token string, in, out any) (int, er
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if resp.StatusCode == http.StatusNoContent {
+		return resp.StatusCode, nil
+	}
 	if resp.StatusCode == http.StatusUnauthorized && token != "" {
 		return resp.StatusCode, errors.New("本机保存的令牌无效或已吊销：请执行 cohive login --force 重新配对这台电脑")
 	}
@@ -110,6 +113,12 @@ func AddTools(ctx context.Context, server, token string, tools []string) (Device
 	var p DevicePoll
 	_, err := post(ctx, server, "/api/v1/devices/self/tools", token, map[string]any{"tools": tools}, &p)
 	return p, err
+}
+
+// RevokeOwnDevice 用本机令牌吊销自己名下的另一台设备（重新配对后清理旧设备）。
+func RevokeOwnDevice(ctx context.Context, server, token string, deviceID int64) error {
+	_, err := post(ctx, server, fmt.Sprintf("/api/v1/me/devices/%d/revoke", deviceID), token, map[string]any{}, &struct{}{})
+	return err
 }
 
 var oncePath = regexp.MustCompile(`^/auth/once/[A-Za-z0-9_-]{1,64}$`)

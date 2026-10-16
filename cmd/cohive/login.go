@@ -241,8 +241,57 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 		_ = openURL(st.URL)
 	}
 	fmt.Fprintln(out, "\n等待授权……（按 Ctrl+C 放弃）")
-	return waitDevice(ctx, out, client.Pending{Server: srv, RequestID: st.RequestID, PollSecret: st.PollSecret, CreatedAt: time.Now()},
-		repoReady, repo)
+	old, hadOld := pairedDevice(creds, srv)
+	if err := waitDevice(ctx, out, client.Pending{Server: srv, RequestID: st.RequestID, PollSecret: st.PollSecret, CreatedAt: time.Now()},
+		repoReady, repo); err != nil {
+		return err
+	}
+	if hadOld {
+		revokeReplacedDevice(ctx, out, srv, old.DeviceID)
+	}
+	return nil
+}
+
+// revokeReplacedDevice 在 --force 重新配对成功后，用新令牌吊销这台电脑之前的设备，
+// 免得旧设备的令牌继续有效；本机凭据里旧设备的条目一并删掉。失败时只提示到网页上手动吊销。
+func revokeReplacedDevice(ctx context.Context, out io.Writer, srv string, oldID int64) {
+	creds, err := client.LoadCredentials()
+	if err != nil {
+		return
+	}
+	var cur client.Login
+	for _, l := range creds.Logins {
+		if l.Server == srv && l.DeviceID != 0 && l.DeviceID != oldID && l.CreatedAt.After(cur.CreatedAt) {
+			cur = l
+		}
+	}
+	if cur.DeviceID == 0 {
+		return
+	}
+	if err := client.RevokeOwnDevice(ctx, srv, cur.Token, oldID); err != nil {
+		fmt.Fprintf(out, "\n注意：这台电脑之前的设备（编号 %d）没能自动吊销：%v。请到网页“个人中心 → 我的设备”吊销它。\n", oldID, err)
+		return
+	}
+	fmt.Fprintf(out, "已吊销这台电脑之前的设备（编号 %d）。\n", oldID)
+	var keep []client.Login
+	var dropped []string
+	for _, l := range creds.Logins {
+		if l.Server == srv && l.DeviceID == oldID {
+			dropped = append(dropped, l.Tool)
+			continue
+		}
+		keep = append(keep, l)
+	}
+	if len(dropped) == 0 {
+		return
+	}
+	creds.Logins = keep
+	if err := creds.Save(); err != nil {
+		fmt.Fprintf(out, "更新本机凭据失败：%v\n", err)
+		return
+	}
+	fmt.Fprintf(out, "旧设备上 %s 的登录随之失效，需要的话执行 cohive login --tools %s 补登（不需再授权）。\n",
+		strings.Join(dropped, "、"), strings.Join(dropped, ","))
 }
 
 // pairedDevice 找出本机在这个服务上已配对的设备登录（有设备编号的那条）。

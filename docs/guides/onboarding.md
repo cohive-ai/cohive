@@ -91,6 +91,6 @@ pbpaste | cohive login --server https://cohive.example.com --token-stdin
 ## 常见问题
 
 - **终端提示授权被拒绝**：你在浏览器里点了拒绝，或管理员没有批准。重新执行 `cohive login`。
-- **编程工具里提示“Cohive 令牌无效或已吊销”**：设备或令牌被吊销了，执行 `cohive login --force` 重新配对。
+- **编程工具里提示“Cohive 令牌无效或已吊销”**：设备或令牌被吊销了，执行 `cohive login --force` 重新配对。重新配对算新增一台设备，需要管理员批准；成功后会自动吊销这台电脑之前的设备，旧设备上只登录了、这次没重新登录的工具，按提示用 `cohive login --tools` 补登即可。
 - **电脑丢失**：在网页“个人中心 → 我的设备”吊销它（或请管理员在“管理 → 设备”里吊销）。
 - **连接 Telegram 时提示没有启用机器人**：服务没有设置 `COHIVE_TELEGRAM_BOT_TOKEN`。
