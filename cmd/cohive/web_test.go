@@ -3,6 +3,8 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -41,5 +43,30 @@ func TestWebPicksWorkspace(t *testing.T) {
 	// writeRepoConfig 写的工作空间是 default；本机没有 default 的配对，应提示先登录
 	if _, err := run(t, "web", "--dir", repo); err == nil || !strings.Contains(err.Error(), "cohive login") {
 		t.Fatalf("应按仓库的工作空间查找：%v", err)
+	}
+}
+
+// B19：子目录里有一份不含 cohive 的 .mcp.json 时，继续往上找到仓库里的 Cohive 配置。
+func TestFindRepoDirSkipsForeignConfig(t *testing.T) {
+	repo := t.TempDir()
+	writeRepoConfig(t, repo, "https://a.example.com")
+	sub := filepath.Join(repo, "tools", "x")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, ".mcp.json"), []byte(`{"mcpServers":{"other":{"command":"x"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readRepoTarget(findRepoDir(sub))
+	if err != nil || got.Server != "https://a.example.com" {
+		t.Fatalf("应找到上层的 Cohive 配置：%+v %v", got, err)
+	}
+	// 遇到仓库根（.git）就停，不再往上
+	inner := filepath.Join(repo, "vendor", "lib")
+	if err := os.MkdirAll(filepath.Join(inner, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if findRepoDir(inner) != inner {
+		t.Fatalf("遇到 .git 应停下：%s", findRepoDir(inner))
 	}
 }

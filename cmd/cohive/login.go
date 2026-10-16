@@ -106,17 +106,19 @@ func readRepoTarget(dir string) (repoTarget, error) {
 	return t, nil
 }
 
-// findRepoDir 从 dir 往上找到含 Cohive 配置的目录，遇到 .git 所在目录（仓库根）就停。
+// findRepoDir 从 dir 往上找到含 Cohive 配置（cohive 条目）的目录，遇到 .git 所在目录（仓库根）就停。
 func findRepoDir(dir string) string {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return dir
 	}
 	for d := abs; ; {
-		for _, rel := range []string{".mcp.json", filepath.Join(".codex", "config.toml"), ".git"} {
-			if _, err := os.Stat(filepath.Join(d, rel)); err == nil {
-				return d
-			}
+		// 只有配置里真有 cohive 条目才算找到；只有别的 MCP 配置的 .mcp.json 不算，继续往上找
+		if t, err := readRepoTarget(d); err != nil || t.Server != "" {
+			return d
+		}
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			return d
 		}
 		parent := filepath.Dir(d)
 		if parent == d {
