@@ -9,8 +9,9 @@
 
 **前提（以 M5 返工合入 main 后的口径为准）：**
 - 第六号迁移已合入，本里程碑只新增 `0007_accounts.sql`，不改写第六号。
-- 首台设备免审的判定是“这个人从未有过设备”（吊销过的也算有过）；设备在交付令牌时才建，批准时不建。
-- 管理接口只认“用密码登录的网页会话”。本文假设 M5 返工在 `web_sessions` 上记录了登录方式，记作 `method`（`password` 或 `device`，后者为 `cohive web` 免密会话）；列名以 M5 合入版本为准。
+- 首台设备免审的判定是“这个人从未有过设备”（吊销过的也算有过）。
+- 设备在**批准时**建（`core/pairing.go` 的 `approveAuth`：首台由本人授权即批准，其余由管理员批准）；交付令牌与补签工具前都锁设备行并要求未吊销；批准后、领取前设备被吊销，授权改为 `denied`；已批准但过期未领取的，吊销这台孤儿设备。M5b 沿用这一口径，只在交付时多生成设备密钥（见 3.5、3.6）。不改成“交付时建设备”：那样“吊销此人全部设备”就拦不住已批准、尚未领取的授权。
+- 管理接口只认“用密码登录的网页会话”（M5 C1，提交 `2f73bc4`）：`web_sessions.via` 记会话来源，取值 `password`（账号密码登录，或个人邀请注册后直接登录）、`device`（`cohive web` 免密）；`GET /api/v1/me` 的 `login_method` 返回 `password`、`device` 或 `token`（令牌请求）；管理接口对非 `password` 会话返回 `403 {"error": "管理操作请在网页上用账号密码登录后进行"}`。
 - 停用成员（台账 D8）并入本里程碑。
 
 **不在本里程碑：** 工作空间归档、账号改名、工作空间改名、本人自行退出工作空间、网页上重置他人密码（仍用服务器命令行）、新设备私聊通知（队列 P3）、删除旧表 `login_codes`（队列 P3）。
@@ -127,13 +128,13 @@
 
 | 表 | 变化 | 理由 |
 |---|---|---|
-| `devices` | `member_id` → `account_id`；新增 `secret_hash bytea UNIQUE`（设备密钥，见 3.6；迁移来的旧设备为空）；新增 `last_used_at timestamptz` | 一台电脑属于人，不属于某个工作空间 |
+| `devices` | `member_id` → `account_id`；新增 `secret_hash bytea UNIQUE`（设备密钥，见 3.6；领取时才生成，所以已批准未领取的设备与迁移来的旧设备为空）；新增 `last_used_at timestamptz` | 一台电脑属于人，不属于某个工作空间 |
 | `tokens` | **不变**：`member_id` 仍指成员资格，`device_id` 仍指设备；新增部分唯一索引 `(device_id, member_id, tool) WHERE revoked_at IS NULL AND device_id IS NOT NULL` | 令牌仍按“人 + 工具 + 工作空间”签发；同一台电脑同一工作空间同一工具只留一枚有效令牌，重签时吊销旧的 |
 | `device_auths` | `member_id` → `account_id`；删除 `workspace_id`；`decided_by` 改指 `accounts`；索引 `device_auths_awaiting` 改为 `(status) WHERE status = 'awaiting_admin'` | 设备申请属于人；谁能批由他当时的成员资格决定，不在申请上固定工作空间 |
 | `signups` | 新增 `account_id bigint REFERENCES accounts(id)`（已有账号凭团队邀请申请加入时非空；新人获批后回填）；`name`、`password_hash` 改为可空（已有账号申请时为空）；`decided_by` 改指 `accounts`；原 `signups_pending_name` 换成两个部分唯一索引：`(name) WHERE status='pending' AND account_id IS NULL`（新人待审名字全局占位）与 `(workspace_id, account_id) WHERE status='pending' AND account_id IS NOT NULL` | 团队邀请在多工作空间下既可能来新人，也可能来已有账号 |
 | `invites` | `created_by` 改指 `accounts` | 服务器管理员不一定是该工作空间成员 |
 | `link_requests` | `member_id` → `account_id` | Telegram 连接全局一份 |
-| `web_sessions`、`web_login_codes` | `member_id` → `account_id`；`web_sessions.method` 保留 | 网页登录不再落在某个工作空间 |
+| `web_sessions`、`web_login_codes` | `member_id` → `account_id`；`web_sessions.via` 保留 | 网页登录不再落在某个工作空间 |
 | `workspaces` | 新增部分唯一索引 `(notify_channel, notify_target) WHERE notify_target <> ''`；新增 `created_by bigint REFERENCES accounts(id)` | 一个群只对应一个工作空间：群里点按钮时由群反查工作空间，必须唯一；也防止通知串到别的项目群 |
 | 新表 `bot_posts` | `(id, kind text, ref_id bigint, workspace_id bigint, chat_id bigint, message_id bigint, created_at)`，索引 `(kind, ref_id)` | 设备申请会发到此人所在的多个群，处理后要把每个群里的审批消息都改成结果 |
 | `issues`、`issue_events`、`notifications`、`services`、`idempotency`、`login_codes` | 不变 | 外键仍指成员资格 |
@@ -147,7 +148,7 @@
 2. **合并账号取值**：登录名、显示名、Telegram 用户名取编号最小那条成员记录；密码取按编号排序第一条非空的密码及其 `must_change_password`；创建时间取最早。
 3. **登录名撞名**：不同账号的登录名相同时，编号最小的保留原名，其余改为 `原名-w工作空间编号`（超长时截短原名部分，保证不超过 32 个字符）；改名后仍撞名则 `RAISE EXCEPTION` 中止迁移，由人工处理（测试数据下不应出现）。被改名的人登录时要用新名字，迁移说明里列出查询语句。
 4. **服务器管理员**：在名为 `default` 的工作空间里是管理员的账号设为服务器管理员（M5 的初始管理员就在这里）。一个都没有时不设，服务启动时 `EnsureInitialAdmin` 发现没有服务器管理员会照常新建 `admin` 并写初始密码文件。见待拍板第 5 条。
-5. **进行中的申请**：`device_auths` 里 `pending`、`awaiting_admin`、`approved` 状态的一律改为 `expired`（终端重新 `cohive login` 即可）；`link_requests` 里 `pending` 的改为 `failed`；待审 `signups` 若登录名与已有账号或别的待审申请撞名，编号最小的保留，其余改为 `rejected`。
+5. **进行中的申请**：`device_auths` 里 `pending`、`awaiting_admin`、`approved` 状态的一律改为 `expired`（终端重新 `cohive login` 即可）；其中 `approved` 的已在批准时建了设备，一并吊销这些未领取的孤儿设备（与 M5 过期未领的处理一致）；`link_requests` 里 `pending` 的改为 `failed`；待审 `signups` 若登录名与已有账号或别的待审申请撞名，编号最小的保留，其余改为 `rejected`。
 6. **令牌去重**：同一 `(device_id, member_id, tool)` 有多枚有效令牌时，只保留最新一枚，其余吊销（M5 补签工具可能留下重复）。
 7. **群绑定去重**：多个工作空间绑定同一个群时，编号最小的保留，其余清空群编号（群通知关闭），并 `RAISE NOTICE` 写进迁移日志。
 8. 其余引用 `members` 的个人数据（设备、会话、网页登录码、连接请求、邀请创建人、审批人）全部按 `members.account_id` 换成账号编号。
@@ -287,8 +288,9 @@ CREATE UNIQUE INDEX accounts_telegram_user ON accounts (telegram_user_id) WHERE 
    - 群：此人在册所在、且配置了群的每个工作空间群里各发一条审批消息（记进 `bot_posts`）。任一处批准或拒绝后，其余群里的消息都改成结果并去掉按钮。
    - 此人一个在册工作空间都没有时，只有服务器管理员能批。
 5. 批准人资格在批准那一刻重算：`canManagePerson(批准人, 申请人)`。申请人在批准前被移出了某工作空间，该工作空间的管理员就不再能批。
-6. 终端领取（`device/poll`）时，同一事务：锁账号行确认未停用 → 建设备（含设备密钥）→ 为申请人**每个在册工作空间 × 每个申请的工具**签发令牌 → 状态改 `delivered`。设备密钥和令牌只交付这一次。
-7. 账号的“首台”判定：`SELECT count(*) FROM devices WHERE account_id = ?`，含已吊销的。迁移合并的账号，其各成员原有设备都算。
+6. **批准时建设备**（沿用 M5 `approveAuth`）：本人授权首台、或管理员批准非首台时，同一事务锁账号行、确认未停用，建 `devices` 行（此时还没有设备密钥），授权改 `approved`。
+   **领取时交付**（`device/poll`）：同一事务锁设备行并要求未吊销、确认账号未停用 → 生成设备密钥写入 `secret_hash` → 为申请人**领取时**每个在册工作空间 × 每个申请的工具签发令牌 → 授权改 `delivered`。设备密钥和令牌只交付这一次。批准后、领取前设备被吊销（含账号被停用）→ 授权改 `denied`，不交付；已批准但过期未领 → 吊销这台孤儿设备（均沿用 M5）。
+7. 账号的“首台”判定：`SELECT count(*) FROM devices WHERE account_id = ?`，含已吊销的，也含已批准未领取的（设备在批准时已建）。迁移合并的账号，其各成员原有设备都算。
 
 ### 3.6 令牌签发与新工作空间的令牌
 
@@ -297,7 +299,7 @@ CREATE UNIQUE INDEX accounts_telegram_user ON accounts (telegram_user_id) WHERE 
 **新增设备密钥**（`cohive_dev_` 开头，库里只存哈希，存在 `devices.secret_hash`）：配对时随令牌一起交付，存进本机凭据文件。它只证明“这是某账号的一台已批准的电脑”，**只能**调用三个接口：
 - `POST /api/v1/device/tokens`：为某个自己在册的工作空间、某些工具签发令牌；
 - `GET /api/v1/device/workspaces`：列出自己在册的工作空间；
-- `POST /api/v1/auth/web-login`：`cohive web` 免密登录（得到 `method = 'device'` 的会话）。
+- `POST /api/v1/auth/web-login`：`cohive web` 免密登录（得到 `via = 'device'` 的会话）。
 
 它不能调 MCP、不能调问题单与管理接口。之所以不用现有令牌证明设备：令牌属于某个工作空间，人被移出那个工作空间后令牌就吊销了；如果他只在那一个工作空间，这台电脑就再也证明不了自己，只能重新配对、还要管理员批准。设备密钥只随设备吊销、账号停用而失效。
 
@@ -355,7 +357,7 @@ CREATE UNIQUE INDEX accounts_telegram_user ON accounts (telegram_user_id) WHERE 
 
 ### 3.9 停用与启用（作用于整个人）
 
-- **停用**（服务器管理员，网页或命令行），同一事务：锁账号行 → 不能停用自己、不能停用最后一名未停用的服务器管理员 → `disabled_at`、`disabled_by` → 吊销他全部设备（设备密钥随之失效）与全部令牌 → 删除全部网页会话与未用的网页登录码 → 断开 Telegram 连接 → 把他 `pending` 的设备申请改为 `denied`。
+- **停用**（服务器管理员，网页或命令行），同一事务：锁账号行 → 不能停用自己、不能停用最后一名未停用的服务器管理员 → `disabled_at`、`disabled_by` → 吊销他全部设备（设备密钥随之失效）与全部令牌 → 删除全部网页会话与未用的网页登录码 → 断开 Telegram 连接 → 把他 `pending`、`awaiting_admin` 的设备申请改为 `denied`。已批准未领取的授权不用单独处理：它的设备在批准时已建，随“吊销全部设备”一起吊销，终端领取时按 M5 口径得到 `denied`。
 - 之后：登录被拒；令牌、设备密钥、会话都无效；`LookupToken`、会话查询、设备密钥查询都再检查一次 `disabled_at IS NULL`。
 - **不要求转交**：停用可能是临时的（电脑丢了、休长假）。管理页成员列表给停用的人标“已停用”和待处理单数，管理员可随时对他单独做 3.8 的改派（不移出）——为此 `handover` 与改派接口也接受“只改派、不移出”的调用（`remove: false`）。
 - 他在各工作空间的成员资格保持在册（角色不变），看板上标“已停用”；登记为服务负责人的，新问题单仍会路由给他，管理页对此给出提醒。
@@ -373,7 +375,7 @@ CREATE UNIQUE INDEX accounts_telegram_user ON accounts (telegram_user_id) WHERE 
 
 | 记号 | 含义 |
 |---|---|
-| 〔密码会话〕 | `web_sessions.method = 'password'` 的网页会话 |
+| 〔密码会话〕 | `web_sessions.via = 'password'` 的网页会话 |
 | 〔会话〕 | 任意网页会话（含 `cohive web` 免密会话） |
 | 〔令牌〕 | 成员令牌 `cohive_...`（属于某个成员资格，即某个工作空间） |
 | 〔设备〕 | 设备密钥 `cohive_dev_...` |
@@ -386,12 +388,12 @@ CREATE UNIQUE INDEX accounts_telegram_user ON accounts (telegram_user_id) WHERE 
 
 | 接口 | 鉴权 | 请求 | 响应 | 变化 |
 |---|---|---|---|---|
-| `POST /api/v1/auth/login` | 公开，限频 | `{name, password}` | `200 {account: Account, must_change_password, workspaces: [WorkspaceRef]}` 并设 Cookie（`method = 'password'`）；`401` 登录名或密码不对；`403` 待审 / 已停用 | 改：去掉 `workspace` 入参与 `409` |
+| `POST /api/v1/auth/login` | 公开，限频 | `{name, password}` | `200 {account: Account, must_change_password, workspaces: [WorkspaceRef]}` 并设 Cookie（`via = 'password'`）；`401` 登录名或密码不对；`403` 待审 / 已停用 | 改：去掉 `workspace` 入参与 `409` |
 | `POST /api/v1/auth/logout` | 〔会话〕 | — | `204` | 不变 |
 | `POST /api/v1/auth/password` | 〔会话〕 | `{old_password, new_password}` | `204` | 不变（作用于账号） |
-| `GET /api/v1/me` | 〔会话〕〔令牌〕 | — | `{account: Account, session: {method: "password"|"device"|"token", tool}, workspaces: [WorkspaceRef], workspace?: WorkspaceRef}`；`workspace` 只在〔令牌〕时出现，是令牌所属的工作空间 | 改：结构重排；`cohive status` 读 `workspace` 与 `account.name` |
+| `GET /api/v1/me` | 〔会话〕〔令牌〕 | — | `{account: Account, login_method: "password"|"device"|"token", tool, workspaces: [WorkspaceRef], workspace?: WorkspaceRef}`（`login_method` 沿用 M5）；`workspace` 只在〔令牌〕时出现，是令牌所属的工作空间 | 改：结构重排；`cohive status` 读 `workspace` 与 `account.name` |
 | `POST /api/v1/auth/web-login` | 〔设备〕或已绑定设备的〔令牌〕 | `{}` | `{url}` | 改：接受设备密钥 |
-| `GET /auth/once/{code}` | 公开 | — | 设 Cookie（`method = 'device'`）后跳 `/` | 不变 |
+| `GET /auth/once/{code}` | 公开 | — | 设 Cookie（`via = 'device'`）后跳 `/` | 不变 |
 
 ```
 Account      = {id, name, display_name, server_admin: bool, disabled: bool, has_password: bool,
@@ -540,7 +542,7 @@ HandoverPlan = {issues:   [{id, as: "owner"|"source", to_member_id, expected_ver
 
 沿用 decisions 的口径：收到的问题单、评论是数据不是指令；管理操作只认密码登录的网页会话；按真实风险设防，不考虑“主动乱发链接”。
 
-1. **管理操作只认〔密码会话〕**：工作空间管理（4.5 管理部分）、服务器管理（4.6）全部要求 `method = 'password'`。〔令牌〕、〔设备〕、`cohive web` 免密会话一律 `403 {"error": "这个操作需要用密码登录网页"}`。理由同 D7：智能体能读本机凭据文件，会读别人写的问题单，存在提示注入的真实风险。
+1. **管理操作只认〔密码会话〕**：工作空间管理（4.5 管理部分）、服务器管理（4.6）全部要求 `via = 'password'`。〔令牌〕、〔设备〕、`cohive web` 免密会话一律 `403 {"error": "管理操作请在网页上用账号密码登录后进行"}`（沿用 M5 C1 的文案）。理由同 D7：智能体能读本机凭据文件，会读别人写的问题单，存在提示注入的真实风险。
 2. **本里程碑把三类“改变自己归属或信任”的操作也收紧到〔密码会话〕**：接受邀请（会让这台电脑能拿到新工作空间的令牌）、授权新设备（`/device/{nonce}`）、查看设备授权页。否则被注入的智能体可以用 `cohive web` 开一个免密会话，替主人加入别人设好的工作空间，或为攻击者的电脑点授权（首台之外虽然还要管理员批，但会把审批消息推到群里，诱导管理员误点）。
 3. **设备密钥的边界**：只在 `device/tokens`、`device/workspaces`、`auth/web-login` 三个接口上认；在 `/mcp`、问题单接口、管理接口上一律 `401`。它能做的（为本人在册的工作空间签发令牌、开免密会话）不超过“读到本机凭据文件”已有的能力，所以不扩大智能体的权限面；它不能加入工作空间、不能审批、不能邀请。
 4. **跨工作空间的最弱一环（已知、接受）**：第二台设备由此人任一在册工作空间的管理员批准，批准后作用于他全部工作空间（lee 已定）。缓解：审批消息与审批页明确写“批准后可用于 A、B”；`device_auths.decided_by` 记批准人；批准人资格在批准瞬间按在册关系重算。新设备私聊通知本人（队列 P3）上线后再补一道。
@@ -564,7 +566,7 @@ HandoverPlan = {issues:   [{id, as: "owner"|"source", to_member_id, expected_ver
 | T1 | 第七号迁移；store 层：`accounts` 读写、`memberSelect` 关联读取、`Identity.AccountID`、问题单与事件查询补关联 | — | 迁移测试（见 6.2 第 1 条）通过；现有 M1–M5 测试在新结构上全绿（只改夹具的建人方式，不改断言） |
 | T2 | 权限判定：`canAdmin`、`canManagePerson`、`LookupToken` 在册与停用检查、至少一名管理员 / 服务器管理员；问题单路由、转交、`who_owns` 只认在册未停用的成员 | T1 | 越权表驱动测试通过 |
 | T3 | 登录（去掉工作空间）、`/me`、会话改挂账号、注册全局查重、`invites/{code}/accept`、团队邀请的加入申请 | T2 | 6.2 第 4、9、10 条 |
-| T4 | 设备：账号级首台判定、批准人资格、交付设备密钥与多工作空间令牌、`device/tokens`、`device/workspaces`、`web-login` 接受设备密钥、鉴权中间件按前缀分流 | T2 | 6.2 第 2、3、5、6 条 |
+| T4 | 设备：账号级首台判定、批准人资格、批准时建设备（沿用 M5）、领取时生成设备密钥并签发多工作空间令牌、`device/tokens`、`device/workspaces`、`web-login` 接受设备密钥、鉴权中间件按前缀分流 | T2 | 6.2 第 2、3、5、6 条 |
 | T5 | 成员管理：直接加入、`handover`、`reassign` 动作与事件、移出、停用与启用、服务器管理接口、建删工作空间、工作空间设置的群唯一 | T2 | 6.2 第 7、8、11、12、13 条 |
 | T6 | 机器人：全局连接、按钮五步校验、设备申请多群发送与 `bot_posts`、加入通知、群消息链接前缀 | T3、T4、T5 | 6.2 第 14、15 条 |
 | T7 | 网页：路由前缀与切换、管理页改动、`/server`、`/i/$code` 两种状态、设备授权页、个人中心 | T3、T4、T5 | 构建通过；逐页走查清单（含免密会话下各页的提示） |
@@ -579,13 +581,13 @@ T3、T4、T5 可由不同子任务并行，但都改 `internal/core` 与 `intern
 |---|---|---|
 | 1 | 迁移不丢数据、归并与撞名规则正确 | 迁移测试：在第六号迁移后的库里造 M5 形态数据（两个工作空间、同名不同人、同一 Telegram 的两条成员、待审申请撞名、两工作空间绑同一群、同设备重复令牌、进行中的设备申请），跑第七号迁移后逐项断言：账号数、改名结果、合并后的密码与设备、全部问题单 / 事件 / 通知 / 服务外键仍可关联、服务器管理员、申请作废、令牌去重、群绑定只剩一个；再造一个“改名后仍撞名”的库断言迁移失败且整体回滚 |
 | 2 | 设备密钥不能当令牌用 | 用设备密钥调 `/mcp`、`/w/{ws}/issues`、管理接口均 `401`；用成员令牌调 `device/tokens` 也 `401` |
-| 3 | 免密会话不能做管理与信任操作 | 表驱动：`method = 'device'` 的会话调 4.5 管理部分、4.6 全部、`invites/{code}/accept`、`device/auth/{nonce}` 均 `403` |
+| 3 | 免密会话不能做管理与信任操作 | 表驱动：`via = 'device'` 的会话调 4.5 管理部分、4.6 全部、`invites/{code}/accept`、`device/auth/{nonce}` 均 `403` |
 | 4 | 工作空间隔离 | 表驱动：A 的管理员对 B 的每个管理接口都 `404`；A 的令牌访问 `/w/B/...` `404`；`/w/A/issues/{B 的问题单编号}` `404` |
-| 5 | 首台判定是账号级 | 账号在 A 有过设备（已吊销）后，在 B 新配对仍需审批；迁移合并的账号同理 |
+| 5 | 首台判定是账号级 | 账号在 A 有过设备（已吊销）后，在 B 新配对仍需审批；首台已批准未领取时再发起第二台也需审批；迁移合并的账号同理；迁移时已批准未领取的授权，其设备被吊销 |
 | 6 | 新工作空间自动拿令牌、移出后失效、加回后自动换新 | 端到端：配对 → 加入 B → 转发器无 B 令牌时自动签发 → 移出 B 后转发器 `401` 且重签失败退出 → 加回 B 后转发器 `401` 重签成功 |
 | 7 | 批准人资格按在册关系即时判定 | 申请人先被移出 A，A 的管理员再批 → `403`；B 的管理员批 → 成功；没有在册工作空间时只有服务器管理员能批 |
 | 8 | 移出与转交 | 清单不完整 → `409` 且无任何改动；某张单版本已变 → `409` 整体回滚；成功后：负责人与发起人已换、服务负责人已换、事件已写、通知已入队、令牌已吊销、成员资格 `removed`；不能移出最后一名管理员；接手人为已移出或已停用的人 → `400` |
-| 9 | 停用与启用 | 停用后：登录被拒（只在密码正确时提示已停用）、令牌与设备密钥 `401`、会话失效、Telegram 已断开、待批设备申请变 `denied`；不能停用自己与最后一名服务器管理员；启用后再配对需审批 |
+| 9 | 停用与启用 | 停用后：登录被拒（只在密码正确时提示已停用）、令牌与设备密钥 `401`、会话失效、Telegram 已断开、待批设备申请变 `denied`、停用前已批准未领取的授权领取时得到 `denied` 且不交付设备密钥；不能停用自己与最后一名服务器管理员；启用后再配对需审批 |
 | 10 | 登录名全局唯一 | 两个工作空间的团队邀请并发注册同一名字，只有一个成功；与已有账号同名 → `400` |
 | 11 | 至少一名管理员 / 服务器管理员的并发 | 两名管理员并发互相降级，只有一个成功；两名服务器管理员并发互相撤销同理 |
 | 12 | 直接加入 | 加入已停用账号 → `400`；加入被移出过的人复用原成员资格，他以前的问题单重新可见 |
