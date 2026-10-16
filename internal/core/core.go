@@ -135,6 +135,10 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 	if strings.TrimSpace(in.Title) == "" {
 		return store.Issue{}, inputErr("title 不能为空")
 	}
+	// 入库前扫描密钥：在查幂等记录与开事务之前，被拒绝的请求什么都不写，脱敏后用同一个键重试可以成功
+	if err := checkSecrets(draftFields(in)...); err != nil {
+		return store.Issue{}, err
+	}
 	sev, err := severityOrDefault(in.Severity)
 	if err != nil {
 		return store.Issue{}, err
@@ -233,6 +237,9 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 	comment := in.Action == issue.ActComment
 	if !comment && in.ExpectedVersion <= 0 {
 		return store.Issue{}, inputErr("必须提供 expected_version（问题单当前版本号），可先读取问题单获得")
+	}
+	if err := checkSecrets(actFields(in)...); err != nil {
+		return store.Issue{}, err
 	}
 	var out store.Issue
 	err := s.inTx(ctx, func(tx pgx.Tx) error {

@@ -205,7 +205,11 @@ func writeError(w http.ResponseWriter, err error) {
 	var ie *core.InputError
 	var se *core.StateError
 	var he *core.HandoverError
+	var sec *core.SecretError
 	switch {
+	case errors.As(err, &sec):
+		// 只含字段、行号与规则，不含密钥
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 	case errors.As(err, &he):
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "handover": handoverJSON(he.Handover)})
 	case errors.Is(err, core.ErrNotAdmin), errors.Is(err, core.ErrNotServerAdmin), errors.Is(err, core.ErrNotManager),
