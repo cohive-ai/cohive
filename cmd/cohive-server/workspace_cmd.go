@@ -130,7 +130,7 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 	fs.StringVar(&tg, "telegram", "", "Telegram 用户名，群通知里用于 @ 提醒；传空字符串可清除")
 	fs.StringVar(&tgID, "telegram-id", "", "Telegram 用户编号（私聊机器人 /whoami 获取），用于识别群里点审批按钮的人；传空字符串可解绑。一般由成员在网页个人中心自行连接")
 	var role string
-	fs.StringVar(&role, "role", "", "角色：admin（可审批加入申请）或 member")
+	fs.StringVar(&role, "role", "", "角色：admin（可发邀请、审批注册与设备）或 member")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
