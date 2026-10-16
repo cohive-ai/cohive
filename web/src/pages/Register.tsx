@@ -61,7 +61,7 @@ function RegisterForm({ code, workspace, kind }: { code: string; workspace: stri
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const nameError = name && !memberNamePattern.test(name) ? "只能用小写字母、数字、下划线和横线，1 到 32 位。" : "";
+  const nameError = name && !memberNamePattern.test(name) ? "只能用小写字母、数字、下划线和横线，1 到 32 位，第一个字符须是字母或数字。" : "";
   const passwordError =
     password && password.length < minPasswordLength ? `密码至少 ${minPasswordLength} 位。` : "";
   const confirmError = confirm && confirm !== password ? "两次输入的密码不一致。" : "";

@@ -56,8 +56,8 @@ export const deviceAuthStatusLabel: Record<string, string> = {
   expired: "已过期",
 };
 
-// 成员名规则：小写字母、数字、下划线、横线，1 到 32 位
-export const memberNamePattern = /^[a-z0-9_-]{1,32}$/;
+// 成员名规则（与服务端一致）：小写字母、数字、下划线、横线，1 到 32 位，第一个字符须是字母或数字
+export const memberNamePattern = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 export const minPasswordLength = 10;
 
 // 登录后回跳地址：只接受本站路径，避免被拼成跳去外站
