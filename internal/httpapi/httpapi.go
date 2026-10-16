@@ -42,10 +42,12 @@ type detailResult struct {
 	Events []view.EventView `json:"events"`
 }
 
-// Handler 返回 /api/v1 下的接口。除登录码换取外都需要令牌。
-func Handler(svc *core.Service) http.Handler {
+// Handler 返回 /api/v1 下的接口。除登录（登录码换取、设备授权）外都需要令牌。
+// botName 返回 Telegram 机器人用户名；为 nil 或返回空时设备授权登录不可用。
+func Handler(svc *core.Service, botName func() string) http.Handler {
 	outer := http.NewServeMux()
 	limiter := &failureLimiter{max: 30, window: time.Minute}
+	deviceRoutes(outer, svc, botName)
 	outer.HandleFunc("POST /api/v1/login", func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.begin() {
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "尝试次数过多，请一分钟后再试"})
@@ -209,4 +211,70 @@ func writeError(w http.ResponseWriter, err error) {
 		log.Printf("接口内部错误：%v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "内部错误，请稍后重试"})
 	}
+}
+
+// deviceRoutes 注册设备授权登录的两个接口：终端发起、终端轮询。
+func deviceRoutes(mux *http.ServeMux, svc *core.Service, botName func() string) {
+	// 发起不需要身份，限制总频率，防止被刷出大量请求
+	starts := &failureLimiter{max: 30, window: time.Minute}
+	mux.HandleFunc("POST /api/v1/device/start", func(w http.ResponseWriter, r *http.Request) {
+		name := ""
+		if botName != nil {
+			name = botName()
+		}
+		if name == "" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "协作服务没有启用 Telegram 机器人，无法在机器人里确认登录。请管理员签发令牌，再用 cohive login --token-stdin 保存",
+			})
+			return
+		}
+		if !starts.begin() {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "登录请求过多，请一分钟后再试"})
+			return
+		}
+		defer starts.end(true)
+		var in struct {
+			Tools      []string `json:"tools"`
+			DeviceName string   `json:"device_name"`
+			Workspace  string   `json:"workspace"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求格式不对"})
+			return
+		}
+		st, err := svc.StartDeviceLogin(r.Context(), in.Tools, in.DeviceName, in.Workspace)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"request_id":   st.RequestID,
+			"poll_secret":  st.PollSecret,
+			"link":         "https://t.me/" + name + "?start=" + st.Nonce,
+			"match_number": st.MatchNumber,
+			"expires_in":   int(st.ExpiresIn.Seconds()),
+		})
+	})
+	mux.HandleFunc("POST /api/v1/device/poll", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			RequestID  int64  `json:"request_id"`
+			PollSecret string `json:"poll_secret"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求格式不对"})
+			return
+		}
+		p, err := svc.PollDeviceLogin(r.Context(), in.RequestID, in.PollSecret)
+		if errors.Is(err, core.ErrDeviceGone) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": p.Status, "member": p.Member, "workspace": p.Workspace, "tokens": p.Tokens,
+		})
+	})
 }

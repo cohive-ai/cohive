@@ -53,6 +53,8 @@ type fakeCore struct {
 	decision  core.JoinDecision
 	decideErr error
 	decided   []any
+	device    core.DeviceView
+	deviceErr error
 }
 
 func (f *fakeCore) RequestJoin(_ context.Context, chat string, uid int64, username, display string) (core.JoinResult, error) {
@@ -62,6 +64,23 @@ func (f *fakeCore) RequestJoin(_ context.Context, chat string, uid int64, userna
 func (f *fakeCore) DecideJoin(_ context.Context, id, uid int64, approve bool) (core.JoinDecision, error) {
 	f.decided = append(f.decided, id, uid, approve)
 	return f.decision, f.decideErr
+}
+
+func (f *fakeCore) OpenDeviceLogin(_ context.Context, param string, uid int64) (core.DeviceView, error) {
+	f.decided = append(f.decided, "open", param, uid)
+	return f.device, f.deviceErr
+}
+func (f *fakeCore) ChooseDeviceWorkspace(_ context.Context, id, uid, ws int64) (core.DeviceView, error) {
+	f.decided = append(f.decided, "choose", id, uid, ws)
+	return f.device, f.deviceErr
+}
+func (f *fakeCore) ConfirmDeviceLogin(_ context.Context, id, uid int64, n int) (core.DeviceView, error) {
+	f.decided = append(f.decided, "confirm", id, uid, n)
+	return f.device, f.deviceErr
+}
+func (f *fakeCore) CancelDeviceLogin(_ context.Context, id, uid int64) error {
+	f.decided = append(f.decided, "cancel", id, uid)
+	return f.deviceErr
 }
 
 func newBot(c *fakeCore, api *fakeAPI) *notify.Bot {

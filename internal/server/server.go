@@ -18,13 +18,15 @@ import (
 type Options struct {
 	// AllowedHosts 是除 localhost 外允许访问 MCP 的 Host，例如经 Cloudflare 隧道转发来的公网域名。
 	AllowedHosts []string
+	// BotName 返回 Telegram 机器人用户名，用于生成设备授权登录的链接；为 nil 时设备授权登录不可用。
+	BotName func() string
 }
 
 // New 返回协作服务的根处理器。web 是看板的构建产物（index.html 与 assets/）。
 func New(svc *core.Service, web fs.FS, opts Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", mcpserver.Protected(svc, opts.AllowedHosts...))
-	mux.Handle("/api/", httpapi.Handler(svc))
+	mux.Handle("/api/", httpapi.Handler(svc, opts.BotName))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprintln(w, "ok")

@@ -40,23 +40,25 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		return err
 	}
 
-	srv := &http.Server{
-		Addr:              *addr,
-		Handler:           server.New(&core.Service{Pool: pool}, web.Dist(), server.Options{AllowedHosts: hosts}),
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// 群通知：设置了机器人令牌才投递；没设置时待发记录会保留，设置后重启即可补发
+	opts := server.Options{AllowedHosts: hosts}
+	// 群通知与机器人：设置了机器人令牌才启用；没设置时待发记录会保留，设置后重启即可补发
 	if tg := telegramFromEnv(); tg != nil {
 		d := &notify.Dispatcher{Pool: pool, Senders: map[string]notify.Sender{"telegram": tg}}
 		go d.Run(ctx, 2*time.Second)
-		go (&notify.Bot{TG: tg, Core: &core.Service{Pool: pool}}).Run(ctx)
+		bot := &notify.Bot{TG: tg, Core: &core.Service{Pool: pool}}
+		go bot.Run(ctx)
+		opts.BotName = bot.Username
 		fmt.Fprintln(out, "  群通知：Telegram 已启用；群里发 /chatid 可获取群编号")
 	} else {
 		fmt.Fprintln(out, "  群通知：未设置 COHIVE_TELEGRAM_BOT_TOKEN，暂不发送（待发记录会保留）")
+	}
+	srv := &http.Server{
+		Addr:              *addr,
+		Handler:           server.New(&core.Service{Pool: pool}, web.Dist(), opts),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()

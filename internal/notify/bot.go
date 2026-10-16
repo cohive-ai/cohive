@@ -8,6 +8,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
@@ -117,6 +118,10 @@ type Onboarding interface {
 	LoginIssuer
 	RequestJoin(ctx context.Context, chatID string, tgUserID int64, username, display string) (core.JoinResult, error)
 	DecideJoin(ctx context.Context, requestID, deciderTgUserID int64, approve bool) (core.JoinDecision, error)
+	OpenDeviceLogin(ctx context.Context, startParam string, tgUserID int64) (core.DeviceView, error)
+	ChooseDeviceWorkspace(ctx context.Context, id, tgUserID, workspaceID int64) (core.DeviceView, error)
+	ConfirmDeviceLogin(ctx context.Context, id, tgUserID int64, number int) (core.DeviceView, error)
+	CancelDeviceLogin(ctx context.Context, id, tgUserID int64) error
 }
 
 // Bot 用长轮询接收机器人消息，处理 /chatid、/whoami、/login、/join 与按钮点击。
@@ -126,6 +131,29 @@ type Bot struct {
 	API  chatAPI    // 为空时使用 TG
 	Name string     // 机器人用户名；为空时启动时向 Telegram 查询
 	Logf func(format string, args ...any)
+
+	fetched atomic.Pointer[string] // 向 Telegram 查到的用户名
+}
+
+// Username 返回机器人用户名；还不知道时返回空。可在其他协程调用。
+func (b *Bot) Username() string {
+	if p := b.fetched.Load(); p != nil {
+		return *p
+	}
+	return b.Name
+}
+
+// fetchName 在没有配置用户名时向 Telegram 查询。
+func (b *Bot) fetchName(ctx context.Context) {
+	if b.Username() != "" {
+		return
+	}
+	name, err := b.TG.GetMe(ctx)
+	if err != nil || name == "" {
+		b.logf("Telegram 机器人信息获取失败，稍后重试（带 @机器人名 的命令与机器人确认登录暂不可用）：%v", err)
+		return
+	}
+	b.fetched.Store(&name)
 }
 
 func (b *Bot) logf(format string, args ...any) {
@@ -141,15 +169,14 @@ func (b *Bot) Run(ctx context.Context) {
 	if b.API == nil {
 		b.API = b.TG
 	}
-	if b.Name == "" {
-		name, err := b.TG.GetMe(ctx)
-		if err != nil {
-			b.logf("Telegram 机器人信息获取失败，带 @机器人名 的命令暂不可用：%v", err)
-		}
-		b.Name = name
-	}
+	b.fetchName(ctx)
+	lastFetch := time.Now()
 	var offset int64
 	for ctx.Err() == nil {
+		if b.Username() == "" && time.Since(lastFetch) > time.Minute {
+			b.fetchName(ctx)
+			lastFetch = time.Now()
+		}
 		ups, err := b.TG.GetUpdates(ctx, offset, 30)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -175,12 +202,15 @@ func (b *Bot) Handle(ctx context.Context, u Update) {
 	if u.Message == nil {
 		return
 	}
-	reply, ok := HandleCommand(u, b.Name)
+	reply, ok := HandleCommand(u, b.Username())
 	if !ok && b.Core != nil {
-		reply, ok = HandleLogin(ctx, u, b.Name, b.Core)
+		reply, ok = HandleLogin(ctx, u, b.Username(), b.Core)
 	}
 	if !ok && b.Core != nil {
 		reply, ok = b.handleJoin(ctx, u)
+	}
+	if !ok && b.Core != nil {
+		reply, ok = b.handleStart(ctx, u)
 	}
 	if !ok || reply == "" {
 		return
@@ -197,7 +227,7 @@ func (b *Bot) command(m *TGMessage) (string, []string) {
 		return "", nil
 	}
 	cmd, target, _ := strings.Cut(fields[0], "@")
-	if target != "" && !strings.EqualFold(target, b.Name) {
+	if target != "" && !strings.EqualFold(target, b.Username()) {
 		return "", nil
 	}
 	return cmd, fields[1:]
@@ -256,6 +286,10 @@ func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
 		}
 	}
 	parts := strings.Split(cb.Data, ":")
+	if b.Core != nil && len(parts) >= 2 && strings.HasPrefix(parts[0], "dl") {
+		b.handleDeviceCallback(ctx, cb, parts, answer)
+		return
+	}
 	if b.Core == nil || len(parts) != 3 || parts[0] != "join" {
 		answer("")
 		return
