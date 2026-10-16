@@ -19,7 +19,6 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| M6-a | `feature/phase1-m6a-trial-ready`（基于 main `fc33a7b`） | m6-a / `local_3bcfc718-4d32-4fc4-9783-1c0371743c96` | 计划 `ae80ba9` 已批 | 实施中 | 四项：命令行分发（服务端自带安装包）、写入前密钥扫描（拒绝且不回显、日志不含密钥、覆盖标题与简述）、评论不比对版本、启动与备份脚本。验收：全量；探针 ≥2（候选：扫描漏掉某个写入入口、评论后状态动作仍被版本拦住、安装脚本不核对校验和）；测试服实测安装命令与切换数据目录由主脑做 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
@@ -39,9 +38,10 @@
 - P4 接第二种通讯工具前，把成员的通讯账号拆成独立表 —— 来源 M5 会话
 
 ## 4. 环境与待清理
-- 测试服（2026-10-16 起）：main 构建的程序（`/Users/jiali/MyCode/cohive/bin/`，当前 `05c2ccf`）+ 长期测试库 `cohive_test`（已执行第七号迁移；迁移前备份 `…/scratchpad/backup/cohive_test-before-m5b.dump`）。实测数据：工作空间 default、proj-b、proj-c；账号 admin（服务器管理员）、tester-a、tester-b（已停用），监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（隧道跑在主脑会话的终端标签 c1；原 c3 随 M5 会话归档被关掉过，见记忆 archive-kills-terminal-tabs）。重启：`/private/tmp/claude-503/-Users-jiali-MyCode-cohive/f7d08f07-8081-4977-b6d1-3be664ac942f/scratchpad/test-restart.sh /Users/jiali/MyCode/cohive`（先在 main `make build`）。**脚本与数据目录在临时目录，重启电脑可能丢失**，M6-a 把启动脚本收进仓库。lee 本机经测试服的 Cohive 连接需重新 `cohive login`（旧令牌属于旧库）。
-- 测试服数据目录 `…/scratchpad/test-data/`：初始密码文件已在首登改密后自动删除；admin 新密码在 `admin-password-new.txt`，测试成员 `tester-a`、`tester-b` 的密码在 `member-password.txt`（权限 600，只是测试凭据）。
-- 实测用的命令行凭据目录 `…/scratchpad/cli-a`（已吊销）、`cli-a2`、`cli-adm`，用 `COHIVE_CONFIG_DIR` 指定，没动 lee 的 `~/.config/cohive`。
-- 旧库：`cohive`（M4 数据，群编号 `-1004357698945`，停用不删）、`cohive_m5`（旧版第六号，停用；里面的 `claude-test`、`tester-ann` 随库停用，不再单独删）。
+- 测试服（2026-10-16 起）：main 构建的程序（`/Users/jiali/MyCode/cohive/bin/`，当前 `650d54e`）+ 长期测试库 `cohive_test`，由仓库脚本管理：`scripts/cohive-server.sh start|stop|restart|status`（配置 `~/.local/share/cohive-server/server.env`，数据目录 `…/data`，日志 `…/logs`，详见 `docs/guides/test-server.md`）。监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（隧道跑在主脑会话的终端标签 c1；归档会话前先确认隧道不在它的终端里，见记忆 archive-kills-terminal-tabs）。
+- 备份：`scripts/backup-db.sh` 手动可用，首份在 `~/.local/share/cohive-server/backups/`；**launchd 定时备份未安装**（会改 lee 的系统常驻配置，待 lee 决定）。迁移 M5b 前的备份在主脑临时目录 `…/scratchpad/backup/`。
+- 测试账号：admin（服务器管理员）、tester-a、tester-b（已停用）；密码文件在 `~/.local/share/cohive-server/data/`（权限 600，测试凭据）。工作空间：default、proj-b、proj-c。
+- 旧库：`cohive`（M4 数据，群编号 `-1004357698945`，停用不删）、`cohive_m5`（旧版第六号，停用）。
+- 待清理：库 `cohive_m6a_walk`、`cohive_m6a_restore`（M6-a 走查数据，删前待 lee 确认）；主脑临时目录里的旧启动脚本 `test-restart.sh` 与 `test-data/` 已不再使用。
 - 机器人：同一个机器人令牌同时只能有一个程序收消息，测试服与本机调试不要同时跑。
-- 已归档：M5 实施会话“英文名和项目目录设置”（M5 已合入 `d21d6d8`）；DOC-1 会话 doc-1（已合入）。待归档会话：m5b（`local_2e577d38-8052-4c21-97ab-a6422db710a3`，M5b 已合入；归档时提示仍有活动连接，等它空闲后再归档，或由 lee 在侧边栏归档）。
+- 已归档：M5 实施会话、doc-1、m5b、m6-a。待归档会话：无。
