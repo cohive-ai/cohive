@@ -19,7 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| M5b | `feature/phase1-m5b-accounts`（基于 main `e8a63a2`） | m5b / `local_2e577d38-8052-4c21-97ab-a6422db710a3` | 中期已验 = `9aee88f`（T1、T2） | 实施中（T3 起） | 按设计稿 T1–T8；T1、T2 完成先回报（迁移与权限先验）。验收：全量；设计稿 6.2 节 16 条均有用例；设计稿建议的 5 条探针 + 自选 ≥2；迁移在 `cohive_test` 的副本上试跑；测试服实测由主脑做 |
+| M5b | `feature/phase1-m5b-accounts`（基于 main `e8a63a2`） | m5b / `local_2e577d38-8052-4c21-97ab-a6422db710a3` | 已验收 = `0cf53e6`（打回小项） | 打回 | 按设计稿 T1–T8；T1、T2 完成先回报（迁移与权限先验）。验收：全量；设计稿 6.2 节 16 条均有用例；设计稿建议的 5 条探针 + 自选 ≥2；迁移在 `cohive_test` 的副本上试跑；测试服实测由主脑做。终验打回：补停用两道防线各自的用例（探针 R1 去掉停用时删会话、R1b 去掉会话查询的停用检查、R6 去掉设备密钥查询的停用检查，均存活）；旧版配对电脑执行 `cohive init` 误报“不是成员”，应提示 `--force` 重新配对。复验：核对新 tip、全量、重打 R1/R1b/R6 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
@@ -40,7 +40,7 @@
 - P4 接第二种通讯工具前，把成员的通讯账号拆成独立表 —— 来源 M5 会话
 
 ## 4. 环境与待清理
-- 测试服（2026-10-16 起）：main 构建的程序（`/Users/jiali/MyCode/cohive/bin/`，当前 `d21d6d8`）+ 长期测试库 `cohive_test`，监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（隧道跑在 lee 的终端标签 c3）。重启：`/private/tmp/claude-503/-Users-jiali-MyCode-cohive/f7d08f07-8081-4977-b6d1-3be664ac942f/scratchpad/test-restart.sh /Users/jiali/MyCode/cohive`（先在 main `make build`）。**脚本与数据目录在临时目录，重启电脑可能丢失**，M6-a 把启动脚本收进仓库。lee 本机经测试服的 Cohive 连接需重新 `cohive login`（旧令牌属于旧库）。
+- 测试服（2026-10-16 起）：**现跑 M5b 分支程序**（验收工作树 `…/scratchpad/m5b-accept`，`0cf53e6`）+ 长期测试库 `cohive_test`（已执行第七号迁移；迁移前备份 `…/scratchpad/backup/cohive_test-before-m5b.dump`，M5b 若作废就恢复它并换回 main 程序），监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（隧道跑在主脑会话的终端标签 c1；原 c3 随 M5 会话归档被关掉过，见记忆 archive-kills-terminal-tabs）。重启：`/private/tmp/claude-503/-Users-jiali-MyCode-cohive/f7d08f07-8081-4977-b6d1-3be664ac942f/scratchpad/test-restart.sh /Users/jiali/MyCode/cohive`（先在 main `make build`）。**脚本与数据目录在临时目录，重启电脑可能丢失**，M6-a 把启动脚本收进仓库。lee 本机经测试服的 Cohive 连接需重新 `cohive login`（旧令牌属于旧库）。
 - 测试服数据目录 `…/scratchpad/test-data/`：初始密码文件已在首登改密后自动删除；admin 新密码在 `admin-password-new.txt`，测试成员 `tester-a`、`tester-b` 的密码在 `member-password.txt`（权限 600，只是测试凭据）。
 - 实测用的命令行凭据目录 `…/scratchpad/cli-a`（已吊销）、`cli-a2`、`cli-adm`，用 `COHIVE_CONFIG_DIR` 指定，没动 lee 的 `~/.config/cohive`。
 - 旧库：`cohive`（M4 数据，群编号 `-1004357698945`，停用不删）、`cohive_m5`（旧版第六号，停用；里面的 `claude-test`、`tester-ann` 随库停用，不再单独删）。
