@@ -19,32 +19,29 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| M5 | `feature/phase1-m5-bot-onboarding`（基于 main `3e7e513`） | 英文名和项目目录设置 / `local_da15ce4c-fbe6-4bce-9079-5a9e07ee14ef` | 代码已验收 = `b1afd46`；测试服实测主脑部分通过 | 待用户（lee 做 Telegram 两项） | 返工清单已发（A1–A6 必修、B1–B21 次要、C1 已定按 D7 A 做、C2 待 D8）。复验：核对新 tip；全量；重打 P1（`core/admin.go` 最后一名管理员判定改为永不触发，必须变红）；新探针至少两条，候选“吊销全部设备后再配对仍需审批”“首台批准后、领取前吊销设备，领到的令牌无效”“等待管理员批准时中途退出后 `--resume` 能领取”；测试服实测待 D6 |
-| M5b-设计 | `claude/docs-m5b-accounts-design-ec8f74`（基于 main `4536d5e`，只出文档） | m5b / `local_2e577d38-8052-4c21-97ab-a6422db710a3` | `0dd4127`（前提已改正，主脑已核） | 待用户（D10） | 产出 `docs/superpowers/plans/2026-10-17-phase1-m5b-accounts.md`：权限矩阵、数据模型与第七号迁移、流程、接口字段级清单、安全、任务拆分、待拍板；主脑审完给 lee 过目 |
+| M5b | `feature/phase1-m5b-accounts`（基于 main `e8a63a2`） | m5b / `local_2e577d38-8052-4c21-97ab-a6422db710a3` | — | 已派 | 按设计稿 T1–T8；T1、T2 完成先回报（迁移与权限先验）。验收：全量；设计稿 6.2 节 16 条均有用例；设计稿建议的 5 条探针 + 自选 ≥2；迁移在 `cohive_test` 的副本上试跑；测试服实测由主脑做 |
+| DOC-1 | `docs-plan-v05`（基于 main，只改 `docs/plan.md`） | doc-1 / `local_ac5f9530-2ef2-43a9-950b-3642be07bbeb` | — | 已派 | 与 decisions.md 逐条对照；不改其他文件 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
-| D6 | M5 实测（lee 选 A）：主脑部分已通过，剩 lee 亲手两项 | ① 用 admin 登录测试服，个人中心连接 Telegram；② 管理 → 工作空间填“小项目”群编号（群里有其他真人，审批消息会发进去），再触发一次团队注册，在群里点批准 | — | M5 合入 |
-| D10 | M5b 设计稿第 7 节 12 条待拍板（`docs/superpowers/plans/2026-10-17-phase1-m5b-accounts.md`，在设计分支上） | 逐条 A/B | 全部按设计稿建议（主脑审过，均同意） | M5b 实施 |
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
 
-- P1 M5b 实施（设计已派，见 §1）：M5 合入后实施，真人试用前完成 —— 来源 lee 2026-10-16 D9
-- P1 M6-a 发给同事能用：`cohive` 命令行分发（预编译程序，不要求对方装 Go、不要求读私有仓库）+ 写入前密钥扫描 + 评论导致确认作废（评论也让版本号加一）—— 来源 M5 会话、M1 审查遗留
+- P1 L-2 lee 亲手实测 Telegram：个人中心连接 Telegram；管理 → 工作空间填“小项目”群编号 `-1004357698945`（群里有其他真人），触发一次团队注册后在群里点批准。M5 已先合入（lee 2026-10-16：先按建议做，实际使用中有问题再调），真人试用前做完 —— 来源 D6
+- P1 M6-a（M5b 合入后再派，避免同改 `internal/core`、`cmd/cohive` 冲突）发给同事能用：`cohive` 命令行分发（预编译程序，不要求对方装 Go、不要求读私有仓库）+ 写入前密钥扫描 + 评论导致确认作废（评论也让版本号加一）—— 来源 M5 会话、M1 审查遗留
 - P1 L-1 lee 亲自验证 Claude Code 与 Codex 交互模式下确认弹窗确实出现（方案第 4 节要求实测，无界面模式已验证拦截）—— 来源 M5 会话；lee 亲手做，不派
 - P1 B-1 采集基线：试用前人工记录两周跨人交接情况（方案第 11 节）—— lee 亲手做，不派
 - P2 M6-b 部署：Docker 镜像 + compose（数据目录挂载、初始密码文件位置）+ 数据库备份 —— 来源 M5 会话
-- P2 DOC-1 方案升到 V0.5：改掉第 5.2、5.4、8、12 节里已废弃的登录方式和 `cohive daemon` 描述，并入 2026-10-16 口径 —— 来源主脑盘点
 - P3 新登录私聊通知加一键吊销 —— 来源 M5 会话
 - P3 过期设备授权请求、通讯连接请求清理；删掉旧表 `login_codes` —— 来源 M5 会话
 - P3 第一阶段剩余范围：`CODEOWNERS` 路由、会话钩子注入待办摘要、超时催办（届时引入 river）、代码占用声明 —— 来源 `docs/plan.md` 第 10 节
 - P4 接第二种通讯工具前，把成员的通讯账号拆成独立表 —— 来源 M5 会话
 
 ## 4. 环境与待清理
-- 测试服（2026-10-16 起）：验收工作树 `/private/tmp/claude-503/-Users-jiali-MyCode-cohive/f7d08f07-8081-4977-b6d1-3be664ac942f/scratchpad/m5-accept`（`b1afd46`）的程序 + 长期测试库 `cohive_test`，监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（隧道跑在 lee 的终端标签 c3）。重启：同目录上一级 `test-restart.sh`。**临时目录，重启电脑可能丢失**，M5 合入后改为用 main 构建，M6-a 把启动脚本收进仓库。
+- 测试服（2026-10-16 起）：main 构建的程序（`/Users/jiali/MyCode/cohive/bin/`，当前 `d21d6d8`）+ 长期测试库 `cohive_test`，监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（隧道跑在 lee 的终端标签 c3）。重启：`/private/tmp/claude-503/-Users-jiali-MyCode-cohive/f7d08f07-8081-4977-b6d1-3be664ac942f/scratchpad/test-restart.sh /Users/jiali/MyCode/cohive`（先在 main `make build`）。**脚本与数据目录在临时目录，重启电脑可能丢失**，M6-a 把启动脚本收进仓库。lee 本机经测试服的 Cohive 连接需重新 `cohive login`（旧令牌属于旧库）。
 - 测试服数据目录 `…/scratchpad/test-data/`：初始密码文件已在首登改密后自动删除；admin 新密码在 `admin-password-new.txt`，测试成员 `tester-a`、`tester-b` 的密码在 `member-password.txt`（权限 600，只是测试凭据）。
 - 实测用的命令行凭据目录 `…/scratchpad/cli-a`（已吊销）、`cli-a2`、`cli-adm`，用 `COHIVE_CONFIG_DIR` 指定，没动 lee 的 `~/.config/cohive`。
 - 旧库：`cohive`（M4 数据，群编号 `-1004357698945`，停用不删）、`cohive_m5`（旧版第六号，停用；里面的 `claude-test`、`tester-ann` 随库停用，不再单独删）。
