@@ -20,7 +20,7 @@ const (
 )
 
 // ErrLinkGone 表示连接链接不存在、已使用或已过期。
-var ErrLinkGone = errors.New("这个连接链接已失效，请在终端重新执行 cohive link telegram")
+var ErrLinkGone = errors.New("这个连接链接已失效，请回到 Cohive 网页“个人中心”重新点“连接 Telegram”")
 
 // StartLink 由成员在终端发起通讯工具连接，返回链接参数。
 func (s *Service) StartLink(ctx context.Context, who store.Identity, provider string) (store.LinkRequest, error) {
