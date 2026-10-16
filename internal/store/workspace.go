@@ -9,7 +9,7 @@ type Workspace struct {
 	ID        int64
 	Name      string
 	Notify    NotifyConfig
-	PublicURL string // 看板的外部地址，用于群消息里的链接；可为空
+	PublicURL string // 协作服务的外部地址，用于群消息与邀请链接；可为空
 }
 
 // NotifyConfig 是工作空间的群通知配置。Channel 为空表示不发群通知。
@@ -94,4 +94,9 @@ func updateMember(ctx context.Context, q DBTX, sql string, memberID int64, value
 func SetWorkspaceNotifyTarget(ctx context.Context, q DBTX, wsID int64, target string) error {
 	_, err := q.Exec(ctx, `UPDATE workspaces SET notify_target = $2 WHERE id = $1`, wsID, target)
 	return err
+}
+
+// SetMemberRole 设置成员角色。
+func SetMemberRole(ctx context.Context, q DBTX, memberID int64, role string) error {
+	return updateMember(ctx, q, `UPDATE members SET role = $2 WHERE id = $1`, memberID, role)
 }

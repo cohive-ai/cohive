@@ -33,7 +33,39 @@ export const severityLabel: Record<string, string> = {
 };
 
 export const toolLabel = (tool: string) =>
-  tool === "claude-code" ? "Claude Code" : tool === "codex" ? "Codex" : tool;
+  tool === "claude-code" ? "Claude Code" : tool === "codex" ? "Codex" : tool === "web" ? "网页" : tool;
+
+// 设备的工具列表：兼容数组与逗号分隔字符串
+export function toolsText(tools: string[] | string | null | undefined): string {
+  const list = Array.isArray(tools) ? tools : (tools ?? "").split(",");
+  const names = list.map((t) => t.trim()).filter(Boolean).map(toolLabel);
+  return names.length ? names.join("、") : "未注明";
+}
+
+export const roleLabel = (role: string) => (role === "admin" ? "管理员" : "成员");
+
+export const inviteKindLabel = (kind: string) =>
+  kind === "personal" ? "个人邀请" : kind === "team" ? "团队邀请" : kind;
+
+export const deviceAuthStatusLabel: Record<string, string> = {
+  pending: "等待你确认",
+  awaiting_admin: "等待管理员批准",
+  approved: "已授权",
+  delivered: "已授权，终端已完成登录",
+  denied: "已拒绝",
+  expired: "已过期",
+};
+
+// 成员名规则（与服务端一致）：小写字母、数字、下划线、横线，1 到 32 位，第一个字符须是字母或数字
+export const memberNamePattern = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+export const minPasswordLength = 10;
+
+// 登录后回跳地址：只接受本站路径，避免被拼成跳去外站
+export function safeRedirect(target: string | undefined, fallback = "/"): string {
+  if (!target || !target.startsWith("/") || target.startsWith("//") || target.startsWith("/\\")) return fallback;
+  if (target === "/login" || target.startsWith("/login?")) return fallback;
+  return target;
+}
 
 export function relativeTime(iso: string, now = Date.now()): string {
   const sec = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));

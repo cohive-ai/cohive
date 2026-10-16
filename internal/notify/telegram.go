@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -51,8 +52,23 @@ func IsPermanent(err error) bool {
 }
 
 type Update struct {
-	UpdateID int64      `json:"update_id"`
-	Message  *TGMessage `json:"message"`
+	UpdateID      int64       `json:"update_id"`
+	Message       *TGMessage  `json:"message"`
+	CallbackQuery *TGCallback `json:"callback_query"`
+}
+
+// TGCallback 是用户点了消息下方按钮。From 由 Telegram 填写，可以作为身份依据。
+type TGCallback struct {
+	ID      string     `json:"id"`
+	From    TGUser     `json:"from"`
+	Message *TGMessage `json:"message"`
+	Data    string     `json:"data"`
+}
+
+// Button 是消息下方的一个内联按钮，Data 不超过 64 字节。
+type Button struct {
+	Text string `json:"text"`
+	Data string `json:"callback_data"`
 }
 
 type TGMessage struct {
@@ -171,7 +187,7 @@ func (t *Telegram) GetUpdates(ctx context.Context, offset int64, timeoutSec int)
 	q := url.Values{}
 	q.Set("offset", strconv.FormatInt(offset, 10))
 	q.Set("timeout", strconv.Itoa(timeoutSec))
-	q.Set("allowed_updates", `["message"]`)
+	q.Set("allowed_updates", `["message","callback_query"]`)
 	req, err := http.NewRequest(http.MethodGet, t.endpoint("getUpdates")+"?"+q.Encode(), nil)
 	if err != nil {
 		return nil, errors.New("构造 Telegram 请求失败")
@@ -202,4 +218,80 @@ func (t *Telegram) GetMe(ctx context.Context) (string, error) {
 		return "", errors.New("解析 Telegram 机器人信息失败")
 	}
 	return u.Username, nil
+}
+
+func keyboard(buttons [][]Button) (map[string]any, error) {
+	for _, row := range buttons {
+		for _, b := range row {
+			if len(b.Data) == 0 || len(b.Data) > 64 {
+				return nil, fmt.Errorf("按钮回调数据长度应为 1 到 64 字节：%q", b.Data)
+			}
+		}
+	}
+	if buttons == nil {
+		buttons = [][]Button{}
+	}
+	return map[string]any{"inline_keyboard": buttons}, nil
+}
+
+func (t *Telegram) post(ctx context.Context, method string, payload map[string]any) (json.RawMessage, error) {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, t.endpoint(method), bytes.NewReader(b))
+	if err != nil {
+		return nil, errors.New("构造 Telegram 请求失败")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return t.call(ctx, method, req)
+}
+
+// SendButtons 发一条带内联按钮的消息，返回消息编号（之后可编辑）。
+func (t *Telegram) SendButtons(ctx context.Context, chatID int64, text string, buttons [][]Button) (int64, error) {
+	kb, err := keyboard(buttons)
+	if err != nil {
+		return 0, err
+	}
+	raw, err := t.post(ctx, "sendMessage", map[string]any{
+		"chat_id": chatID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": true, "reply_markup": kb,
+	})
+	if err != nil {
+		return 0, err
+	}
+	var m TGMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return 0, errors.New("解析 Telegram 消息失败")
+	}
+	return m.MessageID, nil
+}
+
+// EditMessage 修改消息文字；buttons 为 nil 时去掉按钮。内容没变时 Telegram 报错，这里当作成功。
+func (t *Telegram) EditMessage(ctx context.Context, chatID, messageID int64, text string, buttons [][]Button) error {
+	kb, err := keyboard(buttons)
+	if err != nil {
+		return err
+	}
+	_, err = t.post(ctx, "editMessageText", map[string]any{
+		"chat_id": chatID, "message_id": messageID, "text": text, "parse_mode": "HTML",
+		"disable_web_page_preview": true, "reply_markup": kb,
+	})
+	if err != nil && strings.Contains(err.Error(), "message is not modified") {
+		return nil
+	}
+	return err
+}
+
+// AnswerCallback 回应按钮点击（客户端上的小提示），必须在点击后尽快调用。
+func (t *Telegram) AnswerCallback(ctx context.Context, callbackID, text string) error {
+	_, err := t.post(ctx, "answerCallbackQuery", map[string]any{"callback_query_id": callbackID, "text": text})
+	return err
+}
+
+// SendText 往任意聊天发一条 HTML 消息。
+func (t *Telegram) SendText(ctx context.Context, chatID int64, text string) error {
+	_, err := t.post(ctx, "sendMessage", map[string]any{
+		"chat_id": chatID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": true,
+	})
+	return err
 }

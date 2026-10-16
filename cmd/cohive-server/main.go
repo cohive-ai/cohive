@@ -25,9 +25,14 @@ const usage = `用法：cohive-server <命令>
   notify test --workspace <名称>                   往工作空间的群里发一条测试消息
   notify retry --workspace <名称>                  把发送失败的通知重新排队
 
+账号（邀请、审批、设备等日常管理请用网页的“管理”页）：
+  admin reset-password --name <成员名> [--workspace <名称>]
+                                                  重置网页密码，新密码只在这里显示一次，登录后须修改
+
 成员、令牌与服务（都可加 --workspace <名称>，缺省为 default）：
   member add --name <名称> [--display <显示名>]    添加成员
   member set --name <名称> --telegram <用户名>      登记 Telegram 用户名，用于群里 @ 提醒
+  member set --name <名称> --role admin            设为管理员（可发邀请、审批）
   member list                                     列出成员
   token issue --member <名称> --tool <工具>        为成员的某个工具签发令牌（只显示一次）
   token list                                      列出令牌
@@ -39,6 +44,7 @@ const usage = `用法：cohive-server <命令>
   COHIVE_DATABASE_URL          数据库地址（必填）
   COHIVE_TELEGRAM_BOT_TOKEN    Telegram 机器人令牌（使用群通知时必填）
   COHIVE_ALLOWED_HOSTS         经隧道等方式访问 MCP 时的公网域名，逗号分隔
+  COHIVE_DATA_DIR              数据目录（缺省为 ./data），首次启动时初始管理员密码写在这里
 `
 
 func main() {
@@ -71,6 +77,8 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		return admin(ctx, out, args)
 	case "notify":
 		return notifyCmd(ctx, out, args[1:])
+	case "admin":
+		return adminCmd(ctx, out, args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(out, usage)
 		return nil

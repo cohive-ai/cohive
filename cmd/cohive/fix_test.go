@@ -96,22 +96,13 @@ func TestProxyNotLoggedInAnswersWithHint(t *testing.T) {
 	}
 }
 
-// 没有 Telegram 的成员：管理员签发的令牌从标准输入读入，校验后保存，之后 init 照常可用。
+// 管理员签发的令牌从标准输入读入，校验后保存，之后 init 照常可用。
 func TestLoginWithAdminToken(t *testing.T) {
 	configDir(t)
 	s := newTestServer(t)
-	_, who, err := s.svc.ExchangeLoginCode(context.Background(), s.code(t), "codex") // 拿到一个有效令牌
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = who
-	res, _ := s.svc.IssueLoginCode(context.Background(), s.uid, "")
-	token, _, err := s.svc.ExchangeLoginCode(context.Background(), res.Code, "claude-code")
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := s.token(t, "claude-code")
 	var out strings.Builder
-	err = runCLI(context.Background(), strings.NewReader(token+"\n"), &out, []string{"login", "--server", s.url, "--token-stdin"})
+	err := runCLI(context.Background(), strings.NewReader(token+"\n"), &out, []string{"login", "--server", s.url, "--token-stdin"})
 	if err != nil {
 		t.Fatalf("用令牌登录失败：%v", err)
 	}

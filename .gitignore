@@ -6,5 +6,7 @@ node_modules/
 .claude/worktrees/
 .superpowers/
 bin/
+# 服务器数据目录（缺省为运行目录下的 data/，首次启动时初始管理员密码写在这里）
+/data/
 web/dist/*
 !web/dist/.gitkeep

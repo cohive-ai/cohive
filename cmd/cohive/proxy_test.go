@@ -40,9 +40,7 @@ func startProxy(t *testing.T, args ...string) (*mcp.ClientSession, func() error)
 func TestProxyEndToEnd(t *testing.T) {
 	configDir(t)
 	s := newTestServer(t)
-	if _, err := run(t, "login", "--server", s.url, "--code", s.code(t), "--tool", "codex"); err != nil {
-		t.Fatal(err)
-	}
+	s.login(t, "codex")
 	sess, stop := startProxy(t, "--server", s.url, "--workspace", "default", "--tool", "codex")
 	defer stop()
 

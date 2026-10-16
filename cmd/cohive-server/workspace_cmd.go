@@ -48,7 +48,7 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 			return err
 		}
 		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "编号\t名称\t群通知\t待发/失败\t看板地址")
+		fmt.Fprintln(tw, "编号\t名称\t群通知\t待发/失败\t公网地址")
 		for _, w := range list {
 			pending, failed, err := store.CountNotifications(ctx, pool, w.ID)
 			if err != nil {
@@ -128,7 +128,9 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 	fs := flag.NewFlagSet("member set", flag.ContinueOnError)
 	fs.StringVar(&name, "name", "", "成员名")
 	fs.StringVar(&tg, "telegram", "", "Telegram 用户名，群通知里用于 @ 提醒；传空字符串可清除")
-	fs.StringVar(&tgID, "telegram-id", "", "Telegram 用户编号（私聊机器人 /whoami 获取），用于领取登录码；传空字符串可解绑")
+	fs.StringVar(&tgID, "telegram-id", "", "Telegram 用户编号（私聊机器人 /whoami 获取），用于识别群里点审批按钮的人；传空字符串可解绑。一般由成员在网页个人中心自行连接")
+	var role string
+	fs.StringVar(&role, "role", "", "角色：admin（可发邀请、审批注册与设备）或 member")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -136,8 +138,11 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 	if err := required("name", name); err != nil {
 		return err
 	}
-	if !set["telegram"] && !set["telegram-id"] {
-		return fmt.Errorf("没有要修改的项：用 --telegram 设置用户名，或用 --telegram-id 绑定用户编号")
+	if !set["telegram"] && !set["telegram-id"] && !set["role"] {
+		return fmt.Errorf("没有要修改的项：用 --telegram 设置用户名、--telegram-id 绑定用户编号，或 --role 设置角色")
+	}
+	if set["role"] && role != store.RoleAdmin && role != store.RoleMember {
+		return fmt.Errorf("角色只能是 admin 或 member，收到 %q", role)
 	}
 	tg = strings.TrimPrefix(strings.TrimSpace(tg), "@")
 	if tg != "" && !telegramUsername.MatchString(tg) {
@@ -168,6 +173,12 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 			fmt.Fprintf(out, "%s 的 Telegram 用户名为 %s\n", name, tg)
 		}
 	}
+	if set["role"] {
+		if err := store.SetMemberRole(ctx, pool, m.ID, role); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s 的角色为 %s\n", name, roleLabel(role))
+	}
 	if set["telegram-id"] {
 		if userID != nil {
 			list, err := store.ListMembers(ctx, pool, ws)
@@ -186,8 +197,15 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 		if userID == nil {
 			fmt.Fprintf(out, "已解绑 %s 的 Telegram 用户编号\n", name)
 		} else {
-			fmt.Fprintf(out, "%s 已绑定 Telegram 用户编号 %d，可以私聊机器人发 /login 领取登录码\n", name, *userID)
+			fmt.Fprintf(out, "%s 已绑定 Telegram 用户编号 %d\n", name, *userID)
 		}
 	}
 	return nil
+}
+
+func roleLabel(role string) string {
+	if role == store.RoleAdmin {
+		return "管理员"
+	}
+	return "成员"
 }

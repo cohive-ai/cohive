@@ -97,7 +97,7 @@ func initProject(out io.Writer, args []string) error {
 	fmt.Fprintln(out, "\n这些文件不含令牌，可以提交进仓库，团队成员共用。")
 	for _, t := range tools {
 		if _, ok := creds.Find(srv, ws, t); !ok {
-			fmt.Fprintf(out, "\n注意：%s 还没有登录，私聊机器人发 /login 领取登录码后执行：\n  cohive login --server %s --code <登录码> --tool %s\n", t, srv, t)
+			fmt.Fprintf(out, "\n注意：%s 还没有登录，执行：\n  cohive login --tools %s\n", t, t)
 		}
 	}
 	fmt.Fprintln(out, "\n下一步：")
@@ -109,7 +109,7 @@ func initProject(out io.Writer, args []string) error {
 // pickTarget 决定配置哪个服务与工作空间：显式指定优先，否则本机必须只有一个。
 func pickTarget(creds *client.Credentials, server, workspace string) (string, string, error) {
 	if len(creds.Logins) == 0 {
-		return "", "", errors.New("本机还没有登录：私聊机器人发 /login 领取登录码，再执行 cohive login")
+		return "", "", errors.New("本机还没有登录：先执行 cohive login --server <协作服务地址>")
 	}
 	type key struct{ s, w string }
 	seen := map[key]bool{}

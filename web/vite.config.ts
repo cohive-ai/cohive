@@ -9,6 +9,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://127.0.0.1:8787",
+      // cohive web 生成的一次性免密登录链接
+      "/auth": "http://127.0.0.1:8787",
       "/healthz": "http://127.0.0.1:8787",
     },
   },

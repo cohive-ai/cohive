@@ -1,70 +1,118 @@
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useRouter, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, setToken, UnauthorizedError } from "../api";
+import { api, ApiError } from "../api";
+import { safeRedirect } from "../format";
+import { AuthShell, btn, ErrorText, Field, inputClass, errMsg, Callout } from "../ui";
 
 export function LoginPage() {
-  const [token, setValue] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const navigate = useNavigate();
+  const { redirect } = useSearch({ from: "/login" });
+  const router = useRouter();
   const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  // 同名成员在多个工作空间时由服务器返回可选列表
+  const [workspaces, setWorkspaces] = useState<string[]>([]);
+  const [workspace, setWorkspace] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const t = token.trim();
-    if (!t) return;
+    if (!name.trim() || !password) return;
+    if (workspaces.length > 0 && !workspace) {
+      setError("请先选择要进入的工作空间。");
+      return;
+    }
     setBusy(true);
     setError("");
+    setPending(false);
     try {
-      await api.me(t);
-      setToken(t);
+      await api.login({ name: name.trim(), password, workspace: workspace || undefined });
       qc.clear();
-      navigate({ to: "/" });
+      // 改密码的强制跳转由进入站点时的检查负责
+      router.history.push(safeRedirect(redirect));
     } catch (err) {
-      setError(
-        err instanceof UnauthorizedError
-          ? "令牌无效或已被吊销。请向管理员确认，或用 cohive-server token issue 重新签发。"
-          : `无法连接协作服务：${(err as Error).message}`,
-      );
+      if (err instanceof ApiError && err.status === 409 && Array.isArray(err.body.workspaces)) {
+        const list = (err.body.workspaces as unknown[]).map(String);
+        setWorkspaces(list);
+        setWorkspace((cur) => (list.includes(cur) ? cur : ""));
+        setError("这个成员名在多个工作空间里都有，请选择要进入的工作空间后再登录。");
+      } else if (err instanceof ApiError && err.status === 403) {
+        setPending(true);
+      } else if (err instanceof ApiError && err.status === 401) {
+        setError(err.message.startsWith("请求失败") ? "成员名或密码不对。" : err.message);
+      } else if (err instanceof ApiError && err.status === 429) {
+        setError("尝试次数太多，请稍等几分钟再试。");
+      } else {
+        setError(errMsg(err));
+      }
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="flex min-h-dvh items-center justify-center px-4">
-      <form onSubmit={submit} className="w-full max-w-md rounded-lg border border-line bg-surface p-6">
-        <div className="mb-5 flex items-center gap-2">
-          <svg viewBox="0 0 32 32" className="h-6 w-6 text-teal" aria-hidden="true">
-            <path d="M16 3l11 6.5v13L16 29 5 22.5v-13z" fill="currentColor" />
-          </svg>
-          <h1 className="text-lg font-semibold">Cohive 看板</h1>
-        </div>
-        <label htmlFor="token" className="mb-1 block text-sm">
-          成员令牌
-        </label>
-        <input
-          id="token"
-          type="password"
-          autoComplete="off"
-          value={token}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="cohive_…"
-          className="w-full rounded border border-line bg-bg px-3 py-2 font-mono text-sm text-ink placeholder:text-muted"
-        />
-        <p className="mt-2 text-sm text-muted">
-          看板只读，你看到的内容与这个成员在编程工具里看到的一致。令牌只保存在这台电脑的浏览器里。
-        </p>
-        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
-        <button
-          type="submit"
-          disabled={busy || !token.trim()}
-          className="mt-5 w-full rounded bg-teal px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
-        >
-          {busy ? "正在验证…" : "进入看板"}
+    <AuthShell title="登录 Cohive">
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="成员名" htmlFor="name">
+          <input
+            id="name"
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setWorkspaces([]);
+              setWorkspace("");
+            }}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="密码" htmlFor="password">
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+        {workspaces.length > 0 && (
+          <Field label="工作空间" htmlFor="workspace">
+            <select
+              id="workspace"
+              value={workspace}
+              onChange={(e) => setWorkspace(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">请选择</option>
+              {workspaces.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        {pending && (
+          <Callout>你的注册申请还在等待管理员批准。批准后再用这个成员名和密码登录。</Callout>
+        )}
+        <ErrorText>{error}</ErrorText>
+        <button type="submit" disabled={busy || !name.trim() || !password} className={`${btn.primary} w-full`}>
+          {busy ? "正在登录…" : "登录"}
         </button>
       </form>
-    </div>
+      <div className="mt-6 space-y-2 border-t border-line pt-4 text-sm text-muted">
+        <p>
+          也可以在已登录的电脑上执行 <code className="rounded bg-sunken px-1 font-mono text-ink">cohive web</code>{" "}
+          免密打开。
+        </p>
+        <p>还没有账号？向管理员要一个邀请链接，打开后注册。忘记密码请联系管理员重置。</p>
+      </div>
+    </AuthShell>
   );
 }

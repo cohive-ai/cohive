@@ -18,6 +18,7 @@ type Login struct {
 	Member    string    `json:"member"`
 	Tool      string    `json:"tool"`
 	Token     string    `json:"token"`
+	DeviceID  int64     `json:"device_id,omitempty"` // 这台电脑在服务端的设备编号；管理员手工签发的令牌为 0
 	CreatedAt time.Time `json:"created_at"`
 }
 
