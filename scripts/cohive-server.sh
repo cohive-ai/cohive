@@ -145,7 +145,7 @@ status() {
   if [ "$rc" -eq 0 ]; then
     echo "运行中，进程号 $pid，监听 $addr"
     local v
-    v="$(curl -fsS "http://$probe/api/v1/version" 2>/dev/null || true)"
+    v="$(curl -fsS "http://$probe/api/v1/version" 2>/dev/null | sed -nE 's/.*"version":"([^"]*)"[^"]*$/\1/p' || true)"
     [ -n "$v" ] && echo "  版本：$v"
   else
     echo "没有在运行"

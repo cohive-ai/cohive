@@ -53,11 +53,13 @@
 
 **1. 打开邀请链接**：新人填登录名、显示名、密码（至少 10 位）注册；团队邀请要等管理员批准后才能登录。已经有账号的人先登录，再点“以 X 身份加入”。
 
-**2. 配对自己的电脑**（每台电脑只做一次）：先安装 cohive 命令行（编程工具要能在 PATH 里找到它）：
+**2. 配对自己的电脑**（每台电脑只做一次）：先安装 cohive 命令行。不需要装 Go，也不需要能读代码仓库：命令行由团队自己的协作服务提供，版本与服务端一致（详见 [install-cli.md](install-cli.md)）。网页“个人中心 → 绑定新电脑”里有带服务器地址的命令，一键复制：
 
 ```bash
-make install-cli
+curl -fsSL https://cohive.example.com/install.sh | sh
 ```
+
+Windows 在 PowerShell 里执行 `irm https://cohive.example.com/install.ps1 | iex`。默认装在 `~/.local/bin`；提示不在 PATH 里时按提示加上，并从终端重新启动编程工具（它要能在 PATH 里找到 `cohive`）。开发者在仓库里也可以 `make install-cli`。
 
 然后在终端执行（网页“个人中心”里有带服务器地址的完整命令，一键复制）：
 
