@@ -42,16 +42,6 @@ func (e *AmbiguousLoginError) Error() string {
 // 一个固定的哈希，成员不存在时也做一次比较，让响应时间不暴露成员名是否存在。
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("cohive-dummy-password"), bcrypt.DefaultCost)
 
-func hashPassword(pw string) (string, error) {
-	if len([]rune(pw)) < minPasswordLength {
-		return "", inputErr("密码至少 %d 位", minPasswordLength)
-	}
-	if len(pw) > 72 {
-		return "", inputErr("密码太长（最多 72 字节）")
-	}
-	h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
-	return string(h), err
-}
 
 // Session 是新建的网页会话；ID 只在这里出现一次，写进 Cookie。
 type Session struct {
@@ -97,7 +87,11 @@ func (s *Service) Login(ctx context.Context, name, password, workspace string) (
 		if err != nil {
 			return Session{}, err
 		}
-		if pw.Hash != "" && bcrypt.CompareHashAndPassword([]byte(pw.Hash), []byte(password)) == nil {
+		match, err := passwordMatches(ctx, pw.Hash, password)
+		if err != nil {
+			return Session{}, err
+		}
+		if match {
 			ok = append(ok, m)
 			okNames = append(okNames, names[i])
 		}
@@ -107,14 +101,16 @@ func (s *Service) Login(ctx context.Context, name, password, workspace string) (
 		return s.newSession(ctx, s.Pool, ok[0])
 	case 0:
 		if len(cands) == 0 {
-			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+			s.DummyPasswordCheck(ctx, password)
 		}
 		pending, err := store.PendingSignupsByName(ctx, s.Pool, name)
 		if err != nil {
 			return Session{}, err
 		}
 		for _, sg := range pending {
-			if bcrypt.CompareHashAndPassword([]byte(sg.PasswordHash), []byte(password)) == nil {
+			if match, err := passwordMatches(ctx, sg.PasswordHash, password); err != nil {
+				return Session{}, err
+			} else if match {
 				return Session{}, ErrSignupPending
 			}
 		}
@@ -147,13 +143,19 @@ func (s *Service) ChangePassword(ctx context.Context, m store.Member, currentSes
 	if err != nil {
 		return err
 	}
-	if pw.Hash != "" && bcrypt.CompareHashAndPassword([]byte(pw.Hash), []byte(oldPw)) != nil {
-		return inputErr("旧密码不对")
+	if pw.Hash != "" {
+		match, err := passwordMatches(ctx, pw.Hash, oldPw)
+		if err != nil {
+			return err
+		}
+		if !match {
+			return inputErr("旧密码不对")
+		}
 	}
 	if oldPw != "" && oldPw == newPw {
 		return inputErr("新密码不能和旧密码相同")
 	}
-	hash, err := hashPassword(newPw)
+	hash, err := hashPassword(ctx, newPw)
 	if err != nil {
 		return err
 	}
@@ -229,15 +231,15 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context) (string, error) {
 		if err != nil {
 			return err
 		}
-		h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+		h, err := bcryptHash(ctx, pw)
 		if err != nil {
 			return err
 		}
-		m, err := createAccount(ctx, tx, wsID, name, "管理员", string(h), store.RoleAdmin)
+		m, err := createAccount(ctx, tx, wsID, name, "管理员", h, store.RoleAdmin)
 		if err != nil {
 			return err
 		}
-		if err := store.SetMemberPassword(ctx, tx, m.ID, string(h), true); err != nil {
+		if err := store.SetMemberPassword(ctx, tx, m.ID, h, true); err != nil {
 			return err
 		}
 		if err := os.MkdirAll(s.DataDir, 0o700); err != nil {
@@ -261,12 +263,12 @@ func (s *Service) ResetPassword(ctx context.Context, wsID int64, name string) (s
 	if err != nil {
 		return "", err
 	}
-	h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	h, err := bcryptHash(ctx, pw)
 	if err != nil {
 		return "", err
 	}
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
-		if err := store.SetMemberPassword(ctx, tx, m.ID, string(h), true); err != nil {
+		if err := store.SetMemberPassword(ctx, tx, m.ID, h, true); err != nil {
 			return err
 		}
 		return store.DeleteMemberSessions(ctx, tx, m.ID, nil)

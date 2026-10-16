@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -42,9 +43,10 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	lookups := &keyedLimiter{max: 30, window: time.Minute}
 	starts := &keyedLimiter{max: 10, window: time.Minute}
 	polls := &keyedLimiter{max: 120, window: time.Minute}
+	guard := newLoginGuard()
 
 	mux.HandleFunc("POST /api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
-		if !logins.allow(clientIP(r)) {
+		if !logins.allow(limitKey(clientIP(r))) {
 			tooMany(w)
 			return
 		}
@@ -56,6 +58,12 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if !decode(w, r, &in) {
 			return
 		}
+		if d := guard.locked(in.Name); d > 0 {
+			svc.DummyPasswordCheck(r.Context(), in.Password) // 锁定时也耗同样的时间，不暴露成员名是否存在
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{
+				"error": fmt.Sprintf("这个成员名连续登录失败次数过多，请 %d 秒后再试", int(d.Seconds())+1)})
+			return
+		}
 		sess, err := svc.Login(r.Context(), in.Name, in.Password, in.Workspace)
 		var amb *core.AmbiguousLoginError
 		switch {
@@ -63,6 +71,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "workspaces": amb.Workspaces})
 			return
 		case errors.Is(err, core.ErrBadLogin):
+			guard.failed(in.Name)
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
 			return
 		case errors.Is(err, core.ErrSignupPending):
@@ -72,6 +81,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeError(w, err)
 			return
 		}
+		guard.succeeded(in.Name)
 		setSessionCookie(w, r, sess.ID)
 		pw, err := svc.PasswordStatus(r.Context(), sess.Member.ID)
 		if err != nil {
@@ -121,7 +131,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 
 	mux.HandleFunc("GET /api/v1/invites/{code}", func(w http.ResponseWriter, r *http.Request) {
-		if !lookups.allow(clientIP(r)) {
+		if !lookups.allow(limitKey(clientIP(r))) {
 			tooMany(w)
 			return
 		}
@@ -138,7 +148,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 
 	mux.HandleFunc("POST /api/v1/register", func(w http.ResponseWriter, r *http.Request) {
-		if !registers.allow(clientIP(r)) {
+		if !registers.allow(limitKey(clientIP(r))) {
 			tooMany(w)
 			return
 		}
@@ -172,7 +182,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 
 	mux.HandleFunc("POST /api/v1/device/start", func(w http.ResponseWriter, r *http.Request) {
-		if !starts.allow(clientIP(r)) {
+		if !starts.allow(limitKey(clientIP(r))) {
 			tooMany(w)
 			return
 		}
@@ -193,7 +203,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 
 	mux.HandleFunc("POST /api/v1/device/poll", func(w http.ResponseWriter, r *http.Request) {
-		if !polls.allow(clientIP(r)) {
+		if !polls.allow(limitKey(clientIP(r))) {
 			tooMany(w)
 			return
 		}

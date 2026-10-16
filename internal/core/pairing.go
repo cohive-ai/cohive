@@ -235,13 +235,20 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 	if err := checkMemberName(name); err != nil {
 		return RegisterResult{}, err
 	}
-	hash, err := hashPassword(in.Password)
-	if err != nil {
-		return RegisterResult{}, err
-	}
 	code := strings.TrimSpace(in.Code)
 	if code == "" || len(code) > 64 {
 		return RegisterResult{}, ErrInviteInvalid
+	}
+	// 先确认邀请有效再算密码哈希，拿无效邀请码刷注册接口耗不了服务器 CPU
+	if inv, err := store.InviteByCode(ctx, s.Pool, hashSecret("invite", code), false); errors.Is(err, store.ErrNotFound) ||
+		(err == nil && !inv.Usable(time.Now())) {
+		return RegisterResult{}, ErrInviteInvalid
+	} else if err != nil {
+		return RegisterResult{}, err
+	}
+	hash, err := hashPassword(ctx, in.Password)
+	if err != nil {
+		return RegisterResult{}, err
 	}
 	var res RegisterResult
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
