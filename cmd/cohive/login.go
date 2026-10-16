@@ -409,9 +409,10 @@ func openWeb(ctx context.Context, out io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *open {
-		_ = openURL(link)
+	if *open && openURL(link) == nil {
+		fmt.Fprintf(out, "已在浏览器打开 Cohive（链接 2 分钟内有效、只能用一次）：\n  %s\n", link)
+		return nil
 	}
-	fmt.Fprintf(out, "已在浏览器打开 Cohive（链接 2 分钟内有效、只能用一次）：\n  %s\n", link)
+	fmt.Fprintf(out, "请在浏览器打开下面的链接（2 分钟内有效、只能用一次）：\n  %s\n", link)
 	return nil
 }
