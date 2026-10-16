@@ -20,7 +20,7 @@
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
 | M5b | `feature/phase1-m5b-accounts`（基于 main `e8a63a2`） | m5b / `local_2e577d38-8052-4c21-97ab-a6422db710a3` | — | 已派 | 按设计稿 T1–T8；T1、T2 完成先回报（迁移与权限先验）。验收：全量；设计稿 6.2 节 16 条均有用例；设计稿建议的 5 条探针 + 自选 ≥2；迁移在 `cohive_test` 的副本上试跑；测试服实测由主脑做 |
-| DOC-1 | `docs-plan-v05`（基于 main，只改 `docs/plan.md`） | doc-1 / `local_ac5f9530-2ef2-43a9-950b-3642be07bbeb` | — | 已派 | 与 decisions.md 逐条对照；不改其他文件 |
+| DOC-1 | `claude/docs-plan-v05-c8635e`（基于 main `e8a63a2`，只改 `docs/plan.md`） | doc-1 / `local_ac5f9530-2ef2-43a9-950b-3642be07bbeb` | — | 已派 | 与 decisions.md 逐条对照；不改其他文件 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
@@ -46,4 +46,4 @@
 - 实测用的命令行凭据目录 `…/scratchpad/cli-a`（已吊销）、`cli-a2`、`cli-adm`，用 `COHIVE_CONFIG_DIR` 指定，没动 lee 的 `~/.config/cohive`。
 - 旧库：`cohive`（M4 数据，群编号 `-1004357698945`，停用不删）、`cohive_m5`（旧版第六号，停用；里面的 `claude-test`、`tester-ann` 随库停用，不再单独删）。
 - 机器人：同一个机器人令牌同时只能有一个程序收消息，测试服与本机调试不要同时跑。
-- 待归档会话：无。
+- 已归档：M5 实施会话“英文名和项目目录设置”（M5 已合入 `d21d6d8`）。待归档会话：无。
