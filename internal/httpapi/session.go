@@ -149,6 +149,10 @@ func allowed(w http.ResponseWriter, c Caller, kinds allow) bool {
 			writeError(w, core.ErrNoDevice)
 			return false
 		}
+		if kinds == aDevice {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "这个接口只认设备密钥（cohive login 配对后保存在本机），成员令牌不能用"})
+			return false
+		}
 		if kinds&aSession == aPassword {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": errNeedPassword, "need_password_login": true})
 			return false
