@@ -4,6 +4,7 @@ import { api, ApiError, type Me } from "../api";
 import { Notice } from "../components";
 import { absoluteTime, roleLabel, toolsText } from "../format";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
+import { shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
 
 export function MePage() {
@@ -141,8 +142,15 @@ function Telegram({ me }: { me: Me }) {
         }
       } catch (err) {
         if (stopped) return;
-        if (err instanceof ApiError && err.status === 401) return;
-        // 网络抖动时继续等
+        if (!shouldRetryPoll(err)) {
+          // 401 已由全局处理回登录页；其余 4xx 重试也不会好，停下并提示
+          if (!(err instanceof ApiError && err.status === 401)) {
+            setState(null);
+            setError(`查询连接结果失败：${errMsg(err)}。请重新点“连接 Telegram”。`);
+          }
+          return;
+        }
+        // 网络抖动或服务端暂时出错时继续等
         setError(`查询连接结果失败：${errMsg(err)}，稍后自动重试。`);
       }
       timer = setTimeout(tick, LINK_POLL_MS);
