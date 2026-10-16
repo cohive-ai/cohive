@@ -82,6 +82,18 @@ func (s testServer) approve(t *testing.T, ok bool) {
 	t.Error("没有等到设备授权请求")
 }
 
+// adminApprove 以服务器管理员身份批准正在等待的设备申请。
+func (s testServer) adminApprove(t *testing.T) {
+	t.Helper()
+	var id int64
+	if err := s.svc.Pool.QueryRow(context.Background(), `SELECT id FROM device_auths WHERE status = 'awaiting_admin'`).Scan(&id); err != nil {
+		t.Fatalf("没有等待批准的设备：%v", err)
+	}
+	if _, err := s.svc.DecideDeviceAuth(context.Background(), nil, id, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // login 走完整的设备授权登录这台电脑。
 func (s testServer) login(t *testing.T, tools ...string) string {
 	t.Helper()

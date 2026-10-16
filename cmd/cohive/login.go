@@ -161,7 +161,7 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 		return err
 	}
 	if *resume {
-		return resumeLogin(ctx, out)
+		return resumeLogin(ctx, out, *dir)
 	}
 	repo, err := readRepoTarget(findRepoDir(*dir))
 	if err != nil {
@@ -307,7 +307,8 @@ func pairedDevice(creds *client.Credentials, srv string) (client.Login, bool) {
 }
 
 // resumeLogin 继续领取之前没领完的设备授权（中途退出、等管理员批准超时、网络中断）。
-func resumeLogin(ctx context.Context, out io.Writer) error {
+func resumeLogin(ctx context.Context, out io.Writer, dir string) error {
+	repo, _ := readRepoTarget(findRepoDir(dir))
 	list, err := client.LoadPendings()
 	if err != nil {
 		return err
@@ -318,7 +319,9 @@ func resumeLogin(ctx context.Context, out io.Writer) error {
 	var last error
 	for _, p := range list {
 		fmt.Fprintf(out, "继续领取 %s 上的设备授权（申请 %d）……\n", p.Server, p.RequestID)
-		if err := waitDevice(ctx, out, p, false, repoTarget{}); err != nil {
+		// 在已配置好 Cohive 的仓库里续领时，不再提示执行 cohive init
+		ready := len(repo.Tools) > 0 && repo.Server == client.NormalizeServer(p.Server)
+		if err := waitDevice(ctx, out, p, ready, repo); err != nil {
 			fmt.Fprintf(out, "  %v\n", err)
 			last = err
 		}

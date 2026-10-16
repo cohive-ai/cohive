@@ -128,10 +128,7 @@ func TestLoginAwaitAdminThenResume(t *testing.T) {
 	if _, err := run(t, "login", "--server", s.url, "--tools", "codex", "--open=false"); err == nil || !strings.Contains(err.Error(), "--resume") {
 		t.Fatalf("等管理员超时后应提示稍后领取：%v", err)
 	}
-	if _, err := s.svc.Pool.Exec(context.Background(), `UPDATE device_auths SET status = 'approved',
-		device_id = (SELECT id FROM devices ORDER BY id DESC LIMIT 1) WHERE status = 'awaiting_admin'`); err != nil {
-		t.Fatal(err)
-	}
+	s.adminApprove(t)
 	out, err := run(t, "login", "--resume")
 	if err != nil || !strings.Contains(out, "已登录") {
 		t.Fatalf("批准后领取：%v\n%s", err, out)

@@ -43,10 +43,7 @@ func TestLoginInterruptedThenResume(t *testing.T) {
 	if list, _ := client.LoadPendings(); len(list) != 1 {
 		t.Fatalf("中断时应已保存待领取记录：%+v", list)
 	}
-	if _, err := s.svc.Pool.Exec(context.Background(), `UPDATE device_auths SET status = 'approved',
-		device_id = (SELECT id FROM devices ORDER BY id DESC LIMIT 1) WHERE status = 'awaiting_admin'`); err != nil {
-		t.Fatal(err)
-	}
+	s.adminApprove(t)
 	out, err := run(t, "login", "--resume")
 	if err != nil || !strings.Contains(out, "已登录") {
 		t.Fatalf("批准后续领：%v\n%s", err, out)
@@ -99,5 +96,25 @@ func TestPendingRecordsIndependent(t *testing.T) {
 		if p.Server == "https://a.example.com" && p.RequestID == 1 {
 			t.Fatal("删掉的记录还在")
 		}
+	}
+}
+
+// B20：在已配置好 Cohive 的仓库里续领，提示仓库已配置好，不再让人执行 cohive init。
+func TestResumeInConfiguredRepo(t *testing.T) {
+	configDir(t)
+	fastDevice(t)
+	s := newTestServer(t)
+	s.login(t, "codex")
+	configDir(t) // 另一台电脑
+	go s.approve(t, true)
+	if _, err := run(t, "login", "--server", s.url, "--tools", "codex", "--open=false"); err == nil {
+		t.Fatal("等管理员超时应先退出")
+	}
+	s.adminApprove(t)
+	repo := t.TempDir()
+	writeRepoConfig(t, repo, s.url)
+	out, err := run(t, "login", "--resume", "--dir", repo)
+	if err != nil || !strings.Contains(out, "已经配置好") || strings.Contains(out, "执行 cohive init") {
+		t.Fatalf("仓库已配置好时不应再提示 cohive init：%v\n%s", err, out)
 	}
 }
