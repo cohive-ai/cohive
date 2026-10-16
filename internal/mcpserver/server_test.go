@@ -342,3 +342,22 @@ func TestHealthz(t *testing.T) {
 		t.Fatalf("健康检查应返回 200，得到 %d", resp.StatusCode)
 	}
 }
+
+// 只补充说明时可以不填 expected_version，且不改变版本号；对方用读到的版本接单照样成功。
+func TestUpdateNoteWithoutVersionOverMCP(t *testing.T) {
+	f := newFixture(t)
+	a := mustConnect(t, f.url, f.tokenA)
+	b := mustConnect(t, f.url, f.tokenB)
+	d := mustCall(t, a, "cohive_draft_issue", map[string]any{"title": "评论不改版本", "target_service": "order-api"})
+	id, v := idv(d)
+	s := mustCall(t, a, "cohive_submit_issue", map[string]any{"issue_id": id, "expected_version": v})
+	_, v = idv(s)
+	c := mustCall(t, a, "cohive_update_issue", map[string]any{"issue_id": id, "note": "补充日志位置"})
+	if _, cv := idv(c); cv != v {
+		t.Fatalf("评论后版本号应不变：%v → %v", v, cv)
+	}
+	mustCall(t, b, "cohive_accept_issue", map[string]any{"issue_id": id, "expected_version": v, "decision": "accept"})
+	if _, errText := call(t, b, "cohive_update_issue", map[string]any{"issue_id": id, "start_fixing": true}); !strings.Contains(errText, "expected_version") {
+		t.Fatalf("开始修复是状态变更，缺版本号应报错：%q", errText)
+	}
+}

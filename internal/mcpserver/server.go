@@ -90,7 +90,7 @@ type AcceptArgs struct {
 
 type UpdateArgs struct {
 	IssueID         int64  `json:"issue_id"`
-	ExpectedVersion int    `json:"expected_version" jsonschema:"问题单当前版本号"`
+	ExpectedVersion int    `json:"expected_version,omitempty" jsonschema:"问题单当前版本号；start_fixing 时必填。只补充说明时可不填，评论不改变版本号"`
 	Note            string `json:"note,omitempty" jsonschema:"补充说明、证据或进展"`
 	StartFixing     bool   `json:"start_fixing,omitempty" jsonschema:"为 true 时把状态改为“修复中”"`
 	IdempotencyKey  string `json:"idempotency_key,omitempty"`
@@ -232,7 +232,8 @@ func NewServer(svc *core.Service) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "cohive_update_issue",
 		Annotations: writes,
-		Description: "给问题单补充说明、证据或进展；负责人可用 start_fixing 标记开始修复。" + trustNote,
+		Description: "给问题单补充说明、证据或进展；负责人可用 start_fixing 标记开始修复。" +
+			"只补充说明不会改变版本号，不影响别人正在确认的操作。" + trustNote,
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in UpdateArgs) (*mcp.CallToolResult, view.IssueView, error) {
 		a := issue.ActComment
 		if in.StartFixing {

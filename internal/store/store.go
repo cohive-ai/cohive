@@ -277,6 +277,7 @@ func GetIssueForUpdate(ctx context.Context, q DBTX, id int64) (Issue, error) {
 }
 
 // UpdateIssue 按 is.Version 做乐观并发更新，成功后版本加一。
+// 版本号是“状态、归属与正文”的版本，评论不经这里（见 TouchIssue）。
 func UpdateIssue(ctx context.Context, q DBTX, is *Issue) error {
 	err := q.QueryRow(ctx, `
 		UPDATE issues SET owner_id=$3, target_service=$4, severity=$5, title=$6, summary=$7,
@@ -294,6 +295,19 @@ func UpdateIssue(ctx context.Context, q DBTX, is *Issue) error {
 		return ErrVersionConflict
 	}
 	return err
+}
+
+// TouchIssue 只刷新更新时间，不改版本号：评论等不改变状态、归属与正文的写入用它，
+// 收件箱排序与“7 天内被退回”的窗口照旧随之更新。
+func TouchIssue(ctx context.Context, q DBTX, id int64) error {
+	tag, err := q.Exec(ctx, `UPDATE issues SET updated_at = now() WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ListInbox 返回需要该成员处理的问题单：
