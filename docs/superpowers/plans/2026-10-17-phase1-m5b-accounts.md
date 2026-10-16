@@ -364,3 +364,174 @@ CREATE UNIQUE INDEX accounts_telegram_user ON accounts (telegram_user_id) WHERE 
 ### 3.10 删除工作空间
 
 只允许删除**没有任何问题单**（含草稿）的工作空间：同一事务删掉它的邀请、待审申请、服务、成员资格（及其令牌）、通知、群绑定和 `bot_posts`，最后删工作空间行。有问题单时 `409`“工作空间里还有问题单，不能删除”。用于建错名字等情形；有数据的工作空间的归档以后再做（见待拍板第 3 条）。
+
+## 4. 接口、网页、命令行改动清单
+
+通用约定沿用 M5：均返回 JSON，错误为 `{"error": "中文说明"}`；网页用会话 Cookie `cohive_session`，非 GET 请求要求同源 `Origin`；命令行与编程工具用 `Authorization: Bearer`。
+
+**鉴权分四类**，每个接口标明接受哪几类：
+
+| 记号 | 含义 |
+|---|---|
+| 〔密码会话〕 | `web_sessions.method = 'password'` 的网页会话 |
+| 〔会话〕 | 任意网页会话（含 `cohive web` 免密会话） |
+| 〔令牌〕 | 成员令牌 `cohive_...`（属于某个成员资格，即某个工作空间） |
+| 〔设备〕 | 设备密钥 `cohive_dev_...` |
+
+鉴权中间件按前缀分流：`cohive_dev_` 开头的只在标了〔设备〕的接口上认，其余接口一律 `401`；`/mcp` 只认〔令牌〕。
+
+**工作空间前缀** `/api/v1/w/{ws}/...`：〔会话〕要求账号在 `ws` 在册（管理接口另按 `canAdmin`）；〔令牌〕要求令牌所属工作空间就是 `ws`；不满足一律 `404 {"error": "工作空间不存在或你不是它的成员"}`，不区分是哪种情况。
+
+### 4.1 账号与登录
+
+| 接口 | 鉴权 | 请求 | 响应 | 变化 |
+|---|---|---|---|---|
+| `POST /api/v1/auth/login` | 公开，限频 | `{name, password}` | `200 {account: Account, must_change_password, workspaces: [WorkspaceRef]}` 并设 Cookie（`method = 'password'`）；`401` 登录名或密码不对；`403` 待审 / 已停用 | 改：去掉 `workspace` 入参与 `409` |
+| `POST /api/v1/auth/logout` | 〔会话〕 | — | `204` | 不变 |
+| `POST /api/v1/auth/password` | 〔会话〕 | `{old_password, new_password}` | `204` | 不变（作用于账号） |
+| `GET /api/v1/me` | 〔会话〕〔令牌〕 | — | `{account: Account, session: {method: "password"|"device"|"token", tool}, workspaces: [WorkspaceRef], workspace?: WorkspaceRef}`；`workspace` 只在〔令牌〕时出现，是令牌所属的工作空间 | 改：结构重排；`cohive status` 读 `workspace` 与 `account.name` |
+| `POST /api/v1/auth/web-login` | 〔设备〕或已绑定设备的〔令牌〕 | `{}` | `{url}` | 改：接受设备密钥 |
+| `GET /auth/once/{code}` | 公开 | — | 设 Cookie（`method = 'device'`）后跳 `/` | 不变 |
+
+```
+Account      = {id, name, display_name, server_admin: bool, disabled: bool, has_password: bool,
+                telegram: {username, linked: bool}}
+WorkspaceRef = {name, role: "admin"|"member"}
+```
+
+### 4.2 邀请、注册、加入
+
+| 接口 | 鉴权 | 请求 | 响应 | 变化 |
+|---|---|---|---|---|
+| `GET /api/v1/invites/{code}` | 公开（带 Cookie 时额外返回本人信息） | — | `{workspace, kind: "personal"|"team", role, valid, signed_in_as?: name, already_member?: bool}` | 改：加 `role`、`signed_in_as`、`already_member` |
+| `POST /api/v1/register` | 公开，限频 | `{code, name, display_name, password}` | 个人邀请 `200 {status: "active", account: Account, workspace: WorkspaceRef}` 并设 Cookie；团队邀请 `200 {status: "pending"}`；`400` 登录名已被使用 / 已有人申请 | 改：登录名全局查重 |
+| `POST /api/v1/invites/{code}/accept` | 〔密码会话〕 | `{}` | 个人邀请 `200 {status: "active", workspace: WorkspaceRef}`；团队邀请 `200 {status: "pending"}`；`409` 已是成员 / 已有待审加入申请；`400` 邀请无效 | **新增** |
+
+### 4.3 设备
+
+| 接口 | 鉴权 | 请求 | 响应 | 变化 |
+|---|---|---|---|---|
+| `POST /api/v1/device/start` | 公开，限频 | `{tools, device_name}` | `{request_id, poll_secret, url, expires_in}` | 不变 |
+| `GET /api/v1/device/auth/{nonce}` | 〔密码会话〕 | — | `{device_name, tools, created_at, status, first_device, workspaces: [name]}` | 改：加 `workspaces`；鉴权收紧为密码会话 |
+| `POST /api/v1/device/auth/{nonce}` | 〔密码会话〕 | `{approve}` | `{status: "approved"|"awaiting_admin"|"denied"}` | 改：鉴权收紧 |
+| `POST /api/v1/device/poll` | 公开（凭 `poll_secret`） | `{request_id, poll_secret}` | `{status, account?, device_id?, device_secret?, workspaces?: [{workspace, role, tokens: {工具: 令牌}}]}`；后四项只在交付那一次出现 | 改：交付设备密钥与多工作空间令牌；去掉 `member`、`workspace`、`tokens` |
+| `POST /api/v1/device/tokens` | 〔设备〕 | `{workspace, tools}` | `{account, workspace, tokens: {工具: 令牌}}`；`404` 不是该工作空间在册成员；`401` 设备已吊销或账号已停用 | **新增**，取代 `POST /api/v1/devices/self/tools` |
+| `GET /api/v1/device/workspaces` | 〔设备〕 | — | `{account, items: [WorkspaceRef]}` | **新增** |
+| `POST /api/v1/devices/self/tools` | — | — | — | **删除** |
+
+### 4.4 个人中心
+
+| 接口 | 鉴权 | 响应 | 变化 |
+|---|---|---|---|
+| `GET /api/v1/me/devices` | 〔会话〕 | `{items: [{id, name, created_at, revoked_at, last_used_at, tokens: [{workspace, tool}]}]}` | 改：`tools` 换成按工作空间列出的 `tokens` |
+| `POST /api/v1/me/devices/{id}/revoke` | 〔会话〕 | `204` | 不变 |
+| `POST /api/v1/me/links`、`GET /api/v1/me/links/{id}`、`DELETE /api/v1/me/links/telegram` | 〔会话〕 | 同 M5 | 不变（作用于账号） |
+
+### 4.5 工作空间内（前缀 `/api/v1/w/{ws}`）
+
+**看板与问题单**（〔会话〕〔令牌〕，要求在册）：
+
+| 接口 | 变化 |
+|---|---|
+| `GET /api/v1/w/{ws}/board` | 由 `GET /api/v1/board` 移来；成员列加 `disabled` 标记 |
+| `GET /api/v1/w/{ws}/issues` | 由 `GET /api/v1/issues` 移来 |
+| `GET /api/v1/w/{ws}/issues/{id}` | 由 `GET /api/v1/issues/{id}` 移来；问题单不属于 `ws` 时 `404` |
+
+**工作空间管理**（〔密码会话〕，要求 `canAdmin(账号, ws)`；全部由 `/api/v1/admin/...` 移来或新增）：
+
+| 接口 | 请求 | 响应 | 变化 |
+|---|---|---|---|
+| `GET .../admin/pending` | — | `{signups: [{id, kind: "new"|"existing", name, display_name, created_at}], devices: [{id, account, display_name, device_name, tools, created_at, workspaces: [name]}]}` | 改：注册与加入申请合并；设备申请列出此人全部在册工作空间 |
+| `POST .../admin/signups/{id}` | `{approve}` | `204` | 移来；申请须属于 `ws` |
+| `POST .../admin/device-auths/{id}` | `{approve}` | `204` | 移来；申请人须是 `ws` 在册成员 |
+| `GET .../admin/members` | — | `{items: [{member_id, account, display_name, role, status, disabled, telegram_username, telegram_linked, devices, pending_issues, owned_services}]}` | 改：`id` 改名 `member_id`；加 `status`、`disabled`、`pending_issues`、`owned_services`；默认只列在册，`?status=removed` 列已移出 |
+| `GET .../admin/accounts/{name}` | — | `{name, display_name, member_status: "none"|"active"|"removed", disabled}`；`404` | **新增**：按登录名精确查找 |
+| `POST .../admin/members` | `{account, role}` | `201 {member_id}`；`404` 没有这个账号；`409` 已是在册成员；`400` 账号已停用 | **新增**：直接加入已有账号（移出过的复用原成员资格） |
+| `POST .../admin/members/{member_id}` | `{role}` | `204`；`400` 至少保留一名管理员 | 移来 |
+| `GET .../admin/members/{member_id}/handover` | — | `Handover` | **新增** |
+| `POST .../admin/members/{member_id}/handover` | `HandoverPlan` | `204`；`409 {error, handover: Handover}` | **新增**：只改派、不移出（停用的人用） |
+| `POST .../admin/members/{member_id}/remove` | `HandoverPlan` | `204`；`409 {error, handover: Handover}`；`400` 最后一名管理员 | **新增**：改派并移出 |
+| `GET .../admin/devices` | — | `{items: [{id, account, name, created_at, revoked_at, last_used_at, workspaces: [name]}]}` | 移来；范围是本空间在册成员的设备 |
+| `POST .../admin/devices/{id}/revoke` | — | `204` | 移来；设备主人须是本空间在册成员 |
+| `GET .../admin/invites`、`POST .../admin/invites`、`POST .../admin/invites/{id}/revoke` | 同 M5 | 同 M5 | 移来 |
+| `GET .../admin/workspace` | — | `{name, public_url, telegram_chat, show_title, show_brief, bot_enabled}` | 移来 |
+| `POST .../admin/workspace` | `{public_url, telegram_chat, show_title, show_brief}` | `204`；`409` 群已绑定别的工作空间 | 移来；加群唯一校验 |
+| `DELETE /api/v1/admin/members/{id}/telegram` | — | — | **删除**（改由本人或服务器管理员断开） |
+
+```
+Handover     = {member_id, account,
+                issues:   [{id, title, status, as: "owner"|"source", version}],
+                services: [{name}]}
+HandoverPlan = {issues:   [{id, as: "owner"|"source", to_member_id, expected_version}],
+                services: [{name, to_member_id}]}
+```
+`HandoverPlan` 必须覆盖 `Handover` 的全部条目；接手人须是本空间在册、未停用的成员，且不能是被移出的人自己。
+
+### 4.6 服务器管理（前缀 `/api/v1/server`，〔密码会话〕，要求服务器管理员）
+
+| 接口 | 请求 | 响应 |
+|---|---|---|
+| `GET /api/v1/server/workspaces` | — | `{items: [{name, created_at, members, admins: [name], open_issues, telegram_bound, i_am_member}]}` |
+| `POST /api/v1/server/workspaces` | `{name, admin?}`（`admin` 为登录名，默认自己） | `201 {name}`；`400` 名字不合法；`409` 已存在 |
+| `DELETE /api/v1/server/workspaces/{name}` | — | `204`；`409` 还有问题单 |
+| `GET /api/v1/server/accounts` | `?q=`（前缀筛选，可空） | `{items: [{name, display_name, server_admin, disabled, telegram_linked, devices, workspaces: [{name, role, status}]}]}` |
+| `POST /api/v1/server/accounts/{name}` | `{server_admin: bool}` | `204`；`400` 至少保留一名服务器管理员 |
+| `POST /api/v1/server/accounts/{name}/disable` | `{}` | `204`；`400` 不能停用自己 / 最后一名服务器管理员 |
+| `POST /api/v1/server/accounts/{name}/enable` | `{}` | `204` |
+| `DELETE /api/v1/server/accounts/{name}/telegram` | — | `204` |
+| `GET /api/v1/server/pending-devices` | — | `{items: [{id, account, device_name, tools, created_at, workspaces: [name]}]}`（全部待批设备） |
+| `POST /api/v1/server/device-auths/{id}` | `{approve}` | `204` |
+
+### 4.7 网页
+
+| 页面 | 变化 |
+|---|---|
+| `/login` | 去掉工作空间选择；登录后跳 `/` |
+| `/` | 跳转到上次用的或第一个工作空间；没有工作空间时显示提示页 |
+| 顶栏 | 加工作空间切换下拉框；服务器管理员多一个“服务器管理”入口 |
+| `/w/$ws/`、`/w/$ws/issues`、`/w/$ws/issues/$id` | 由 `/`、`/issues`、`/issues/$id` 移来；旧路径跳转到对应的新路径（用上次的工作空间），群消息里的旧链接不失效 |
+| `/w/$ws/admin` | 由 `/admin` 移来。“成员”页加“添加已有账号”“移出”（转交对话框：每行一个接手人下拉框，顶部“全部转给”）、“改派”（停用的人）、“查看已移出”；去掉“断开他人 Telegram”。“待审”页标出新人 / 已有账号；设备申请显示“批准后用于：A、B” |
+| `/server` | **新增**：工作空间（新建、删除、进入管理）、账号（搜索、停用 / 启用、服务器管理员开关、断开 Telegram）、待批设备 |
+| `/i/$code` | 未登录：注册表单 + “已有账号？登录后加入”；已登录：显示“以 X 身份加入 Y”按钮（免密会话时提示用密码重新登录）；已是成员时提示 |
+| `/device/$nonce` | 显示“批准后这台电脑可用于：A、B”；免密会话时提示用密码登录 |
+| `/me` | 设备列表按工作空间列出令牌；显示“我的工作空间”（名字、角色） |
+| 群消息里的链接 | 带 `/w/{ws}` 前缀 |
+
+### 4.8 成员本机命令行 `cohive`
+
+| 命令 | 变化 |
+|---|---|
+| `cohive login [--server] [--tools] [--resume] [--force]` | 领取后保存设备密钥与**全部在册工作空间**的令牌，输出列出各工作空间；在已 `cohive init` 的仓库里执行时，若仓库的工作空间不在其中，提示“你还不是 W 的成员”。已配对的电脑补工具改走 `device/tokens`。`--token-stdin` 保留（需同时给 `--workspace`） |
+| `cohive init [--workspace W] [--tools]` | 工作空间列表来自 `device/workspaces`；多于一个时必须给 `--workspace`；写配置的同时调 `device/tokens` 补齐令牌 |
+| `cohive mcp-proxy --server S --workspace W --tool T` | 缺令牌时用设备密钥自动签发；收到 `401` 时重签一次再重试 |
+| `cohive web` | 用设备密钥换登录链接；旧版配对的电脑提示重新配对 |
+| `cohive status` | 显示账号、本机设备、各工作空间各工具的令牌是否有效 |
+
+### 4.9 服务器命令行 `cohive-server`
+
+| 命令 | 变化 |
+|---|---|
+| `workspace add --name W [--admin 登录名]` | 加 `--admin` |
+| `workspace remove --name W` | **新增**（只限空工作空间） |
+| `workspace list`、`workspace notify` | 不变（`notify` 加群唯一校验） |
+| `member add --workspace W --name X [--display] [--role]` | 改：账号不存在则新建（无密码，需 `admin reset-password` 后才能登录网页），存在则加入该工作空间 |
+| `member set --workspace W --name X --role R` | 改：只管角色；`--telegram`、`--telegram-id` 移到 `account set` |
+| `member remove --workspace W --name X --handover-to Y` | **新增** |
+| `member list --workspace W [--all]` | 改：默认只列在册 |
+| `account list`、`account set --name X [--display] [--telegram] [--telegram-id]` | **新增** |
+| `account disable --name X`、`account enable --name X` | **新增** |
+| `account server-admin --name X --on|--off` | **新增** |
+| `admin reset-password --name X` | 改：去掉 `--workspace` |
+| `token issue --workspace W --member X --tool T`、`token list`、`token revoke` | 不变（令牌仍属成员资格） |
+| `service add --workspace W --name S --owner X` | 改：负责人须为在册、未停用成员 |
+
+### 4.10 机器人
+
+| 项 | 变化 |
+|---|---|
+| `/start ln_xxx` | 连接写到账号；冲突提示按账号 |
+| 注册 / 加入申请审批消息 | 只发到申请所属工作空间的群；加入申请文案为“X（已有账号）申请加入” |
+| 设备申请审批消息 | 发到此人在册所在、配置了群的每个工作空间群；记 `bot_posts`；处理后统一改成结果 |
+| 按钮回调 | 按 3.7 的五步校验；工作空间由群编号反查 |
+| `/whoami` | 显示账号；群里加本工作空间角色 |
+| 成员加入通知 | **新增**：直接加入或申请获批后，在该工作空间群里发“X 已加入本工作空间”并 @ 他（已连接时） |
