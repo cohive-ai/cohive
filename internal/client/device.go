@@ -255,3 +255,15 @@ func QRText(content string) (string, error) {
 	}
 	return b.String(), nil
 }
+
+// ColorizeQR 给终端二维码每一行加上“白色前景、黑色背景”的颜色，浅色背景的终端里也显示为标准的白底黑码。
+// 只在输出到真实终端时使用；写进文件或管道时保持纯文本。
+func ColorizeQR(qr string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(strings.TrimRight(qr, "\n"), "\n") {
+		b.WriteString("\x1b[97;40m")
+		b.WriteString(line)
+		b.WriteString("\x1b[0m\n")
+	}
+	return b.String()
+}

@@ -236,6 +236,9 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 	}
 	fmt.Fprintf(out, "请在浏览器里授权这台电脑（%d 分钟内有效）：\n\n  %s\n", st.ExpiresIn/60, st.URL)
 	if qr, err := client.QRText(st.URL); err == nil {
+		if isTerminal(out) {
+			qr = client.ColorizeQR(qr)
+		}
 		fmt.Fprintf(out, "\n  也可以用手机扫码打开：\n\n%s", qr)
 	}
 	fmt.Fprintln(out, "\n  没有登录网页的话会先让你登录；只授权你自己刚刚发起的这一次。")
@@ -489,4 +492,14 @@ func openWeb(ctx context.Context, out io.Writer, args []string) error {
 	}
 	fmt.Fprintf(out, "请在浏览器打开下面的链接（2 分钟内有效、只能用一次）：\n  %s\n", link)
 	return nil
+}
+
+// isTerminal 判断输出是否为真实终端（而不是文件或管道）。
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	st, err := f.Stat()
+	return err == nil && st.Mode()&os.ModeCharDevice != 0
 }
