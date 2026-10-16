@@ -168,9 +168,8 @@ func (s *Service) ChangePassword(ctx context.Context, m store.Member, currentSes
 		}
 		return store.DeleteMemberSessions(ctx, tx, m.ID, keep)
 	})
-	if err == nil && pw.MustChange && s.DataDir != "" {
-		// 初始管理员改过密码后，删除保存初始密码的文件
-		_ = os.Remove(filepath.Join(s.DataDir, InitialPasswordFile))
+	if err == nil && pw.MustChange {
+		s.removeInitialPasswordFile(ctx, m)
 	}
 	return err
 }
@@ -306,4 +305,28 @@ func (s *Service) UseWebLoginCode(ctx context.Context, code string) (Session, er
 		return err
 	})
 	return sess, err
+}
+
+// removeInitialPasswordFile 在初始管理员本人改过密码后删除初始密码文件；
+// 别的成员（例如被重置过密码的）改密码时不动它。
+func (s *Service) removeInitialPasswordFile(ctx context.Context, m store.Member) {
+	if s.DataDir == "" {
+		return
+	}
+	path := filepath.Join(s.DataDir, InitialPasswordFile)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	name := ""
+	for _, line := range strings.Split(string(b), "\n") {
+		if v, ok := strings.CutPrefix(line, "成员名："); ok {
+			name = strings.TrimSpace(v)
+		}
+	}
+	wsID, err := store.DefaultWorkspace(ctx, s.Pool)
+	if err != nil || name == "" || m.Name != name || m.WorkspaceID != wsID {
+		return
+	}
+	_ = os.Remove(path)
 }
