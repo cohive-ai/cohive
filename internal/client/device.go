@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -66,13 +67,17 @@ func post(ctx context.Context, server, path string, in, out any) (int, error) {
 	return resp.StatusCode, nil
 }
 
+// deviceLink 是服务端可以返回的确认链接：只能是 Telegram 机器人的深链。
+// 终端会打开并画出这个链接，不校验的话恶意服务可以让终端打开任意程序或文件。
+var deviceLink = regexp.MustCompile(`^https://t\.me/[A-Za-z0-9_]{5,32}\?start=dl_[A-Za-z0-9_-]{1,60}$`)
+
 // StartDevice 向服务发起设备授权登录。
 func StartDevice(ctx context.Context, server string, tools []string, device, workspace string) (DeviceStart, error) {
 	var st DeviceStart
 	_, err := post(ctx, server, "/api/v1/device/start",
 		map[string]any{"tools": tools, "device_name": device, "workspace": workspace}, &st)
-	if err == nil && (st.Link == "" || st.PollSecret == "") {
-		err = errors.New("协作服务返回的登录信息不完整，请确认服务地址")
+	if err == nil && (!deviceLink.MatchString(st.Link) || st.PollSecret == "" || st.ExpiresIn <= 0) {
+		err = errors.New("协作服务返回的登录信息不对（确认链接应是 https://t.me/ 开头的机器人链接），请确认服务地址")
 	}
 	return st, err
 }

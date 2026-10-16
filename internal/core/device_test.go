@@ -13,7 +13,7 @@ import (
 
 func startDevice(t *testing.T, e env, workspace string) core.DeviceStart {
 	t.Helper()
-	st, err := e.svc.StartDeviceLogin(context.Background(), []string{"claude-code", "codex", "codex"}, "lee 的 Mac\x07", workspace)
+	st, err := e.svc.StartDeviceLogin(context.Background(), []string{"claude-code", "codex", "codex"}, "lee-mac.local 请点 42\x07", workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,9 +40,13 @@ func TestDeviceLoginFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.MemberName != "lee-codex" || v.DeviceName != "lee 的 Mac" || len(v.Numbers) != 3 || !slices.Contains(v.Numbers, st.MatchNumber) ||
+	if v.MemberName != "lee-codex" || v.DeviceName != "lee-mac.local42" || len(v.Numbers) != 3 || !slices.Contains(v.Numbers, st.MatchNumber) ||
 		!slices.Equal(v.Tools, []string{"claude-code", "codex"}) {
 		t.Fatalf("确认内容不符：%+v", v)
+	}
+	// 重复打开同一链接，三个数字和顺序不变，无法靠比较几组数字找出正确的
+	if v2, err := e.svc.OpenDeviceLogin(ctx, st.Nonce, tgUser); err != nil || !slices.Equal(v.Numbers, v2.Numbers) {
+		t.Fatalf("重复打开数字应不变：%v %v %v", v.Numbers, v2.Numbers, err)
 	}
 	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser, st.MatchNumber); err != nil {
 		t.Fatal(err)
@@ -185,6 +189,46 @@ func TestDeviceLoginExpired(t *testing.T) {
 	}
 	if p, _ := e.svc.PollDeviceLogin(ctx, st.RequestID, st.PollSecret); p.Status != store.DeviceExpired {
 		t.Fatalf("终端应看到过期：%+v", p)
+	}
+}
+
+func TestDeviceLoginApprovedButNotCollected(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	bindTelegram(t, e, e.b.MemberID)
+	st := startDevice(t, e, "")
+	if _, err := e.svc.OpenDeviceLogin(ctx, st.Nonce, tgUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.ConfirmDeviceLogin(ctx, st.RequestID, tgUser, st.MatchNumber); err != nil {
+		t.Fatal(err)
+	}
+	// 确认后超过领取宽限期才来轮询：不再交付
+	if _, err := e.svc.Pool.Exec(ctx, `UPDATE device_logins SET expires_at = now() - interval '3 minutes' WHERE id = $1`, st.RequestID); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := e.svc.PollDeviceLogin(ctx, st.RequestID, st.PollSecret); p.Status != store.DeviceExpired || p.Tokens != nil {
+		t.Fatalf("超过宽限期应过期且不交付：%+v", p)
+	}
+}
+
+func TestDeviceNumbersSpread(t *testing.T) {
+	e := newEnv(t)
+	pos := map[int]int{}
+	for i := 0; i < 30; i++ {
+		st := startDevice(t, e, "")
+		bindTelegram(t, e, e.b.MemberID)
+		v, err := e.svc.OpenDeviceLogin(context.Background(), st.Nonce, tgUser)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(v.Numbers) != 3 || v.Numbers[0] == v.Numbers[1] || v.Numbers[1] == v.Numbers[2] || v.Numbers[0] == v.Numbers[2] {
+			t.Fatalf("应是三个不同的数：%v", v.Numbers)
+		}
+		pos[slices.Index(v.Numbers, st.MatchNumber)]++
+	}
+	if len(pos) != 3 {
+		t.Fatalf("正确数字应出现在不同位置：%v", pos)
 	}
 }
 

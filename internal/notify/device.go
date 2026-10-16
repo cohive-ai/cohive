@@ -53,7 +53,8 @@ func (b *Bot) deviceErrText(err error) string {
 func deviceMessage(v core.DeviceView) (string, [][]Button) {
 	id := strconv.FormatInt(v.ID, 10)
 	var t strings.Builder
-	fmt.Fprintf(&t, "<b>确认登录 Cohive</b>\n设备：%s\n工具：%s", html.EscapeString(v.DeviceName), html.EscapeString(strings.Join(v.Tools, "、")))
+	fmt.Fprintf(&t, "<b>确认登录 Cohive</b>\n设备名（终端自报）：%s\n发起时间：%s\n工具：%s", html.EscapeString(v.DeviceName),
+		v.CreatedAt.Local().Format("01-02 15:04:05"), html.EscapeString(strings.Join(v.Tools, "、")))
 	cancel := []Button{{Text: "取消", Data: "dlx:" + id}}
 	if len(v.Numbers) == 0 {
 		t.WriteString("\n\n你加入了多个工作空间，请先选择本次登录的工作空间：")
@@ -90,7 +91,7 @@ func (b *Bot) handleDeviceCallback(ctx context.Context, cb *TGCallback, parts []
 	}
 	fail := func(err error) {
 		text := b.deviceErrText(err)
-		answer(strings.SplitN(text, "，", 2)[0])
+		answer(strings.SplitN(html.UnescapeString(text), "，", 2)[0]) // 按钮提示是纯文本
 		edit(text, nil)
 	}
 	uid := cb.From.ID

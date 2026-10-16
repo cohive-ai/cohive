@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -215,8 +216,9 @@ func writeError(w http.ResponseWriter, err error) {
 
 // deviceRoutes 注册设备授权登录的两个接口：终端发起、终端轮询。
 func deviceRoutes(mux *http.ServeMux, svc *core.Service, botName func() string) {
-	// 发起不需要身份，限制总频率，防止被刷出大量请求
-	starts := &failureLimiter{max: 30, window: time.Minute}
+	// 发起不需要身份：按来源地址限频，另有全局上限，防止被刷出大量请求
+	starts := &failureLimiter{max: 120, window: time.Minute}
+	perIP := &keyedLimiter{max: 10, window: time.Minute}
 	mux.HandleFunc("POST /api/v1/device/start", func(w http.ResponseWriter, r *http.Request) {
 		name := ""
 		if botName != nil {
@@ -228,7 +230,7 @@ func deviceRoutes(mux *http.ServeMux, svc *core.Service, botName func() string) 
 			})
 			return
 		}
-		if !starts.begin() {
+		if !perIP.allow(clientIP(r)) || !starts.begin() {
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "登录请求过多，请一分钟后再试"})
 			return
 		}
@@ -277,4 +279,41 @@ func deviceRoutes(mux *http.ServeMux, svc *core.Service, botName func() string) 
 			"status": p.Status, "member": p.Member, "workspace": p.Workspace, "tokens": p.Tokens,
 		})
 	})
+}
+
+// keyedLimiter 按键（来源地址）限制一个时间窗口内的次数。
+type keyedLimiter struct {
+	mu     sync.Mutex
+	max    int
+	window time.Duration
+	start  time.Time
+	counts map[string]int
+}
+
+func (l *keyedLimiter) allow(key string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if now := time.Now(); l.counts == nil || now.Sub(l.start) >= l.window {
+		l.start, l.counts = now, map[string]int{}
+	}
+	if l.counts[key] >= l.max {
+		return false
+	}
+	l.counts[key]++
+	return true
+}
+
+// clientIP 返回请求的来源地址。来自本机（例如 Cloudflare 隧道的 cloudflared）且带 CF-Connecting-IP 时，
+// 用这个头里的真实地址；其余情况不信任转发头，避免被伪造来绕过限频。
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		if cf := net.ParseIP(r.Header.Get("CF-Connecting-IP")); cf != nil {
+			return cf.String()
+		}
+	}
+	return host
 }

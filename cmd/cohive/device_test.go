@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -68,8 +72,22 @@ func TestDeviceLoginFromRepo(t *testing.T) {
 	repo := t.TempDir()
 	writeRepoConfig(t, repo, s.url)
 
+	// 地址来自仓库、本机没登录过：不回车确认就不登录
+	if out, err := run(t, "login", "--dir", repo); err == nil || !strings.Contains(err.Error(), "没有确认") || !strings.Contains(out, s.url) {
+		t.Fatalf("应先请用户确认仓库里的服务地址：%v\n%s", err, out)
+	}
+
 	go s.approveDevice(t, func(m int) int { return m })
-	out, err := run(t, "login", "--dir", repo)
+	sub := filepath.Join(repo, "src", "pkg")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	err := runCLI(context.Background(), strings.NewReader("\n"), &buf, []string{"login", "--dir", sub})
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("登录失败：%v\n%s", err, out)
 	}
@@ -128,5 +146,44 @@ func TestReadRepoTarget(t *testing.T) {
 	}
 	if _, err := readRepoTarget(dir); err == nil || !strings.Contains(err.Error(), "不一致") {
 		t.Fatalf("两份配置不一致应报错：%v", err)
+	}
+}
+
+func TestDeviceLoginRejectsBadLink(t *testing.T) {
+	configDir(t)
+	opened := fastDevice(t)
+	for _, link := range []string{`\\evil\share\x.exe`, "file:///etc/passwd", "https://t.me/CohiveBot?start=dl_x&y=1", "-a Calculator"} {
+		fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"request_id":1,"poll_secret":"s","match_number":42,"expires_in":600,"link":` + strconv.Quote(link) + `}`))
+		}))
+		out, err := run(t, "login", "--server", fake.URL, "--open=true")
+		fake.Close()
+		if err == nil || *opened != "" || strings.Contains(out, "42") {
+			t.Fatalf("非法链接 %q 应拒绝且不打开：%v %q\n%s", link, err, *opened, out)
+		}
+	}
+}
+
+func TestLoginFlagMistakes(t *testing.T) {
+	configDir(t)
+	if _, err := run(t, "login", "--server", "https://a.example.com", "--tool", "codex"); err == nil || !strings.Contains(err.Error(), "--tools") {
+		t.Fatalf("--tool 不带 --code 应提示改用 --tools：%v", err)
+	}
+	dir := t.TempDir()
+	writeRepoConfig(t, dir, "https://a.example.com")
+	if _, err := run(t, "login", "--dir", dir, "--token-stdin"); err == nil || !strings.Contains(err.Error(), "--server") {
+		t.Fatalf("令牌方式应要求明确指定服务地址：%v", err)
+	}
+	// 仓库配置互相矛盾时，明确指定 --server 可以绕过
+	if err := os.WriteFile(filepath.Join(dir, ".codex", "config.toml"),
+		[]byte("[mcp_servers.cohive]\nargs = [\"--server\", \"https://b.example.com\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, "login", "--dir", dir); err == nil || !strings.Contains(err.Error(), "不一致") {
+		t.Fatalf("配置矛盾且未指定时应报错：%v", err)
+	}
+	if _, err := run(t, "login", "--dir", dir, "--server", "http://127.0.0.1:1", "--open=false"); err == nil || strings.Contains(err.Error(), "不一致") {
+		t.Fatalf("明确指定 --server 后不应再因配置矛盾报错：%v", err)
 	}
 }

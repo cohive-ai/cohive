@@ -76,3 +76,10 @@ func MemberByTelegramUserID(ctx context.Context, q DBTX, wsID, tgUserID int64) (
 		Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role)
 	return m, notFound(err)
 }
+
+// HasAdmin 返回工作空间里是否有管理员。
+func HasAdmin(ctx context.Context, q DBTX, wsID int64) (bool, error) {
+	var ok bool
+	err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM members WHERE workspace_id = $1 AND role = 'admin')`, wsID).Scan(&ok)
+	return ok, err
+}

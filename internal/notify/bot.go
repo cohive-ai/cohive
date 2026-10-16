@@ -267,9 +267,13 @@ func (b *Bot) handleJoin(ctx context.Context, u Update) (string, bool) {
 			mentionUser(m.From.Username, m.From.FirstName), html.EscapeString(res.Workspace.Name), html.EscapeString(res.Member.Name)), true
 	}
 	j := res.Request
+	id := strconv.FormatInt(j.ID, 10)
 	text := fmt.Sprintf("%s 申请加入工作空间 %s。\n请管理员审批：",
 		mentionUser(j.TelegramUsername, j.DisplayName), html.EscapeString(res.Workspace.Name))
-	id := strconv.FormatInt(j.ID, 10)
+	if res.NoAdmin {
+		text += fmt.Sprintf("\n\n注意：这个工作空间还没有管理员，按钮暂时没人能点。请在协作服务所在的机器上执行 <code>cohive-server member set --workspace %s --name 成员名 --role admin</code> 设置管理员，或直接 <code>cohive-server join approve --id %s</code>。",
+			html.EscapeString(res.Workspace.Name), id)
+	}
 	if _, err := b.API.SendButtons(ctx, m.Chat.ID, text, [][]Button{{
 		{Text: "批准", Data: "join:" + id + ":y"}, {Text: "拒绝", Data: "join:" + id + ":n"},
 	}}); err != nil {

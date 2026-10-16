@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -102,6 +103,46 @@ func readRepoTarget(dir string) (repoTarget, error) {
 	return t, nil
 }
 
+// findRepoDir 从 dir 往上找到含 Cohive 配置的目录，遇到 .git 所在目录（仓库根）就停。
+func findRepoDir(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return dir
+	}
+	for d := abs; ; {
+		for _, rel := range []string{".mcp.json", filepath.Join(".codex", "config.toml"), ".git"} {
+			if _, err := os.Stat(filepath.Join(d, rel)); err == nil {
+				return d
+			}
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			return abs
+		}
+		d = parent
+	}
+}
+
+// confirmServer 在服务地址来自仓库配置、而本机从没登录过它时，请用户确认。
+// 仓库文件谁都能改：恶意地址可以把登录请求转发给真正的服务，骗走确认后的令牌。
+func confirmServer(in io.Reader, out io.Writer, srv string) error {
+	creds, err := client.LoadCredentials()
+	if err != nil {
+		return err
+	}
+	for _, l := range creds.Logins {
+		if l.Server == srv {
+			return nil
+		}
+	}
+	fmt.Fprintf(out, "将登录到：%s\n这个地址来自仓库配置，本机还没有登录过。请确认它是你们团队的协作服务，按回车继续，按 Ctrl+C 放弃。\n", srv)
+	line, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && !(errors.Is(err, io.EOF) && line != "") {
+		return errors.New("没有确认服务地址，已放弃登录。确认地址无误后可以用 --server 明确指定")
+	}
+	return nil
+}
+
 func login(ctx context.Context, in io.Reader, out io.Writer, args []string) error {
 	fs := flag.NewFlagSet("login", flag.ContinueOnError)
 	server := fs.String("server", "", "协作服务地址；在已执行过 cohive init 的仓库里可省略")
@@ -115,15 +156,21 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	repo, err := readRepoTarget(*dir)
+	repo, err := readRepoTarget(findRepoDir(*dir))
 	if err != nil {
-		return err
+		if *server == "" {
+			return err
+		}
+		repo = repoTarget{} // 已明确指定服务地址，不再理会仓库里互相矛盾的配置
 	}
 	srv := *server
 	if srv == "" {
 		srv = repo.Server
 	}
 	if *tokenStdin {
+		if *server == "" && srv != "" {
+			return fmt.Errorf("用 --token-stdin 时请用 --server 明确指定服务地址（仓库配置里是 %s），避免把令牌发给仓库里被改过的地址", srv)
+		}
 		return loginWithToken(ctx, in, out, srv)
 	}
 	if srv == "" {
@@ -133,8 +180,16 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 	if err != nil {
 		return err
 	}
-	if *code != "" || *tool != "" {
+	if *tool != "" && *code == "" {
+		return errors.New("--tool 只和 --code 一起使用；用机器人确认登录时请用 --tools，例如 --tools codex")
+	}
+	if *code != "" {
 		return loginWithCode(ctx, out, srv, *code, *tool)
+	}
+	if *server == "" {
+		if err := confirmServer(in, out, srv); err != nil {
+			return err
+		}
 	}
 
 	ws := *workspace
@@ -206,7 +261,7 @@ func loginWithDevice(ctx context.Context, out io.Writer, srv, ws string, tools [
 		case "expired":
 			return errors.New("登录请求已过期，请重新执行 cohive login")
 		case "delivered":
-			return errors.New("这次登录的令牌已经被领取过，请重新执行 cohive login")
+			return errors.New("服务端显示令牌已经交付，但本机没有收到（可能是网络中断）。请重新执行 cohive login；如担心令牌泄露，请管理员用 cohive-server token list 查看并吊销多出的令牌")
 		default:
 			return fmt.Errorf("协作服务返回了未知状态 %q", p.Status)
 		}

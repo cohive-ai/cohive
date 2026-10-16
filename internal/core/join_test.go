@@ -38,7 +38,7 @@ func TestJoinNeedsApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Request == nil || res.Member != nil || res.Workspace.Name != "default" {
+	if res.Request == nil || res.Member != nil || res.Workspace.Name != "default" || res.NoAdmin {
 		t.Fatalf("默认需要审批，应只建申请：%+v", res)
 	}
 	again, err := e.svc.RequestJoin(ctx, groupChat, 501, "Ann_Dev", "Ann")
@@ -125,5 +125,33 @@ func TestJoinUnknownGroup(t *testing.T) {
 	e := joinEnv(t)
 	if _, err := e.svc.RequestJoin(context.Background(), "-999", 505, "x_user", "X"); !errors.Is(err, core.ErrNoWorkspaceForChat) {
 		t.Fatalf("没有对应工作空间的群应报错，得到 %v", err)
+	}
+}
+
+func TestJoinWithoutAdminAndManualAdd(t *testing.T) {
+	ctx := context.Background()
+	e := joinEnv(t)
+	if err := store.SetMemberRole(ctx, e.svc.Pool, e.b.MemberID, store.RoleMember); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.svc.RequestJoin(ctx, groupChat, 777, "gina", "Gina")
+	if err != nil || !res.NoAdmin {
+		t.Fatalf("没有管理员时应标明：%+v %v", res, err)
+	}
+	// 申请期间管理员已手工建好成员并绑定：批准时复用，不再新建
+	m, err := store.CreateMember(ctx, e.svc.Pool, e.a.WorkspaceID, "gina-manual", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	uid := int64(777)
+	if err := store.SetMemberTelegramUserID(ctx, e.svc.Pool, m.ID, &uid); err != nil {
+		t.Fatal(err)
+	}
+	d, err := e.svc.DecideJoinByOperator(ctx, res.Request.ID, true)
+	if err != nil || d.Member == nil || d.Member.ID != m.ID || d.Decider.Name != "服务器管理员" {
+		t.Fatalf("应复用手工加入的成员：%+v %v", d, err)
+	}
+	if _, err := store.MemberByName(ctx, e.svc.Pool, e.a.WorkspaceID, "gina"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("不应再建 gina：%v", err)
 	}
 }

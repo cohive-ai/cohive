@@ -6,12 +6,12 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"math/big"
-	mrand "math/rand/v2"
+	"regexp"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -48,6 +48,7 @@ type DeviceStart struct {
 type DeviceView struct {
 	ID         int64
 	DeviceName string
+	CreatedAt  time.Time
 	Tools      []string
 	Workspace  string
 	MemberName string
@@ -76,19 +77,17 @@ func randomString(n int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// cleanDeviceName 去掉控制字符并限制长度；设备名来自终端，只用于展示。
+var deviceNameUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]`)
+
+// cleanDeviceName 只保留主机名字符并限制长度。设备名由终端自报，不可信：
+// 不允许空格和中文，防止发起人把“请点 42”之类的话写进确认消息。
 func cleanDeviceName(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, strings.TrimSpace(s))
-	if r := []rune(s); len(r) > 64 {
-		s = string(r[:64])
+	s = deviceNameUnsafe.ReplaceAllString(s, "")
+	if len(s) > 32 {
+		s = s[:32]
 	}
 	if s == "" {
-		s = "未命名设备"
+		s = "unknown"
 	}
 	return s
 }
@@ -142,16 +141,23 @@ func (s *Service) StartDeviceLogin(ctx context.Context, tools []string, deviceNa
 		MatchNumber: d.MatchNumber, ExpiresIn: DeviceLoginTTL}, nil
 }
 
-// numberChoices 返回打乱的三个两位数，其中一个是 match。
-func numberChoices(match int) []int {
-	out := []int{match}
-	for len(out) < 3 {
-		n := 10 + mrand.IntN(90)
+// numberChoices 返回三个两位数，其中一个是 d.MatchNumber。干扰数字和顺序由服务端保存的
+// 轮询密钥哈希推出，同一请求每次展示都相同：反复打开链接无法靠比较几组数字找出正确的那个。
+func numberChoices(d store.DeviceLogin) []int {
+	seed := sha256.Sum256(append([]byte("cohive-device-choices:"), d.PollSecretHash...))
+	out := []int{d.MatchNumber}
+	for i := 0; len(out) < 3; i++ {
+		n := 10 + int(binary.BigEndian.Uint16(seed[2*i%30:])%90)
 		if n != out[0] && (len(out) < 2 || n != out[1]) {
 			out = append(out, n)
 		}
+		if i > 14 { // 哈希用尽的极端情况，按顺序补足
+			seed = sha256.Sum256(seed[:])
+			i = -1
+		}
 	}
-	mrand.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
+	pos := int(seed[31] % 3) // 正确数字所在的位置
+	out[0], out[pos] = out[pos], out[0]
 	return out
 }
 
@@ -225,9 +231,9 @@ func claim(d *store.DeviceLogin, tgUserID int64) error {
 }
 
 func deviceView(d store.DeviceLogin, b *store.BoundMember) DeviceView {
-	v := DeviceView{ID: d.ID, DeviceName: d.DeviceName, Tools: d.Tools}
+	v := DeviceView{ID: d.ID, DeviceName: d.DeviceName, CreatedAt: d.CreatedAt, Tools: d.Tools}
 	if b != nil {
-		v.Workspace, v.MemberName, v.Numbers = b.WorkspaceName, b.Name, numberChoices(d.MatchNumber)
+		v.Workspace, v.MemberName, v.Numbers = b.WorkspaceName, b.Name, numberChoices(d)
 	}
 	return v
 }
@@ -335,10 +341,24 @@ func (s *Service) CancelDeviceLogin(ctx context.Context, id, tgUserID int64) err
 }
 
 // PollDeviceLogin 由终端轮询登录结果；确认后签发各工具的令牌并只交付一次。
-// 编号或轮询密钥不对时返回 ErrDeviceGone。
+// 编号或轮询密钥不对时返回 ErrDeviceGone。轮询接口不需要身份，所以先不加锁核对密钥，
+// 只有需要改状态（交付令牌、标记过期）时才锁行写库。
 func (s *Service) PollDeviceLogin(ctx context.Context, id int64, secret string) (DevicePoll, error) {
+	d, err := store.GetDeviceLogin(ctx, s.Pool, id)
+	if errors.Is(err, store.ErrNotFound) {
+		return DevicePoll{}, ErrDeviceGone
+	}
+	if err != nil {
+		return DevicePoll{}, err
+	}
+	if subtle.ConstantTimeCompare(d.PollSecretHash, hashPollSecret(secret)) != 1 {
+		return DevicePoll{}, ErrDeviceGone
+	}
+	if d.Status != store.DeviceApproved && !(d.Status == store.DevicePending && time.Now().After(d.ExpiresAt)) {
+		return DevicePoll{Status: d.Status}, nil
+	}
 	var p DevicePoll
-	err := s.deviceStep(ctx, func(tx pgx.Tx) (store.DeviceLogin, error) {
+	err = s.deviceStep(ctx, func(tx pgx.Tx) (store.DeviceLogin, error) {
 		return store.DeviceLoginForUpdate(ctx, tx, id)
 	}, func(tx pgx.Tx, d *store.DeviceLogin) (error, error) {
 		if subtle.ConstantTimeCompare(d.PollSecretHash, hashPollSecret(secret)) != 1 {

@@ -27,6 +27,7 @@ type JoinResult struct {
 	AlreadyMember *store.Member
 	Member        *store.Member
 	Request       *store.JoinRequest
+	NoAdmin       bool // 建了待审申请，但工作空间还没有管理员，没人能点按钮审批
 }
 
 // JoinDecision 是管理员审批的结果；批准时 Member 为新成员。
@@ -114,7 +115,9 @@ func (s *Service) RequestJoin(ctx context.Context, chatID string, tgUserID int64
 			return err
 		}
 		res.Request = &j
-		return nil
+		hasAdmin, err := store.HasAdmin(ctx, tx, ws.ID)
+		res.NoAdmin = !hasAdmin
+		return err
 	})
 	return res, err
 }

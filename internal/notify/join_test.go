@@ -109,6 +109,16 @@ func TestJoinCreatesApprovalMessage(t *testing.T) {
 	}
 }
 
+func TestJoinNoAdminHint(t *testing.T) {
+	c := &fakeCore{join: core.JoinResult{Workspace: store.Workspace{Name: "payments"}, NoAdmin: true,
+		Request: &store.JoinRequest{ID: 7, TelegramUsername: "ann_dev"}}}
+	api := &fakeAPI{}
+	newBot(c, api).Handle(context.Background(), msg("/join", "supergroup", -1001234, "ann_dev"))
+	if len(api.buttons) != 1 || !strings.Contains(api.buttons[0], "还没有管理员") || !strings.Contains(api.buttons[0], "join approve --id 7") {
+		t.Fatalf("没有管理员时应说明处理办法：%v", api.buttons)
+	}
+}
+
 func TestJoinOtherOutcomes(t *testing.T) {
 	cases := []struct {
 		name string

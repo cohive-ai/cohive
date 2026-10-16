@@ -58,6 +58,11 @@ func DeviceLoginForUpdate(ctx context.Context, q DBTX, id int64) (DeviceLogin, e
 	return scanDevice(q.QueryRow(ctx, `SELECT `+deviceColumns+` FROM device_logins WHERE id = $1 FOR UPDATE`, id))
 }
 
+// GetDeviceLogin 按编号读取请求（不加锁）。
+func GetDeviceLogin(ctx context.Context, q DBTX, id int64) (DeviceLogin, error) {
+	return scanDevice(q.QueryRow(ctx, `SELECT `+deviceColumns+` FROM device_logins WHERE id = $1`, id))
+}
+
 // UpdateDeviceLogin 写回请求的可变字段（打开人、工作空间、成员与状态）。
 func UpdateDeviceLogin(ctx context.Context, q DBTX, d DeviceLogin) error {
 	_, err := q.Exec(ctx, `UPDATE device_logins SET telegram_user_id = $2, workspace_name = $3, member_id = $4, status = $5
