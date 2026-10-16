@@ -376,20 +376,27 @@ function InvitesTab() {
           )}
         </Loading>
       </section>
-      <Dialog open={!!created} onClose={() => setCreated(null)} title="邀请链接已生成">
-        {created && (
-          <div className="space-y-3">
-            <CopyField label="邀请链接" value={created.url} />
-            <Callout>链接只显示这一次，关闭后无法再查看。请现在复制并发给对方；丢了就作废后重新生成。</Callout>
-            <div className="flex justify-end">
-              <button type="button" onClick={() => setCreated(null)} className={btn.primary}>
-                我已复制
-              </button>
-            </div>
-          </div>
-        )}
-      </Dialog>
+      <InviteLinkDialog url={created?.url ?? ""} onDone={() => setCreated(null)} />
     </div>
+  );
+}
+
+// 新生成的邀请链接只显示这一次：不允许按 Esc 关掉，必须点“我已复制”。
+export function InviteLinkDialog({ url, onDone }: { url: string; onDone: () => void }) {
+  return (
+    <Dialog open={!!url} onClose={onDone} title="邀请链接已生成" dismissible={false}>
+      {url && (
+        <div className="space-y-3">
+          <CopyField label="邀请链接" value={url} />
+          <Callout>链接只显示这一次，关闭后无法再查看。请现在复制并发给对方；丢了就作废后重新生成。</Callout>
+          <div className="flex justify-end">
+            <button type="button" onClick={onDone} className={btn.primary}>
+              我已复制
+            </button>
+          </div>
+        </div>
+      )}
+    </Dialog>
   );
 }
 
