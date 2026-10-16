@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS 每天定时备份 Cohive 数据库。用法见 docs/guides/test-server.md 的“定时备份”一节：
+  把 __REPO__ 换成仓库绝对路径、__HOME__ 换成用户目录、__COHIVE_HOME__ 换成数据根目录，
+  保存为 ~/Library/LaunchAgents/com.anormlylee.cohive.backup.plist。
+  launchd 不读 shell 配置文件：PATH 里要包含 docker（或 pg_dump）所在目录。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.anormlylee.cohive.backup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__REPO__/scripts/backup-db.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>COHIVE_HOME</key>
+    <string>__COHIVE_HOME__</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__COHIVE_HOME__/logs/backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>__COHIVE_HOME__/logs/backup.log</string>
+</dict>
+</plist>
