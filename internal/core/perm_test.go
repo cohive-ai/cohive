@@ -269,3 +269,73 @@ func TestLookupTokenSecondLine(t *testing.T) {
 		t.Fatalf("已停用账号的令牌应无效：%v", err)
 	}
 }
+
+// 停用的两道防线各自有用例（设计稿 6.2 第 9 条）：
+// 第一道：停用时在同一事务里删掉会话、吊销设备；第二道：查会话、查设备密钥时再查一次账号未停用。
+
+// 第一道防线：停用后直接查库，账号的网页会话与未用的一次性网页登录码都已删除。
+func TestDisableDeletesSessionsInDB(t *testing.T) {
+	ctx := context.Background()
+	p := newPeople(t)
+	svc := p.e.svc
+	if err := svc.ChangePassword(ctx, p.ann, "", "", goodPassword); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Login(ctx, "ann", goodPassword); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateWebLoginCode(ctx, p.ann.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DisableAccount(ctx, &p.root, p.ann.ID); err != nil {
+		t.Fatal(err)
+	}
+	var sessions, codes int
+	if err := svc.Pool.QueryRow(ctx, `SELECT count(*) FROM web_sessions WHERE account_id = $1`, p.ann.ID).Scan(&sessions); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Pool.QueryRow(ctx, `SELECT count(*) FROM web_login_codes WHERE account_id = $1 AND used_at IS NULL`, p.ann.ID).Scan(&codes); err != nil {
+		t.Fatal(err)
+	}
+	if sessions != 0 || codes != 0 {
+		t.Fatalf("停用后应删除全部会话与未用的网页登录码：会话 %d，登录码 %d", sessions, codes)
+	}
+}
+
+// 第二道防线（会话）：只把账号标为停用、不删会话，会话也查不到。
+func TestDisabledAccountSessionRejected(t *testing.T) {
+	ctx := context.Background()
+	p := newPeople(t)
+	svc := p.e.svc
+	if err := svc.ChangePassword(ctx, p.ann, "", "", goodPassword); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := svc.Login(ctx, "ann", goodPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Pool.Exec(ctx, `UPDATE accounts SET disabled_at = now() WHERE id = $1`, p.ann.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := svc.SessionAccount(ctx, sess.ID); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("已停用账号的会话应查不到：%v", err)
+	}
+}
+
+// 第二道防线（设备密钥）：只把账号标为停用、不吊销设备，设备密钥也查不到。
+func TestDisabledAccountDeviceSecretRejected(t *testing.T) {
+	ctx := context.Background()
+	p := newPeople(t)
+	svc := p.e.svc
+	d := pair(t, svc, p.ann, "codex")
+	if _, err := svc.Pool.Exec(ctx, `UPDATE accounts SET disabled_at = now() WHERE id = $1`, p.ann.ID); err != nil {
+		t.Fatal(err)
+	}
+	var live int
+	if err := svc.Pool.QueryRow(ctx, `SELECT count(*) FROM devices WHERE account_id = $1 AND revoked_at IS NULL`, p.ann.ID).Scan(&live); err != nil || live != 1 {
+		t.Fatalf("前提：设备未吊销：%d %v", live, err)
+	}
+	if _, _, err := svc.AuthenticateDevice(ctx, d.DeviceSecret); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("已停用账号的设备密钥应查不到：%v", err)
+	}
+}
