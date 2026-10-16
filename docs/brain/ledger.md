@@ -20,7 +20,7 @@
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
 | M5 | `feature/phase1-m5-bot-onboarding`（基于 main `3e7e513`） | 英文名和项目目录设置 / `local_da15ce4c-fbe6-4bce-9079-5a9e07ee14ef` | 代码已验收 = `b1afd46` | 待用户（测试服实测 D6） | 返工清单已发（A1–A6 必修、B1–B21 次要、C1 已定按 D7 A 做、C2 待 D8）。复验：核对新 tip；全量；重打 P1（`core/admin.go` 最后一名管理员判定改为永不触发，必须变红）；新探针至少两条，候选“吊销全部设备后再配对仍需审批”“首台批准后、领取前吊销设备，领到的令牌无效”“等待管理员批准时中途退出后 `--resume` 能领取”；测试服实测待 D6 |
-| M5b-设计 | `claude/docs-m5b-accounts-design-ec8f74`（基于 main `4536d5e`，只出文档） | m5b / `local_2e577d38-8052-4c21-97ab-a6422db710a3` | `92fda5b`（改前提中） | 待用户（D10） | 产出 `docs/superpowers/plans/2026-10-17-phase1-m5b-accounts.md`：权限矩阵、数据模型与第七号迁移、流程、接口字段级清单、安全、任务拆分、待拍板；主脑审完给 lee 过目 |
+| M5b-设计 | `claude/docs-m5b-accounts-design-ec8f74`（基于 main `4536d5e`，只出文档） | m5b / `local_2e577d38-8052-4c21-97ab-a6422db710a3` | `0dd4127`（前提已改正，主脑已核） | 待用户（D10） | 产出 `docs/superpowers/plans/2026-10-17-phase1-m5b-accounts.md`：权限矩阵、数据模型与第七号迁移、流程、接口字段级清单、安全、任务拆分、待拍板；主脑审完给 lee 过目 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
