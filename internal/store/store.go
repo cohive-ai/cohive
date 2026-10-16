@@ -164,7 +164,9 @@ func LookupToken(ctx context.Context, q DBTX, plain string) (Identity, error) {
 	err := q.QueryRow(ctx, `
 		SELECT t.id, m.id, m.workspace_id, m.name, t.tool, t.device_id
 		FROM tokens t JOIN members m ON m.id = t.member_id
-		WHERE t.token_hash = $1 AND t.revoked_at IS NULL`,
+		LEFT JOIN devices d ON d.id = t.device_id
+		WHERE t.token_hash = $1 AND t.revoked_at IS NULL
+		AND (t.device_id IS NULL OR d.revoked_at IS NULL)`,
 		hashToken(plain)).Scan(&id.TokenID, &id.MemberID, &id.WorkspaceID, &id.MemberName, &id.Tool, &id.DeviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Identity{}, ErrUnauthorized

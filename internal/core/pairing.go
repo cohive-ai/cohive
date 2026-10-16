@@ -531,7 +531,8 @@ func (s *Service) PollDeviceAuth(ctx context.Context, id int64, secret string) (
 		return DeviceTokens{}, ErrAuthGone
 	}
 	status := effectiveStatus(a)
-	if status != store.AuthApproved {
+	// 已批准的才需要交付；已批准但过期未领的，要把批准时建好的设备吊销掉，不留孤儿设备
+	if a.Status != store.AuthApproved {
 		return DeviceTokens{Status: status}, nil
 	}
 	var out DeviceTokens
@@ -540,11 +541,23 @@ func (s *Service) PollDeviceAuth(ctx context.Context, id int64, secret string) (
 		if err != nil {
 			return err
 		}
-		if effectiveStatus(a) != store.AuthApproved || a.MemberID == nil || a.DeviceID == nil {
-			out.Status = effectiveStatus(a)
+		out.Status = effectiveStatus(a)
+		if a.Status != store.AuthApproved || a.MemberID == nil || a.DeviceID == nil {
 			return nil
 		}
+		if out.Status == store.AuthExpired {
+			a.Status = store.AuthExpired
+			if err := store.RevokeDeviceByID(ctx, tx, *a.DeviceID); err != nil {
+				return err
+			}
+			return store.UpdateDeviceAuth(ctx, tx, a)
+		}
 		res, err := issueTokens(ctx, tx, *a.MemberID, *a.DeviceID, a.Tools)
+		if errors.Is(err, store.ErrDeviceRevoked) {
+			// 批准后、领取前设备被吊销：不再交付
+			a.Status, out.Status = store.AuthDenied, store.AuthDenied
+			return store.UpdateDeviceAuth(ctx, tx, a)
+		}
 		if err != nil {
 			return err
 		}
@@ -556,7 +569,11 @@ func (s *Service) PollDeviceAuth(ctx context.Context, id int64, secret string) (
 	return out, err
 }
 
+// issueTokens 在设备上签发令牌；先锁住设备行并确认未吊销，与吊销互斥。
 func issueTokens(ctx context.Context, tx pgx.Tx, memberID, deviceID int64, tools []string) (DeviceTokens, error) {
+	if err := store.LockActiveDevice(ctx, tx, deviceID); err != nil {
+		return DeviceTokens{}, err
+	}
 	m, err := store.MemberByID(ctx, tx, memberID)
 	if err != nil {
 		return DeviceTokens{}, err
@@ -590,6 +607,9 @@ func (s *Service) AddDeviceTools(ctx context.Context, who store.Identity, tools 
 		out, err = issueTokens(ctx, tx, who.MemberID, *who.DeviceID, tools)
 		return err
 	})
+	if errors.Is(err, store.ErrDeviceRevoked) {
+		return DeviceTokens{}, ErrNoDevice
+	}
 	out.Status = store.AuthApproved
 	return out, err
 }

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -66,6 +67,30 @@ func IssueDeviceToken(ctx context.Context, q DBTX, memberID, deviceID int64, too
 	}
 	_, err = q.Exec(ctx, `UPDATE tokens SET device_id = $2 WHERE id = $1`, id, deviceID)
 	return plain, err
+}
+
+// ErrDeviceRevoked 表示设备已被吊销。
+var ErrDeviceRevoked = errors.New("这台设备已被吊销")
+
+// LockActiveDevice 在事务内锁住设备行并确认未吊销；签发令牌前调用，和吊销互斥。
+func LockActiveDevice(ctx context.Context, q DBTX, deviceID int64) error {
+	var revoked *time.Time
+	if err := q.QueryRow(ctx, `SELECT revoked_at FROM devices WHERE id = $1 FOR UPDATE`, deviceID).Scan(&revoked); err != nil {
+		return notFound(err)
+	}
+	if revoked != nil {
+		return ErrDeviceRevoked
+	}
+	return nil
+}
+
+// RevokeDeviceByID 吊销设备及其令牌（不校验工作空间，供内部清理用）。
+func RevokeDeviceByID(ctx context.Context, q DBTX, deviceID int64) error {
+	if _, err := q.Exec(ctx, `UPDATE devices SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL`, deviceID); err != nil {
+		return err
+	}
+	_, err := q.Exec(ctx, `UPDATE tokens SET revoked_at = now() WHERE device_id = $1 AND revoked_at IS NULL`, deviceID)
+	return err
 }
 
 // ListDevices 列出工作空间的设备（含已吊销），可按成员过滤（memberID 为 0 时不过滤）。
