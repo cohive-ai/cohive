@@ -12,10 +12,15 @@ import (
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
-// Announcer 在有新的待审申请时通知管理员。
+// Announcer 在有新的待审申请、申请处理完、新成员加入时通知到工作空间群里。
 type Announcer interface {
 	AnnounceSignup(ctx context.Context, s store.Signup) error
 	AnnounceDevice(ctx context.Context, a store.DeviceAuth) error
+	// AnnounceSignupDecided、AnnounceDeviceDecided 在网页上处理申请后，把各群里的审批消息改成结果。
+	AnnounceSignupDecided(ctx context.Context, d core.SignupDecision) error
+	AnnounceDeviceDecided(ctx context.Context, d core.DeviceDecision) error
+	// AnnounceJoined 在有人加入工作空间（直接加入、接受个人邀请）后在群里打招呼并 @ 他。
+	AnnounceJoined(ctx context.Context, m store.Member) error
 }
 
 // announce 在后台通知，不拖慢请求；失败只记日志（管理员仍可在网页上看到待审申请）。
@@ -51,9 +56,8 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			return
 		}
 		var in struct {
-			Name      string `json:"name"`
-			Password  string `json:"password"`
-			Workspace string `json:"workspace"`
+			Name     string `json:"name"`
+			Password string `json:"password"`
 		}
 		if !decode(w, r, &in) {
 			return
@@ -61,20 +65,16 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if d := guard.locked(in.Name); d > 0 {
 			svc.DummyPasswordCheck(r.Context(), in.Password) // 锁定时也耗同样的时间，不暴露成员名是否存在
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{
-				"error": fmt.Sprintf("这个成员名连续登录失败次数过多，请 %d 秒后再试", int(d.Seconds())+1)})
+				"error": fmt.Sprintf("这个登录名连续登录失败次数过多，请 %d 秒后再试", int(d.Seconds())+1)})
 			return
 		}
-		sess, err := svc.Login(r.Context(), in.Name, in.Password, in.Workspace)
-		var amb *core.AmbiguousLoginError
+		sess, err := svc.Login(r.Context(), in.Name, in.Password)
 		switch {
-		case errors.As(err, &amb):
-			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "workspaces": amb.Workspaces})
-			return
 		case errors.Is(err, core.ErrBadLogin):
 			guard.failed(in.Name)
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
 			return
-		case errors.Is(err, core.ErrSignupPending):
+		case errors.Is(err, core.ErrSignupPending), errors.Is(err, store.ErrAccountDisabled):
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 			return
 		case err != nil:
@@ -83,18 +83,18 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		guard.succeeded(in.Name)
 		setSessionCookie(w, r, sess.ID)
-		pw, err := svc.PasswordStatus(r.Context(), sess.Member.ID)
+		pw, err := svc.PasswordStatus(r.Context(), sess.Account.ID)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		ws, err := store.GetWorkspace(r.Context(), svc.Pool, sess.Member.WorkspaceID)
+		ms, err := svc.Memberships(r.Context(), sess.Account.ID)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"member": sess.Member.Name, "workspace": ws.Name,
-			"role": sess.Member.Role, "must_change_password": pw.MustChange})
+		writeJSON(w, http.StatusOK, map[string]any{"account": accountJSON(sess.Account, pw.Hash != ""),
+			"must_change_password": pw.MustChange, "workspaces": workspaceRefs(ms)})
 	})
 
 	mux.HandleFunc("POST /api/v1/auth/logout", func(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +135,14 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			tooMany(w)
 			return
 		}
-		info, err := svc.LookupInvite(r.Context(), r.PathValue("code"))
+		// 带着网页会话时额外返回本人信息（已登录的人可以直接接受邀请）
+		var viewer *store.Account
+		if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
+			if a, _, err := svc.SessionAccount(r.Context(), c.Value); err == nil {
+				viewer = &a
+			}
+		}
+		info, err := svc.LookupInvite(r.Context(), r.PathValue("code"), viewer)
 		if errors.Is(err, core.ErrInviteInvalid) {
 			writeJSON(w, http.StatusOK, map[string]any{"valid": false})
 			return
@@ -144,7 +151,11 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"workspace": info.Workspace, "kind": info.Kind, "valid": info.Valid})
+		out := map[string]any{"workspace": info.Workspace, "kind": info.Kind, "role": info.Role, "valid": info.Valid}
+		if viewer != nil {
+			out["signed_in_as"], out["already_member"] = viewer.Name, info.AlreadyMember
+		}
+		writeJSON(w, http.StatusOK, out)
 	})
 
 	mux.HandleFunc("POST /api/v1/register", func(w http.ResponseWriter, r *http.Request) {
@@ -172,13 +183,16 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "pending"})
 			return
 		}
-		sess, err := svc.SessionForRegistered(r.Context(), *res.Member)
+		sess, err := svc.SessionForRegistered(r.Context(), *res.Account)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
 		setSessionCookie(w, r, sess.ID)
-		writeJSON(w, http.StatusOK, map[string]string{"status": "active", "member": res.Member.Name})
+		m := *res.Member
+		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceJoined(ctx, m) })
+		writeJSON(w, http.StatusOK, map[string]any{"status": "active", "account": accountJSON(*res.Account, true),
+			"workspace": map[string]string{"name": res.Workspace.Name, "role": m.Role}})
 	})
 
 	mux.HandleFunc("POST /api/v1/device/start", func(w http.ResponseWriter, r *http.Request) {
@@ -223,10 +237,15 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 }
 
-func deviceTokensJSON(p core.DeviceTokens) map[string]any {
+// deviceTokensJSON 是轮询结果；设备密钥与各工作空间的令牌只在交付那一次出现。
+func deviceTokensJSON(p core.DeviceDelivery) map[string]any {
 	out := map[string]any{"status": p.Status}
-	if p.Tokens != nil {
-		out["member"], out["workspace"], out["device_id"], out["tokens"] = p.Member, p.Workspace, p.DeviceID, p.Tokens
+	if p.DeviceSecret != "" {
+		wss := make([]map[string]any, 0, len(p.Workspaces))
+		for _, w := range p.Workspaces {
+			wss = append(wss, map[string]any{"workspace": w.Workspace, "role": w.Role, "tokens": w.Tokens})
+		}
+		out["account"], out["device_id"], out["device_secret"], out["workspaces"] = p.Account, p.DeviceID, p.DeviceSecret, wss
 	}
 	return out
 }

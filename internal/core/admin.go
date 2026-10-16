@@ -2,15 +2,29 @@ package core
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
 
-// SetRole 由管理员修改成员角色；工作空间至少保留一名管理员。
-func (s *Service) SetRole(ctx context.Context, actor *store.Member, memberID int64, role string) error {
+// StateError 表示请求与当前状态冲突（已是成员、群已被占用、工作空间不空等），接口返回 409。
+type StateError struct{ Msg string }
+
+func (e *StateError) Error() string { return e.Msg }
+
+func stateErr(format string, args ...any) error {
+	return &StateError{Msg: fmt.Sprintf(format, args...)}
+}
+
+// ---- 角色与工作空间设置 ----
+
+// SetRole 由管理员修改成员角色；工作空间至少保留一名在册管理员。wsID 非 0 时成员必须属于该工作空间。
+func (s *Service) SetRole(ctx context.Context, actor *store.Account, wsID, memberID int64, role string) error {
 	if role != store.RoleAdmin && role != store.RoleMember {
 		return inputErr("角色应为管理员或成员")
 	}
@@ -19,19 +33,15 @@ func (s *Service) SetRole(ctx context.Context, actor *store.Member, memberID int
 		if err != nil {
 			return err
 		}
+		if (wsID != 0 && m.WorkspaceID != wsID) || m.Status != store.MemberActive {
+			return fmt.Errorf("成员 %d：%w", memberID, store.ErrNotFound)
+		}
 		// 锁住本工作空间的全部管理员行：两名管理员同时互相降级时排队执行，后一个会看到前一个的结果
 		if err := store.LockAdmins(ctx, tx, m.WorkspaceID); err != nil {
 			return err
 		}
-		if actor != nil {
-			// 按库里当前的角色判断，不用请求开始时读到的（可能已被别人降级）
-			fresh, err := store.MemberByID(ctx, tx, actor.ID)
-			if err != nil {
-				return err
-			}
-			actor = &fresh
-		}
-		if err := requireAdmin(actor, m.WorkspaceID); err != nil {
+		// 拿到锁之后再判定操作者（按库里当前的角色）
+		if err := canAdmin(ctx, tx, actor, m.WorkspaceID); err != nil {
 			return err
 		}
 		if err := store.SetMemberRole(ctx, tx, m.ID, role); err != nil {
@@ -56,11 +66,8 @@ type WorkspaceSettings struct {
 	ShowBrief    bool
 }
 
-// UpdateWorkspace 由管理员修改工作空间设置。群编号为空表示关闭群通知。
-func (s *Service) UpdateWorkspace(ctx context.Context, actor *store.Member, wsID int64, in WorkspaceSettings) error {
-	if err := requireAdmin(actor, wsID); err != nil {
-		return err
-	}
+// UpdateWorkspace 由管理员修改工作空间设置。群编号为空表示关闭群通知；一个群只能绑一个工作空间。
+func (s *Service) UpdateWorkspace(ctx context.Context, actor *store.Account, wsID int64, in WorkspaceSettings) error {
 	pub := strings.TrimRight(strings.TrimSpace(in.PublicURL), "/")
 	if pub != "" && !strings.HasPrefix(pub, "https://") && !strings.HasPrefix(pub, "http://") {
 		return inputErr("公网地址应以 https:// 或 http:// 开头")
@@ -75,7 +82,23 @@ func (s *Service) UpdateWorkspace(ctx context.Context, actor *store.Member, wsID
 	if chat != "" {
 		cfg.Channel = "telegram"
 	}
-	return store.SetWorkspaceNotify(ctx, s.Pool, wsID, cfg, pub)
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := canAdmin(ctx, tx, actor, wsID); err != nil {
+			return err
+		}
+		if chat != "" {
+			if other, err := store.WorkspaceByNotifyTarget(ctx, tx, "telegram", chat); err == nil && other.ID != wsID {
+				return stateErr("这个群已经绑定了工作空间 %s：一个群只能对应一个工作空间", other.Name)
+			} else if err != nil && !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+		}
+		err := store.SetWorkspaceNotify(ctx, tx, wsID, cfg, pub)
+		if isUniqueViolation(err) {
+			return stateErr("这个群已经绑定了别的工作空间：一个群只能对应一个工作空间")
+		}
+		return err
+	})
 }
 
 // Workspace 返回工作空间。
@@ -83,7 +106,549 @@ func (s *Service) Workspace(ctx context.Context, id int64) (store.Workspace, err
 	return store.GetWorkspace(ctx, s.Pool, id)
 }
 
-// MemberByTelegram 返回工作空间里连接到该 Telegram 账号的成员（机器人识别点按钮的人）。
-func (s *Service) MemberByTelegram(ctx context.Context, wsID, tgUserID int64) (store.Member, error) {
-	return store.MemberByTelegramUserID(ctx, s.Pool, wsID, tgUserID)
+// AdminWorkspace 由管理员读取工作空间设置。
+func (s *Service) AdminWorkspace(ctx context.Context, actor *store.Account, wsID int64) (store.Workspace, error) {
+	if err := canAdmin(ctx, s.Pool, actor, wsID); err != nil {
+		return store.Workspace{}, err
+	}
+	return store.GetWorkspace(ctx, s.Pool, wsID)
+}
+
+// WorkspaceByName 按名字返回工作空间。
+func (s *Service) WorkspaceByName(ctx context.Context, name string) (store.Workspace, error) {
+	return store.WorkspaceByName(ctx, s.Pool, name)
+}
+
+// AccountByTelegram 返回连接到该 Telegram 账号的 Cohive 账号（机器人识别点按钮的人）。
+func (s *Service) AccountByTelegram(ctx context.Context, tgUserID int64) (store.Account, error) {
+	return store.AccountByTelegramUserID(ctx, s.Pool, tgUserID)
+}
+
+// WorkspaceByGroup 返回绑定了该 Telegram 群的工作空间。
+func (s *Service) WorkspaceByGroup(ctx context.Context, chatID int64) (store.Workspace, error) {
+	return store.WorkspaceByNotifyTarget(ctx, s.Pool, "telegram", strconv.FormatInt(chatID, 10))
+}
+
+// ---- 成员 ----
+
+// AdminMembers 由管理员列出工作空间的成员资格（status 为空列在册的，removed 列已移出的）。
+func (s *Service) AdminMembers(ctx context.Context, actor *store.Account, wsID int64, status string) ([]store.MemberSummary, error) {
+	if status != "" && status != store.MemberActive && status != store.MemberRemoved {
+		return nil, inputErr("status 只能是 active 或 removed")
+	}
+	if err := canAdmin(ctx, s.Pool, actor, wsID); err != nil {
+		return nil, err
+	}
+	return store.ListMemberSummaries(ctx, s.Pool, wsID, status)
+}
+
+// AccountLookup 是管理员按登录名查到的账号。
+type AccountLookup struct {
+	Account      store.Account
+	MemberStatus string // none、active、removed
+}
+
+// LookupAccount 由工作空间管理员按登录名精确查找账号（不能浏览全部账号）。
+func (s *Service) LookupAccount(ctx context.Context, actor *store.Account, wsID int64, name string) (AccountLookup, error) {
+	if err := canAdmin(ctx, s.Pool, actor, wsID); err != nil {
+		return AccountLookup{}, err
+	}
+	a, err := store.AccountByName(ctx, s.Pool, strings.TrimSpace(name))
+	if errors.Is(err, store.ErrNotFound) {
+		return AccountLookup{}, fmt.Errorf("没有登录名为 %s 的账号：%w", name, store.ErrNotFound)
+	}
+	if err != nil {
+		return AccountLookup{}, err
+	}
+	out := AccountLookup{Account: a, MemberStatus: "none"}
+	m, err := store.MemberOf(ctx, s.Pool, a.ID, wsID)
+	if err == nil {
+		out.MemberStatus = m.Status
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return AccountLookup{}, err
+	}
+	return out, nil
+}
+
+// AddMember 由管理员把已有账号直接加入工作空间；被移出过的复用原成员资格。
+func (s *Service) AddMember(ctx context.Context, actor *store.Account, wsID int64, accountName, role string) (store.Member, error) {
+	if role == "" {
+		role = store.RoleMember
+	}
+	if role != store.RoleAdmin && role != store.RoleMember {
+		return store.Member{}, inputErr("角色应为管理员或成员")
+	}
+	var out store.Member
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := canAdmin(ctx, tx, actor, wsID); err != nil {
+			return err
+		}
+		a, err := store.AccountByName(ctx, tx, strings.TrimSpace(accountName))
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("没有登录名为 %s 的账号：%w", accountName, store.ErrNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		if a, err = store.LockAccount(ctx, tx, a.ID); err != nil {
+			return err
+		}
+		if a.Disabled() {
+			return inputErr("账号 %s 已停用，不能加入", a.Name)
+		}
+		out, err = store.AddMembership(ctx, tx, a.ID, wsID, role, actorID(actor))
+		if errors.Is(err, store.ErrAlreadyMember) {
+			return stateErr("%s 已经是这个工作空间的成员", a.Name)
+		}
+		return err
+	})
+	return out, err
+}
+
+// Handover 是成员名下需要转交的问题单与服务。
+type Handover struct {
+	Member   store.Member
+	Issues   []store.HandoverIssue
+	Services []string
+}
+
+// HandoverPlan 是管理员为每一项选的接手人。必须覆盖 Handover 的全部条目。
+type HandoverPlan struct {
+	Issues   []PlanIssue
+	Services []PlanService
+	// As 只在服务器命令行使用：记作操作人的本空间管理员登录名（问题单事件的操作人必须是成员资格）。
+	As string
+}
+
+// PlanIssue 是一张问题单的接手人。
+type PlanIssue struct {
+	IssueID         int64
+	As              string // owner 或 source
+	ToMemberID      int64
+	ExpectedVersion int
+}
+
+// PlanService 是一个服务的新负责人。
+type PlanService struct {
+	Name       string
+	ToMemberID int64
+}
+
+// HandoverError 表示转交清单不完整或问题单已变化，附最新清单，接口返回 409。
+type HandoverError struct {
+	Msg      string
+	Handover Handover
+}
+
+func (e *HandoverError) Error() string { return e.Msg }
+
+func loadHandover(ctx context.Context, q store.DBTX, m store.Member) (Handover, error) {
+	h := Handover{Member: m}
+	var err error
+	if h.Issues, err = store.PendingIssuesOf(ctx, q, m.ID); err != nil {
+		return h, err
+	}
+	h.Services, err = store.ServicesOwnedBy(ctx, q, m.ID)
+	return h, err
+}
+
+// GetHandover 由管理员查看成员名下要转交的问题单与服务。
+func (s *Service) GetHandover(ctx context.Context, actor *store.Account, wsID, memberID int64) (Handover, error) {
+	m, err := store.MemberByID(ctx, s.Pool, memberID)
+	if err != nil {
+		return Handover{}, err
+	}
+	if m.WorkspaceID != wsID {
+		return Handover{}, fmt.Errorf("成员 %d：%w", memberID, store.ErrNotFound)
+	}
+	if err := canAdmin(ctx, s.Pool, actor, wsID); err != nil {
+		return Handover{}, err
+	}
+	return loadHandover(ctx, s.Pool, m)
+}
+
+// ApplyHandover 由管理员把成员名下的问题单与服务转交给别人；remove 为真时随后把他移出工作空间
+// 并吊销他在该工作空间的全部令牌。全部在一个事务里：清单不完整或任何一张单的版本已变化时整体不做。
+func (s *Service) ApplyHandover(ctx context.Context, actor *store.Account, wsID, memberID int64, plan HandoverPlan, remove bool) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		m, err := store.LockMember(ctx, tx, memberID)
+		if err != nil {
+			return err
+		}
+		if m.WorkspaceID != wsID || m.Status != store.MemberActive {
+			return fmt.Errorf("成员 %d：%w", memberID, store.ErrNotFound)
+		}
+		if remove {
+			// 先锁管理员行再判定操作者，与并发降级、移出排队
+			if err := store.LockAdmins(ctx, tx, wsID); err != nil {
+				return err
+			}
+		}
+		if err := canAdmin(ctx, tx, actor, wsID); err != nil {
+			return err
+		}
+		// 改派要写问题单事件，操作人必须是本空间在册成员
+		var op store.Member
+		switch {
+		case actor != nil:
+			if op, err = store.MemberOf(ctx, tx, actor.ID, wsID); err != nil || op.Status != store.MemberActive {
+				if err != nil && !errors.Is(err, store.ErrNotFound) {
+					return err
+				}
+				return inputErr("你不是这个工作空间的成员：转交要记操作人，请先在管理页把自己加入这个工作空间")
+			}
+		default:
+			if op, err = store.MemberByName(ctx, tx, wsID, plan.As); err != nil || !op.IsAdmin() {
+				return inputErr("命令行转交需要用 --as 指定本工作空间的一名在册管理员")
+			}
+		}
+		if op.ID == m.ID && remove {
+			return inputErr("不能移出自己")
+		}
+		if remove && m.IsAdmin() {
+			n, err := store.CountAdmins(ctx, tx, wsID)
+			if err != nil {
+				return err
+			}
+			if n <= 1 {
+				return inputErr("不能移出这个工作空间的最后一名管理员")
+			}
+		}
+		h, err := loadHandover(ctx, tx, m)
+		if err != nil {
+			return err
+		}
+		if err := checkPlan(ctx, tx, h, plan); err != nil {
+			return err
+		}
+		// 同一张单可能两行（他既是负责人又是发起人），合并成一次更新
+		type change struct {
+			owner, source *int64
+			version       int
+		}
+		changes := map[int64]*change{}
+		var order []int64
+		for _, p := range plan.Issues {
+			c := changes[p.IssueID]
+			if c == nil {
+				c = &change{version: p.ExpectedVersion}
+				changes[p.IssueID] = c
+				order = append(order, p.IssueID)
+			}
+			to := p.ToMemberID
+			if p.As == store.AsOwner {
+				c.owner = &to
+			} else {
+				c.source = &to
+			}
+		}
+		for _, id := range order {
+			c := changes[id]
+			is, err := store.GetIssueForUpdate(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if is.Version != c.version {
+				return &HandoverError{Msg: fmt.Sprintf("问题单 #%d 已有新进展，请刷新转交清单后重试", id), Handover: h}
+			}
+			if err := reassign(ctx, tx, op, is, c.owner, c.source); err != nil {
+				return err
+			}
+		}
+		for _, p := range plan.Services {
+			if err := store.SetServiceOwner(ctx, tx, wsID, p.Name, p.ToMemberID); err != nil {
+				return err
+			}
+		}
+		if !remove {
+			return nil
+		}
+		return store.RemoveMembership(ctx, tx, m.ID, actorID(actor))
+	})
+}
+
+// checkPlan 校验转交清单完整、版本一致、接手人合格。
+func checkPlan(ctx context.Context, tx pgx.Tx, h Handover, plan HandoverPlan) error {
+	stale := func(msg string) error { return &HandoverError{Msg: msg, Handover: h} }
+	want := map[string]int{}
+	for _, it := range h.Issues {
+		want[fmt.Sprintf("%d/%s", it.IssueID, it.As)] = it.Version
+	}
+	seen := map[string]bool{}
+	receivers := map[int64]bool{}
+	for _, p := range plan.Issues {
+		if p.As != store.AsOwner && p.As != store.AsSource {
+			return inputErr("as 只能是 owner 或 source")
+		}
+		k := fmt.Sprintf("%d/%s", p.IssueID, p.As)
+		v, ok := want[k]
+		if !ok || seen[k] {
+			return stale(fmt.Sprintf("转交清单与当前情况不一致（问题单 #%d），请刷新后重试", p.IssueID))
+		}
+		if v != p.ExpectedVersion {
+			return stale(fmt.Sprintf("问题单 #%d 已有新进展，请刷新转交清单后重试", p.IssueID))
+		}
+		seen[k] = true
+		receivers[p.ToMemberID] = true
+	}
+	if len(seen) != len(want) {
+		return stale("还有问题单没有选接手人，请为每一张选择接手人")
+	}
+	wantSvc := map[string]bool{}
+	for _, n := range h.Services {
+		wantSvc[n] = true
+	}
+	seenSvc := map[string]bool{}
+	for _, p := range plan.Services {
+		if !wantSvc[p.Name] || seenSvc[p.Name] {
+			return stale(fmt.Sprintf("转交清单与当前情况不一致（服务 %s），请刷新后重试", p.Name))
+		}
+		seenSvc[p.Name] = true
+		receivers[p.ToMemberID] = true
+	}
+	if len(seenSvc) != len(wantSvc) {
+		return stale("还有服务没有选新的负责人")
+	}
+	for id := range receivers {
+		r, err := store.MemberByID(ctx, tx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return inputErr("接手人 %d 不存在", id)
+		}
+		if err != nil {
+			return err
+		}
+		if r.WorkspaceID != h.Member.WorkspaceID || !r.Active() || r.ID == h.Member.ID {
+			return inputErr("接手人 %s 不是这个工作空间在册、未停用的其他成员", r.Name)
+		}
+	}
+	return nil
+}
+
+// reassign 由管理员改派问题单的负责人与 / 或发起人：版本号加一，写事件，给新接手人入队群通知。
+func reassign(ctx context.Context, tx pgx.Tx, op store.Member, is store.Issue, owner, source *int64) error {
+	payload := map[string]any{"reason": "removed"}
+	if owner != nil {
+		if is.OwnerID != nil {
+			payload["owner_from"] = *is.OwnerID
+		}
+		payload["owner_to"] = *owner
+		is.OwnerID = owner
+	}
+	if source != nil {
+		payload["source_from"] = is.SourceMemberID
+		payload["source_to"] = *source
+		if err := store.SetIssueSource(ctx, tx, is.ID, *source); err != nil {
+			return err
+		}
+		is.SourceMemberID = *source
+	}
+	if err := store.UpdateIssue(ctx, tx, &is); err != nil {
+		return err
+	}
+	who := store.Identity{AccountID: op.AccountID, MemberID: op.ID, WorkspaceID: op.WorkspaceID, MemberName: op.Name, Tool: "web"}
+	if err := store.InsertEvent(ctx, tx, store.Event{IssueID: is.ID, ActorMemberID: op.ID, ActorTool: who.Tool,
+		Action: issue.ActReassign, FromStatus: is.Status, ToStatus: is.Status, Note: "管理员转交", Payload: payload}); err != nil {
+		return err
+	}
+	return queueReassign(ctx, tx, who, is, owner != nil, source != nil)
+}
+
+// ---- 停用与启用、服务器管理员 ----
+
+// DisableAccount 由服务器管理员停用账号（作用于整个人）：吊销全部设备与令牌、注销全部网页登录、
+// 断开 Telegram、作废等待中的设备申请。不能停用自己，不能停用最后一名服务器管理员。
+func (s *Service) DisableAccount(ctx context.Context, actor *store.Account, accountID int64) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := store.LockServerAdmins(ctx, tx); err != nil {
+			return err
+		}
+		if err := requireServerAdmin(ctx, tx, actor); err != nil {
+			return err
+		}
+		if actor != nil && actor.ID == accountID {
+			return inputErr("不能停用自己")
+		}
+		a, err := store.LockAccount(ctx, tx, accountID)
+		if err != nil {
+			return err
+		}
+		if a.Disabled() {
+			return stateErr("账号 %s 已经停用", a.Name)
+		}
+		if a.ServerAdmin {
+			n, err := store.CountActiveServerAdmins(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if n <= 1 {
+				return inputErr("不能停用最后一名服务器管理员")
+			}
+		}
+		if err := store.SetAccountDisabled(ctx, tx, a.ID, true, actorID(actor)); err != nil {
+			return err
+		}
+		if err := store.RevokeAccountDevices(ctx, tx, a.ID); err != nil {
+			return err
+		}
+		if err := store.DeleteAccountSessions(ctx, tx, a.ID, nil); err != nil {
+			return err
+		}
+		if err := store.DeleteAccountWebLoginCodes(ctx, tx, a.ID); err != nil {
+			return err
+		}
+		if err := store.SetAccountTelegram(ctx, tx, a.ID, nil, ""); err != nil {
+			return err
+		}
+		return store.DenyPendingDeviceAuths(ctx, tx, a.ID)
+	})
+}
+
+// EnableAccount 由服务器管理员启用账号。设备不恢复：要重新配对，并因“有过设备”需管理员批准。
+func (s *Service) EnableAccount(ctx context.Context, actor *store.Account, accountID int64) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := requireServerAdmin(ctx, tx, actor); err != nil {
+			return err
+		}
+		a, err := store.LockAccount(ctx, tx, accountID)
+		if err != nil {
+			return err
+		}
+		if !a.Disabled() {
+			return stateErr("账号 %s 没有停用", a.Name)
+		}
+		return store.SetAccountDisabled(ctx, tx, a.ID, false, nil)
+	})
+}
+
+// SetServerAdmin 由服务器管理员授予或撤销服务器管理员；至少保留一名未停用的服务器管理员。
+func (s *Service) SetServerAdmin(ctx context.Context, actor *store.Account, accountID int64, on bool) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := store.LockServerAdmins(ctx, tx); err != nil {
+			return err
+		}
+		if err := requireServerAdmin(ctx, tx, actor); err != nil {
+			return err
+		}
+		a, err := store.LockAccount(ctx, tx, accountID)
+		if err != nil {
+			return err
+		}
+		if a.ServerAdmin == on {
+			return nil
+		}
+		if err := store.SetServerAdmin(ctx, tx, a.ID, on); err != nil {
+			return err
+		}
+		n, err := store.CountActiveServerAdmins(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return inputErr("服务器上至少要保留一名未停用的服务器管理员")
+		}
+		return nil
+	})
+}
+
+// ServerAccounts 由服务器管理员列出账号。
+func (s *Service) ServerAccounts(ctx context.Context, actor *store.Account, prefix string) ([]store.AccountSummary, error) {
+	if err := requireServerAdmin(ctx, s.Pool, actor); err != nil {
+		return nil, err
+	}
+	return store.ListAccountSummaries(ctx, s.Pool, prefix)
+}
+
+// AccountByName 按登录名返回账号。
+func (s *Service) AccountByName(ctx context.Context, name string) (store.Account, error) {
+	return store.AccountByName(ctx, s.Pool, name)
+}
+
+// ---- 工作空间 ----
+
+// ServerWorkspaces 由服务器管理员列出全部工作空间。
+func (s *Service) ServerWorkspaces(ctx context.Context, actor *store.Account) ([]store.WorkspaceSummary, error) {
+	if err := requireServerAdmin(ctx, s.Pool, actor); err != nil {
+		return nil, err
+	}
+	return store.ListWorkspaceSummaries(ctx, s.Pool)
+}
+
+// CreateWorkspace 由服务器管理员建工作空间，并指定首位管理员（登录名，空则为操作者自己）。
+func (s *Service) CreateWorkspace(ctx context.Context, actor *store.Account, name, adminName string) (store.Workspace, error) {
+	name = strings.TrimSpace(name)
+	if err := checkMemberName(name); err != nil {
+		return store.Workspace{}, inputErr("工作空间名 %q 不合法：小写字母、数字、下划线、横线，1 到 32 个字符", name)
+	}
+	var ws store.Workspace
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := requireServerAdmin(ctx, tx, actor); err != nil {
+			return err
+		}
+		var err error
+		ws, err = store.CreateWorkspace(ctx, tx, name)
+		if isUniqueViolation(err) {
+			return stateErr("工作空间 %s 已存在", name)
+		}
+		if err != nil {
+			return err
+		}
+		if actor != nil {
+			if err := store.SetWorkspaceCreator(ctx, tx, ws.ID, actor.ID); err != nil {
+				return err
+			}
+		}
+		var admin store.Account
+		switch {
+		case strings.TrimSpace(adminName) != "":
+			if admin, err = store.AccountByName(ctx, tx, strings.TrimSpace(adminName)); errors.Is(err, store.ErrNotFound) {
+				return inputErr("没有登录名为 %s 的账号", adminName)
+			} else if err != nil {
+				return err
+			}
+		case actor != nil:
+			admin = *actor
+		default:
+			return nil
+		}
+		if admin.Disabled() {
+			return inputErr("账号 %s 已停用", admin.Name)
+		}
+		_, err = store.AddMembership(ctx, tx, admin.ID, ws.ID, store.RoleAdmin, actorID(actor))
+		return err
+	})
+	return ws, err
+}
+
+// DeleteWorkspace 由服务器管理员删除没有任何问题单（含草稿）的工作空间。
+func (s *Service) DeleteWorkspace(ctx context.Context, actor *store.Account, name string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := requireServerAdmin(ctx, tx, actor); err != nil {
+			return err
+		}
+		ws, err := store.WorkspaceByName(ctx, tx, name)
+		if err != nil {
+			return err
+		}
+		if _, err := store.LockWorkspace(ctx, tx, ws.ID); err != nil {
+			return err
+		}
+		n, err := store.CountIssues(ctx, tx, ws.ID)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return stateErr("工作空间 %s 里还有 %d 张问题单，不能删除", name, n)
+		}
+		return store.DeleteEmptyWorkspace(ctx, tx, ws.ID)
+	})
+}
+
+// RecordBotPost 记下机器人发的审批消息。
+func (s *Service) RecordBotPost(ctx context.Context, p store.BotPost) error {
+	return store.InsertBotPost(ctx, s.Pool, p)
+}
+
+// BotPosts 列出某条申请的审批消息。
+func (s *Service) BotPosts(ctx context.Context, kind string, refID int64) ([]store.BotPost, error) {
+	return store.ListBotPosts(ctx, s.Pool, kind, refID)
 }

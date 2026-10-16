@@ -70,26 +70,6 @@ func SetWorkspaceNotify(ctx context.Context, q DBTX, wsID int64, cfg NotifyConfi
 	return nil
 }
 
-func SetMemberTelegram(ctx context.Context, q DBTX, memberID int64, username string) error {
-	return updateMember(ctx, q, `UPDATE members SET telegram_username = $2 WHERE id = $1`, memberID, username)
-}
-
-// SetMemberTelegramUserID 绑定或解绑（nil）成员的 Telegram 用户编号。
-func SetMemberTelegramUserID(ctx context.Context, q DBTX, memberID int64, userID *int64) error {
-	return updateMember(ctx, q, `UPDATE members SET telegram_user_id = $2 WHERE id = $1`, memberID, userID)
-}
-
-func updateMember(ctx context.Context, q DBTX, sql string, memberID int64, value any) error {
-	tag, err := q.Exec(ctx, sql, memberID, value)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
 // SetWorkspaceNotifyTarget 只更新群编号（例如群升级为超级群后编号变化）。
 func SetWorkspaceNotifyTarget(ctx context.Context, q DBTX, wsID int64, target string) error {
 	_, err := q.Exec(ctx, `UPDATE workspaces SET notify_target = $2 WHERE id = $1`, wsID, target)
@@ -98,5 +78,16 @@ func SetWorkspaceNotifyTarget(ctx context.Context, q DBTX, wsID int64, target st
 
 // SetMemberRole 设置成员角色。
 func SetMemberRole(ctx context.Context, q DBTX, memberID int64, role string) error {
-	return updateMember(ctx, q, `UPDATE members SET role = $2 WHERE id = $1`, memberID, role)
+	return execOne(ctx, q, `UPDATE members SET role = $2 WHERE id = $1`, memberID, role)
+}
+
+// WorkspaceByNotifyTarget 返回绑定了该群的工作空间（一个群只绑一个工作空间）。
+func WorkspaceByNotifyTarget(ctx context.Context, q DBTX, channel, target string) (Workspace, error) {
+	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces
+		WHERE notify_channel = $1 AND notify_target = $2 AND notify_target <> ''`, channel, target))
+}
+
+// SetWorkspaceCreator 记下建工作空间的账号。
+func SetWorkspaceCreator(ctx context.Context, q DBTX, wsID, accountID int64) error {
+	return execOne(ctx, q, `UPDATE workspaces SET created_by = $2 WHERE id = $1`, wsID, accountID)
 }

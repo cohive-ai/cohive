@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -32,11 +33,11 @@ const (
 	blockEnd   = "# <<< cohive"
 )
 
-func initProject(out io.Writer, args []string) error {
+func initProject(ctx context.Context, out io.Writer, args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "项目目录")
-	server := fs.String("server", "", "协作服务地址；本机只登录过一个时可省略")
-	workspace := fs.String("workspace", "", "工作空间名；本机只登录过一个时可省略")
+	server := fs.String("server", "", "协作服务地址；本机只配对过一个时可省略")
+	workspace := fs.String("workspace", "", "工作空间名；你只在一个工作空间时可省略")
 	toolsFlag := fs.String("tools", "", "要配置的编程工具，逗号分隔：claude-code,codex；默认是已登录的工具")
 	command := fs.String("command", "cohive", "编程工具启动转发器时使用的命令，cohive 不在 PATH 里时改成绝对路径")
 	if err := fs.Parse(args); err != nil {
@@ -46,16 +47,21 @@ func initProject(out io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
-	srv, ws, err := pickTarget(creds, *server, *workspace)
+	srv, ws, err := pickTarget(ctx, creds, *server, *workspace)
 	if err != nil {
 		return err
 	}
+	dev, hasDev := creds.Device(srv)
 
 	var tools []string
 	if *toolsFlag == "" {
+		// 默认：这台电脑在这个服务上登录过的工具（新加入的工作空间还没有令牌，按其他工作空间的算）
 		for _, t := range knownTools {
-			if _, ok := creds.Find(srv, ws, t); ok {
-				tools = append(tools, t)
+			for _, l := range creds.Logins {
+				if l.Server == srv && l.Tool == t && (hasDev || l.Workspace == ws) {
+					tools = append(tools, t)
+					break
+				}
 			}
 		}
 		if len(tools) == 0 {
@@ -95,10 +101,29 @@ func initProject(out io.Writer, args []string) error {
 		fmt.Fprintf(out, "  %s\n", w)
 	}
 	fmt.Fprintln(out, "\n这些文件不含令牌，可以提交进仓库，团队成员共用。")
+	// 有设备密钥时顺手补签这个工作空间缺的令牌（新加入的工作空间不必重新配对）
+	var missing []string
 	for _, t := range tools {
 		if _, ok := creds.Find(srv, ws, t); !ok {
-			fmt.Fprintf(out, "\n注意：%s 还没有登录，执行：\n  cohive login --tools %s\n", t, t)
+			missing = append(missing, t)
 		}
+	}
+	if len(missing) > 0 && hasDev {
+		wt, err := client.IssueTokens(ctx, srv, dev.Secret, ws, missing)
+		if err != nil {
+			return err
+		}
+		for _, t := range knownToolsFirst(wt.Tokens) {
+			creds.Upsert(client.Login{Server: srv, Workspace: ws, Member: dev.Account, Tool: t, Token: wt.Tokens[t], DeviceID: dev.DeviceID})
+		}
+		if err := creds.Save(); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "已为工作空间 %s 签发 %s 的令牌。\n", ws, strings.Join(missing, "、"))
+		missing = nil
+	}
+	for _, t := range missing {
+		fmt.Fprintf(out, "\n注意：%s 还没有登录，执行：\n  cohive login --tools %s\n", t, t)
 	}
 	fmt.Fprintln(out, "\n下一步：")
 	fmt.Fprintln(out, "  1. 在 Claude Code、Codex 里打开这个项目，第一次会询问是否信任项目、是否启用 cohive 这个 MCP 服务，都选同意。")
@@ -106,35 +131,69 @@ func initProject(out io.Writer, args []string) error {
 	return nil
 }
 
-// pickTarget 决定配置哪个服务与工作空间：显式指定优先，否则本机必须只有一个。
-func pickTarget(creds *client.Credentials, server, workspace string) (string, string, error) {
-	if len(creds.Logins) == 0 {
+// pickTarget 决定配置哪个服务与工作空间：显式指定优先。服务：本机必须只配对过一个；
+// 工作空间：有设备密钥时按服务端返回的“我所在的工作空间”，只有一个时可省略；旧版配对按本机登录过的。
+func pickTarget(ctx context.Context, creds *client.Credentials, server, workspace string) (string, string, error) {
+	servers := map[string]bool{}
+	for _, d := range creds.Devices {
+		servers[d.Server] = true
+	}
+	for _, l := range creds.Logins {
+		servers[l.Server] = true
+	}
+	if len(servers) == 0 {
 		return "", "", errors.New("本机还没有登录：先执行 cohive login --server <协作服务地址>")
 	}
-	type key struct{ s, w string }
-	seen := map[key]bool{}
-	var matches []key
-	for _, l := range creds.Logins {
-		k := key{l.Server, l.Workspace}
-		if seen[k] {
-			continue
+	srv := client.NormalizeServer(server)
+	if srv == "" {
+		if len(servers) > 1 {
+			var list []string
+			for s := range servers {
+				list = append(list, "--server "+s)
+			}
+			sort.Strings(list)
+			return "", "", fmt.Errorf("本机配对了多个协作服务，请指定其中一个：\n  %s", strings.Join(list, "\n  "))
 		}
-		seen[k] = true
-		if (server == "" || client.NormalizeServer(server) == l.Server) && (workspace == "" || workspace == l.Workspace) {
-			matches = append(matches, k)
+		for s := range servers {
+			srv = s
+		}
+	} else if !servers[srv] {
+		return "", "", fmt.Errorf("本机还没有登录 %s：先执行 cohive login --server %s", srv, srv)
+	}
+	var names []string
+	if dev, ok := creds.Device(srv); ok {
+		wss, err := client.DeviceWorkspaces(ctx, srv, dev.Secret)
+		if err != nil {
+			return "", "", err
+		}
+		for _, w := range wss {
+			names = append(names, w.Name)
+		}
+	} else {
+		seen := map[string]bool{}
+		for _, l := range creds.Logins {
+			if l.Server == srv && !seen[l.Workspace] {
+				seen[l.Workspace] = true
+				names = append(names, l.Workspace)
+			}
 		}
 	}
-	switch len(matches) {
-	case 1:
-		return matches[0].s, matches[0].w, nil
+	if workspace != "" {
+		for _, n := range names {
+			if n == workspace {
+				return srv, workspace, nil
+			}
+		}
+		return "", "", fmt.Errorf("你还不是工作空间 %s 的成员（或本机没有它的登录）：请联系它的管理员，加入后再执行 cohive init", workspace)
+	}
+	switch len(names) {
 	case 0:
-		return "", "", fmt.Errorf("本机没有 %s 工作空间 %s 的登录，先执行 cohive login", server, workspace)
+		return "", "", errors.New("你还没有加入任何工作空间：请联系工作空间管理员把你加进去")
+	case 1:
+		return srv, names[0], nil
 	}
-	var list []string
-	for _, k := range matches {
-		list = append(list, fmt.Sprintf("--server %s --workspace %s", k.s, k.w))
-	}
-	return "", "", fmt.Errorf("本机登录了多个工作空间，请指定其中一个：\n  %s", strings.Join(list, "\n  "))
+	sort.Strings(names)
+	return "", "", fmt.Errorf("你在多个工作空间里，请用 --workspace 指定这个项目属于哪一个：\n  %s", strings.Join(names, "\n  "))
 }
 
 // checkNoSymlinks 确认 rel 路径上的每一级（从项目目录往下）都不是符号链接。

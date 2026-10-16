@@ -19,6 +19,7 @@ import (
 type MemberView struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
+	Disabled    bool   `json:"disabled,omitempty"`
 }
 
 type BoardIssue struct {
@@ -46,11 +47,11 @@ type detailResult struct {
 type Options struct {
 	// BotName 返回 Telegram 机器人用户名；为 nil 或返回空时，通讯工具连接不可用。
 	BotName func() string
-	// Announcer 在有新的待审申请时通知管理员（例如发到工作空间群里）；可为空。
+	// Announcer 在有新的待审申请、新成员加入时通知（例如发到工作空间群里）；可为空。
 	Announcer Announcer
 }
 
-// Handler 返回 /api/v1 与 /auth/ 下的接口。网页用会话 Cookie，命令行与编程工具用令牌；
+// Handler 返回 /api/v1 与 /auth/ 下的接口。网页用会话 Cookie，命令行与编程工具用令牌或设备密钥；
 // 登录、注册、设备授权的发起与轮询不需要身份。
 func Handler(svc *core.Service, opts Options) http.Handler {
 	outer := http.NewServeMux()
@@ -58,9 +59,87 @@ func Handler(svc *core.Service, opts Options) http.Handler {
 
 	mux := http.NewServeMux()
 	accountRoutes(mux, svc, opts)
+	workspaceRoutes(mux, svc)
 	adminRoutes(mux, svc, opts)
-	mux.HandleFunc("GET /api/v1/board", func(w http.ResponseWriter, r *http.Request) {
-		who := identity(r)
+	serverRoutes(mux, svc, opts)
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "没有这个接口"})
+	})
+	outer.Handle("/api/", authMiddleware(svc, mux))
+	return outer
+}
+
+// errNoWorkspace 是工作空间不存在或不是它的成员时的统一提示，不区分是哪种情况。
+var errNoWorkspace = map[string]string{"error": "工作空间不存在或你不是它的成员"}
+
+// memberScope 解析 /w/{ws} 前缀：会话要求账号在该工作空间在册；令牌要求令牌就属于该工作空间。
+// 返回本次请求在该工作空间里的身份；不满足时已写好 404。
+func memberScope(w http.ResponseWriter, r *http.Request, svc *core.Service) (store.Identity, bool) {
+	c := caller(r)
+	name := r.PathValue("ws")
+	ws, err := svc.WorkspaceByName(r.Context(), name)
+	if errors.Is(err, store.ErrNotFound) {
+		writeJSON(w, http.StatusNotFound, errNoWorkspace)
+		return store.Identity{}, false
+	}
+	if err != nil {
+		writeError(w, err)
+		return store.Identity{}, false
+	}
+	if c.Token != nil {
+		if c.Token.WorkspaceID != ws.ID {
+			writeJSON(w, http.StatusNotFound, errNoWorkspace)
+			return store.Identity{}, false
+		}
+		return *c.Token, true
+	}
+	m, err := store.MemberOf(r.Context(), svc.Pool, c.Account.ID, ws.ID)
+	if errors.Is(err, store.ErrNotFound) || (err == nil && m.Status != store.MemberActive) {
+		writeJSON(w, http.StatusNotFound, errNoWorkspace)
+		return store.Identity{}, false
+	}
+	if err != nil {
+		writeError(w, err)
+		return store.Identity{}, false
+	}
+	return store.Identity{AccountID: c.Account.ID, MemberID: m.ID, WorkspaceID: ws.ID, MemberName: c.Account.Name, Tool: "web"}, true
+}
+
+// adminScope 解析管理接口的 /w/{ws} 前缀：服务器管理员或该工作空间在册成员才能看到它（其余一律 404），
+// 是否为管理员由业务层判定（成员非管理员时 403）。
+func adminScope(w http.ResponseWriter, r *http.Request, svc *core.Service) (store.Workspace, *store.Account, bool) {
+	c := caller(r)
+	ws, err := svc.WorkspaceByName(r.Context(), r.PathValue("ws"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeJSON(w, http.StatusNotFound, errNoWorkspace)
+		return ws, nil, false
+	}
+	if err != nil {
+		writeError(w, err)
+		return ws, nil, false
+	}
+	if !c.Account.ServerAdmin {
+		ok, err := store.IsActiveMemberOf(r.Context(), svc.Pool, c.Account.ID, ws.ID)
+		if err != nil {
+			writeError(w, err)
+			return ws, nil, false
+		}
+		if !ok {
+			writeJSON(w, http.StatusNotFound, errNoWorkspace)
+			return ws, nil, false
+		}
+	}
+	a := c.Account
+	return ws, &a, true
+}
+
+// workspaceRoutes 注册工作空间内的看板与问题单接口（会话或令牌，要求在册）。
+func workspaceRoutes(mux *http.ServeMux, svc *core.Service) {
+	handle(mux, "GET /api/v1/w/{ws}/board", aSession|aToken, func(w http.ResponseWriter, r *http.Request) {
+		who, ok := memberScope(w, r, svc)
+		if !ok {
+			return
+		}
 		members, items, err := svc.Board(r.Context(), who)
 		if err != nil {
 			writeError(w, err)
@@ -68,15 +147,18 @@ func Handler(svc *core.Service, opts Options) http.Handler {
 		}
 		out := boardResult{Me: who.MemberName, Members: make([]MemberView, 0, len(members)), Issues: make([]BoardIssue, 0, len(items))}
 		for _, m := range members {
-			out.Members = append(out.Members, MemberView{Name: m.Name, DisplayName: m.DisplayName})
+			out.Members = append(out.Members, MemberView{Name: m.Name, DisplayName: m.DisplayName, Disabled: m.AccountDisabled})
 		}
 		for _, it := range items {
 			out.Issues = append(out.Issues, BoardIssue{IssueView: view.Issue(who, it.Issue), Holder: it.HolderName, Needs: it.Needs})
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
-	mux.HandleFunc("GET /api/v1/issues", func(w http.ResponseWriter, r *http.Request) {
-		who := identity(r)
+	handle(mux, "GET /api/v1/w/{ws}/issues", aSession|aToken, func(w http.ResponseWriter, r *http.Request) {
+		who, ok := memberScope(w, r, svc)
+		if !ok {
+			return
+		}
 		q := r.URL.Query()
 		list, err := svc.List(r.Context(), who, q.Get("q"), q.Get("service"))
 		if err != nil {
@@ -92,13 +174,17 @@ func Handler(svc *core.Service, opts Options) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
-	mux.HandleFunc("GET /api/v1/issues/{id}", func(w http.ResponseWriter, r *http.Request) {
-		who := identity(r)
+	handle(mux, "GET /api/v1/w/{ws}/issues/{id}", aSession|aToken, func(w http.ResponseWriter, r *http.Request) {
+		who, ok := memberScope(w, r, svc)
+		if !ok {
+			return
+		}
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil || id <= 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "问题单编号不合法"})
 			return
 		}
+		// 问题单编号全局自增：业务层按 who.WorkspaceID 校验可见性，别的工作空间的单子一律不存在
 		is, evs, err := svc.Get(r.Context(), who, id)
 		if err != nil {
 			writeError(w, err)
@@ -106,15 +192,6 @@ func Handler(svc *core.Service, opts Options) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, detailResult{Issue: view.Issue(who, is), Events: view.Events(evs)})
 	})
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "没有这个接口"})
-	})
-	outer.Handle("/api/", authMiddleware(svc, mux))
-	return outer
-}
-
-func identity(r *http.Request) store.Identity {
-	return caller(r).Identity // 中间件已保证存在
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -126,9 +203,20 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeError(w http.ResponseWriter, err error) {
 	var ie *core.InputError
+	var se *core.StateError
+	var he *core.HandoverError
 	switch {
-	case errors.Is(err, core.ErrNotAdmin):
+	case errors.As(err, &he):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "handover": handoverJSON(he.Handover)})
+	case errors.Is(err, core.ErrNotAdmin), errors.Is(err, core.ErrNotServerAdmin), errors.Is(err, core.ErrNotManager),
+		errors.Is(err, store.ErrAccountDisabled):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+	case errors.As(err, &se), errors.Is(err, store.ErrAlreadyMember), errors.Is(err, core.ErrJoinPending):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+	case errors.Is(err, core.ErrNotMember):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+	case errors.Is(err, store.ErrUnauthorized):
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	case errors.Is(err, core.ErrDecided):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 	case errors.Is(err, core.ErrInviteInvalid), errors.Is(err, core.ErrAuthGone), errors.Is(err, core.ErrLinkGone):

@@ -63,3 +63,37 @@ func queueNotifications(ctx context.Context, tx store.DBTX, who store.Identity, 
 	}
 	return nil
 }
+
+// queueReassign 在管理员改派的同一事务里给新接手人写待发群通知：
+// 新负责人在他该动手的状态下收到“新单交给你”；新发起人在待验证时收到“请验证”。
+func queueReassign(ctx context.Context, tx store.DBTX, who store.Identity, is store.Issue, ownerChanged, sourceChanged bool) error {
+	ws, err := store.GetWorkspace(ctx, tx, is.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	if ws.Notify.Channel == "" {
+		return nil
+	}
+	add := func(event string, to int64) error {
+		return store.InsertNotification(ctx, tx, store.Notification{
+			WorkspaceID: is.WorkspaceID, IssueID: is.ID, Event: event,
+			ActorMemberID: who.MemberID, ActorTool: who.Tool, Recipients: []int64{to},
+			IssueStatus: string(is.Status), IssueOwnerID: is.OwnerID,
+		})
+	}
+	switch is.Status {
+	case issue.StatusOpen, issue.StatusAccepted, issue.StatusFixing, issue.StatusReopened:
+		if ownerChanged && is.OwnerID != nil {
+			if err := add(EventAssigned, *is.OwnerID); err != nil {
+				return err
+			}
+		}
+	case issue.StatusReadyForVerification:
+		if sourceChanged {
+			if err := add(EventVerify, is.SourceMemberID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

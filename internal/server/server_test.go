@@ -98,10 +98,10 @@ func getJSON(t *testing.T, url, token string) map[string]any {
 
 func TestAPIRequiresToken(t *testing.T) {
 	f := newFixture(t, builtWeb)
-	if code, _, _ := get(t, f.url+"/api/v1/board", ""); code != http.StatusUnauthorized {
+	if code, _, _ := get(t, f.url+"/api/v1/w/default/board", ""); code != http.StatusUnauthorized {
 		t.Fatalf("未带令牌应返回 401，得到 %d", code)
 	}
-	if code, _, _ := get(t, f.url+"/api/v1/board", "cohive_forged"); code != http.StatusUnauthorized {
+	if code, _, _ := get(t, f.url+"/api/v1/w/default/board", "cohive_forged"); code != http.StatusUnauthorized {
 		t.Fatalf("伪造令牌应返回 401，得到 %d", code)
 	}
 }
@@ -109,7 +109,9 @@ func TestAPIRequiresToken(t *testing.T) {
 func TestMe(t *testing.T) {
 	f := newFixture(t, builtWeb)
 	me := getJSON(t, f.url+"/api/v1/me", f.tokenA)
-	if me["member"] != "lee-claude" || me["tool"] != "claude-code" {
+	acc, _ := me["account"].(map[string]any)
+	ws, _ := me["workspace"].(map[string]any)
+	if acc["name"] != "lee-claude" || me["tool"] != "claude-code" || me["login_method"] != "token" || ws["name"] != "default" {
 		t.Fatalf("身份不符：%v", me)
 	}
 }
@@ -124,7 +126,7 @@ func TestBoardAPI(t *testing.T) {
 	if _, err := f.svc.Act(ctx, f.a, core.ActInput{IssueID: d.ID, Action: issue.ActSubmit, ExpectedVersion: d.Version}); err != nil {
 		t.Fatal(err)
 	}
-	board := getJSON(t, f.url+"/api/v1/board", f.tokenB)
+	board := getJSON(t, f.url+"/api/v1/w/default/board", f.tokenB)
 	if len(board["members"].([]any)) != 2 {
 		t.Fatalf("应有 2 位成员：%v", board["members"])
 	}
@@ -145,7 +147,7 @@ func TestIssueDetailAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	url := f.url + "/api/v1/issues/" + jsonNumber(d.ID)
+	url := f.url + "/api/v1/w/default/issues/" + jsonNumber(d.ID)
 	if code, ct, _ := get(t, url, f.tokenB); code != http.StatusNotFound || !strings.Contains(ct, "json") {
 		t.Fatalf("别人的草稿应返回 JSON 404，得到 %d %s", code, ct)
 	}
@@ -153,7 +155,7 @@ func TestIssueDetailAPI(t *testing.T) {
 	if got["issue"].(map[string]any)["status"] != "DRAFT" || len(got["events"].([]any)) != 1 {
 		t.Fatalf("详情不符：%v", got)
 	}
-	if code, _, _ := get(t, f.url+"/api/v1/issues/abc", f.tokenA); code != http.StatusBadRequest {
+	if code, _, _ := get(t, f.url+"/api/v1/w/default/issues/abc", f.tokenA); code != http.StatusBadRequest {
 		t.Fatalf("非法编号应返回 400，得到 %d", code)
 	}
 }
@@ -170,15 +172,15 @@ func TestIssueListAPI(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	all := getJSON(t, f.url+"/api/v1/issues", f.tokenB)["items"].([]any)
+	all := getJSON(t, f.url+"/api/v1/w/default/issues", f.tokenB)["items"].([]any)
 	if len(all) != 2 {
 		t.Fatalf("应有 2 张单，得到 %d", len(all))
 	}
-	hit := getJSON(t, f.url+"/api/v1/issues?q=500", f.tokenB)["items"].([]any)
+	hit := getJSON(t, f.url+"/api/v1/w/default/issues?q=500", f.tokenB)["items"].([]any)
 	if len(hit) != 1 {
 		t.Fatalf("关键词过滤后应有 1 张，得到 %d", len(hit))
 	}
-	none := getJSON(t, f.url+"/api/v1/issues?status=CLOSED", f.tokenB)["items"].([]any)
+	none := getJSON(t, f.url+"/api/v1/w/default/issues?status=CLOSED", f.tokenB)["items"].([]any)
 	if len(none) != 0 {
 		t.Fatalf("按状态过滤后应为空，得到 %d", len(none))
 	}

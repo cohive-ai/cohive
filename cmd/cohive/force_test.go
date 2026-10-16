@@ -25,7 +25,7 @@ func TestForceRepairRevokesOldDevice(t *testing.T) {
 		for i := 0; i < 300; i++ {
 			var id int64
 			if err := s.svc.Pool.QueryRow(ctx, `SELECT id FROM device_auths WHERE status = 'awaiting_admin'`).Scan(&id); err == nil {
-				if _, err := s.svc.DecideDeviceAuth(ctx, nil, id, true); err != nil {
+				if _, err := s.svc.DecideDeviceAuth(ctx, nil, 0, id, true); err != nil {
 					t.Error(err)
 				}
 				return

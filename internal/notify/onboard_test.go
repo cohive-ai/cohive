@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/notify"
@@ -48,46 +49,89 @@ func (f *fakeAPI) AnswerCallback(_ context.Context, _ string, text string) error
 
 // fakeCore 模拟业务层。
 type fakeCore struct {
-	calls     []any
-	link      core.LinkResult
-	err       error
-	actor     store.Member
-	actorErr  error
-	workspace store.Workspace
+	calls       []any
+	link        core.LinkResult
+	err         error
+	actor       store.Account
+	actorErr    error
+	workspace   store.Workspace           // Workspace 与 WorkspaceByGroup 的默认结果
+	groups      map[int64]store.Workspace // 群编号 → 工作空间；为空时一律返回 workspace
+	memberships []store.Membership        // 申请人在册的工作空间
+	byID        map[int64]store.Workspace // Workspace(id)；为空时返回 workspace
+	posts       []store.BotPost
 }
 
 func (f *fakeCore) CompleteTelegramLink(_ context.Context, p string, uid int64, name string) (core.LinkResult, error) {
 	f.calls = append(f.calls, "link", p, uid, name)
 	return f.link, f.err
 }
-func (f *fakeCore) DecideSignup(_ context.Context, a *store.Member, id int64, ok bool) (core.SignupDecision, error) {
-	f.calls = append(f.calls, "signup", a.ID, id, ok)
-	return core.SignupDecision{Signup: store.Signup{Name: "ann", DisplayName: "Ann"}, Workspace: f.workspace, Decider: a.Name}, f.err
+func (f *fakeCore) DecideSignup(_ context.Context, a *store.Account, ws, id int64, ok bool) (core.SignupDecision, error) {
+	f.calls = append(f.calls, "signup", a.ID, ws, id, ok)
+	st := store.SignupRejected
+	if ok {
+		st = store.SignupApproved
+	}
+	return core.SignupDecision{Signup: store.Signup{ID: id, Name: "ann", DisplayName: "Ann", Status: st}, Workspace: f.workspace, Decider: a.Name}, f.err
 }
-func (f *fakeCore) DecideDeviceAuth(_ context.Context, a *store.Member, id int64, ok bool) (core.DeviceDecision, error) {
-	f.calls = append(f.calls, "device", a.ID, id, ok)
-	return core.DeviceDecision{Auth: store.DeviceAuth{MemberName: "ann", DeviceName: "mac"}, Workspace: f.workspace, Decider: a.Name}, f.err
+func (f *fakeCore) DecideDeviceAuth(_ context.Context, a *store.Account, ws, id int64, ok bool) (core.DeviceDecision, error) {
+	f.calls = append(f.calls, "device", a.ID, ws, id, ok)
+	st := store.AuthDenied
+	if ok {
+		st = store.AuthApproved
+	}
+	return core.DeviceDecision{Auth: store.DeviceAuth{ID: id, AccountName: "ann", DeviceName: "mac", Status: st},
+		Workspaces: []string{"payments", "ops"}, Decider: a.Name}, f.err
 }
-func (f *fakeCore) Workspace(context.Context, int64) (store.Workspace, error) {
+func (f *fakeCore) Workspace(_ context.Context, id int64) (store.Workspace, error) {
+	if w, ok := f.byID[id]; ok {
+		return w, nil
+	}
 	return f.workspace, nil
 }
-func (f *fakeCore) MemberByTelegram(_ context.Context, ws, uid int64) (store.Member, error) {
-	f.calls = append(f.calls, "who", ws, uid)
+func (f *fakeCore) WorkspaceByGroup(_ context.Context, chat int64) (store.Workspace, error) {
+	if f.groups == nil {
+		return f.workspace, nil
+	}
+	if w, ok := f.groups[chat]; ok {
+		return w, nil
+	}
+	return store.Workspace{}, store.ErrNotFound
+}
+func (f *fakeCore) AccountByTelegram(_ context.Context, uid int64) (store.Account, error) {
+	f.calls = append(f.calls, "who", uid)
 	return f.actor, f.actorErr
+}
+func (f *fakeCore) Memberships(context.Context, int64) ([]store.Membership, error) {
+	return f.memberships, nil
+}
+func (f *fakeCore) RecordBotPost(_ context.Context, p store.BotPost) error {
+	f.posts = append(f.posts, p)
+	return nil
+}
+func (f *fakeCore) BotPosts(_ context.Context, kind string, ref int64) ([]store.BotPost, error) {
+	var out []store.BotPost
+	for _, p := range f.posts {
+		if p.Kind == kind && p.RefID == ref {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 func newBot(c *fakeCore, api *fakeAPI) *notify.Bot {
 	return &notify.Bot{Core: c, API: api, Name: "CohiveBot"}
 }
 
-func callback(data string, from int64) notify.Update {
+func callbackIn(data string, from, chat int64) notify.Update {
 	return notify.Update{UpdateID: 2, CallbackQuery: &notify.TGCallback{ID: "cb", Data: data,
 		From:    notify.TGUser{ID: from, Username: "boss"},
-		Message: &notify.TGMessage{MessageID: 77, Chat: notify.TGChat{ID: -100, Type: "supergroup"}}}}
+		Message: &notify.TGMessage{MessageID: 77, Chat: notify.TGChat{ID: chat, Type: "supergroup"}}}}
 }
 
+func callback(data string, from int64) notify.Update { return callbackIn(data, from, -100) }
+
 func TestStartLinksTelegram(t *testing.T) {
-	c := &fakeCore{link: core.LinkResult{Member: "lee", Workspace: "default"}}
+	c := &fakeCore{link: core.LinkResult{Account: "lee"}}
 	api := &fakeAPI{}
 	newBot(c, api).Handle(context.Background(), msg("/start ln_abc", "private", 42, "lee_ut"))
 	if len(c.calls) != 4 || c.calls[1] != "ln_abc" || c.calls[2] != int64(42) || c.calls[3] != "lee_ut" {
@@ -120,7 +164,7 @@ func TestStartLinksTelegram(t *testing.T) {
 func TestAnnounceAndApprove(t *testing.T) {
 	ctx := context.Background()
 	ws := store.Workspace{ID: 3, Name: "payments", Notify: store.NotifyConfig{Channel: "telegram", Target: "-1001"}}
-	c := &fakeCore{workspace: ws, actor: store.Member{ID: 9, Name: "lee", Role: store.RoleAdmin, WorkspaceID: 3}}
+	c := &fakeCore{workspace: ws, groups: map[int64]store.Workspace{-1001: ws}, actor: store.Account{ID: 9, Name: "lee"}}
 	api := &fakeAPI{}
 	bot := newBot(c, api)
 	if err := bot.AnnounceSignup(ctx, store.Signup{ID: 5, WorkspaceID: 3, Name: "ann", DisplayName: "<Ann>"}); err != nil {
@@ -129,17 +173,13 @@ func TestAnnounceAndApprove(t *testing.T) {
 	if len(api.chats) != 1 || api.chats[0] != -1001 || !strings.Contains(api.buttons[0], "&lt;Ann&gt;") || api.btnData[0][0].Data != "su:3:5:y" {
 		t.Fatalf("应在群里发审批消息：%v %v %+v", api.chats, api.buttons, api.btnData)
 	}
-	wsID := int64(3)
-	if err := bot.AnnounceDevice(ctx, store.DeviceAuth{ID: 6, WorkspaceID: &wsID, MemberName: "ann", DeviceName: "mac", Tools: []string{"codex"}}); err != nil {
-		t.Fatal(err)
-	}
-	if api.btnData[1][1].Data != "da:3:6:n" {
-		t.Fatalf("设备审批按钮：%+v", api.btnData)
+	if len(c.posts) != 1 || c.posts[0].ChatID != -1001 || c.posts[0].RefID != 5 {
+		t.Fatalf("应记下审批消息：%+v", c.posts)
 	}
 
-	bot.Handle(ctx, callback("su:3:5:y", 900))
-	if c.calls[0] != "who" || c.calls[1] != int64(3) || c.calls[2] != int64(900) || c.calls[3] != "signup" || c.calls[5] != int64(5) || c.calls[6] != true {
-		t.Fatalf("应按点击者找成员再审批：%v", c.calls)
+	bot.Handle(ctx, callbackIn("su:3:5:y", 900, -1001))
+	if c.calls[0] != "who" || c.calls[1] != int64(900) || c.calls[2] != "signup" || c.calls[4] != int64(3) || c.calls[5] != int64(5) || c.calls[6] != true {
+		t.Fatalf("应按点击者找账号、按本群的工作空间审批：%v", c.calls)
 	}
 	if len(api.edits) != 1 || !strings.Contains(api.edits[0], "已批准") || !strings.Contains(api.edits[0], "lee") || api.editKeys[0] != nil {
 		t.Fatalf("应把消息改成结果并去掉按钮：%v", api.edits)
@@ -152,24 +192,87 @@ func TestAnnounceAndApprove(t *testing.T) {
 	}
 }
 
+// 设备申请发到申请人在册所在、配置了群的每个工作空间群；任一处批准后各群的消息都改成结果。
+func TestDeviceAnnouncedToAllGroups(t *testing.T) {
+	ctx := context.Background()
+	pay := store.Workspace{ID: 3, Name: "payments", Notify: store.NotifyConfig{Channel: "telegram", Target: "-1001"}}
+	ops := store.Workspace{ID: 4, Name: "ops", Notify: store.NotifyConfig{Channel: "telegram", Target: "-1002"}}
+	quiet := store.Workspace{ID: 5, Name: "quiet"}
+	accID := int64(7)
+	c := &fakeCore{
+		byID:        map[int64]store.Workspace{3: pay, 4: ops, 5: quiet},
+		groups:      map[int64]store.Workspace{-1001: pay, -1002: ops},
+		memberships: []store.Membership{{WorkspaceID: 3, Workspace: "payments"}, {WorkspaceID: 4, Workspace: "ops"}, {WorkspaceID: 5, Workspace: "quiet"}},
+		actor:       store.Account{ID: 9, Name: "boss"},
+	}
+	api := &fakeAPI{}
+	bot := newBot(c, api)
+	if err := bot.AnnounceDevice(ctx, store.DeviceAuth{ID: 6, AccountID: &accID, AccountName: "ann", DeviceName: "mac", Tools: []string{"codex"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.chats) != 2 || api.chats[0] != -1001 || api.chats[1] != -1002 {
+		t.Fatalf("应发到两个配置了群的工作空间：%v", api.chats)
+	}
+	if api.btnData[0][0].Data != "da:3:6:y" || api.btnData[1][1].Data != "da:4:6:n" {
+		t.Fatalf("按钮应带各自群的工作空间：%+v", api.btnData)
+	}
+	if !strings.Contains(api.buttons[0], "payments、ops、quiet") {
+		t.Fatalf("审批消息应写明批准后可用于他全部工作空间：%s", api.buttons[0])
+	}
+	bot.Handle(ctx, callbackIn("da:4:6:y", 900, -1002))
+	if c.calls[2] != "device" || c.calls[4] != int64(4) {
+		t.Fatalf("应按点击所在群的工作空间审批：%v", c.calls)
+	}
+	if len(api.edits) != 2 {
+		t.Fatalf("两个群里的审批消息都应改成结果：%v", api.edits)
+	}
+}
+
 func TestApproveCallbackRejected(t *testing.T) {
 	ctx := context.Background()
+	pay := store.Workspace{ID: 3, Name: "payments"}
+	disabled := time.Now()
 	for _, tc := range []struct {
 		name string
 		core *fakeCore
 		data string
+		chat int64
 		want string
 	}{
-		{"未连接", &fakeCore{actorErr: store.ErrNotFound}, "su:3:5:y", "还没有连接"},
-		{"非管理员", &fakeCore{err: core.ErrNotAdmin}, "da:3:5:y", "管理员"},
-		{"已处理", &fakeCore{err: core.ErrDecided}, "su:3:5:n", "处理过"},
-		{"坏数据", &fakeCore{}, "su:x:5:y", ""},
-		{"旧按钮", &fakeCore{}, "join:5:y", ""},
+		{"未连接", &fakeCore{workspace: pay, actorErr: store.ErrNotFound}, "su:3:5:y", -100, "还没有连接"},
+		{"已停用", &fakeCore{workspace: pay, actor: store.Account{ID: 1, DisabledAt: &disabled}}, "su:3:5:y", -100, "还没有连接"},
+		{"非管理员", &fakeCore{workspace: pay, err: core.ErrNotAdmin}, "da:3:5:y", -100, "管理员"},
+		{"管不到申请人", &fakeCore{workspace: pay, err: core.ErrNotManager}, "da:3:5:y", -100, "管理员"},
+		{"已处理", &fakeCore{workspace: pay, err: core.ErrDecided}, "su:3:5:n", -100, "处理过"},
+		{"按钮与本群不符", &fakeCore{workspace: pay}, "su:4:5:y", -100, "不符"},
+		{"群没有绑定", &fakeCore{workspace: pay, groups: map[int64]store.Workspace{}}, "su:3:5:y", -100, "不符"},
+		{"坏数据", &fakeCore{workspace: pay}, "su:x:5:y", -100, ""},
+		{"旧按钮", &fakeCore{workspace: pay}, "join:5:y", -100, ""},
 	} {
 		api := &fakeAPI{}
-		newBot(tc.core, api).Handle(ctx, callback(tc.data, 501))
+		newBot(tc.core, api).Handle(ctx, callbackIn(tc.data, 501, tc.chat))
 		if len(api.answers) != 1 || !strings.Contains(api.answers[0], tc.want) || len(api.edits) != 0 {
 			t.Errorf("%s：应只回应点击 %q，得到 %v %v", tc.name, tc.want, api.answers, api.edits)
 		}
+		for _, c := range tc.core.calls {
+			if c == "signup" || c == "device" {
+				if tc.name == "按钮与本群不符" || tc.name == "群没有绑定" || tc.name == "未连接" || tc.name == "已停用" {
+					t.Errorf("%s：不应调用审批：%v", tc.name, tc.core.calls)
+				}
+			}
+		}
+	}
+}
+
+// 有人加入工作空间后在群里打招呼并 @ 他。
+func TestAnnounceJoined(t *testing.T) {
+	ws := store.Workspace{ID: 3, Name: "payments", Notify: store.NotifyConfig{Channel: "telegram", Target: "-1001"}}
+	api := &fakeAPI{}
+	if err := newBot(&fakeCore{workspace: ws}, api).AnnounceJoined(context.Background(),
+		store.Member{WorkspaceID: 3, Name: "ann", DisplayName: "Ann", TelegramUsername: "ann_tg"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.texts) != 1 || !strings.Contains(api.texts[0], "@ann_tg") || !strings.Contains(api.texts[0], "payments") {
+		t.Fatalf("应在群里 @ 新成员：%v", api.texts)
 	}
 }

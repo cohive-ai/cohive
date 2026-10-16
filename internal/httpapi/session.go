@@ -7,22 +7,23 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
-	"github.com/cohive-ai/cohive/internal/authn"
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
 const sessionCookie = "cohive_session"
 
-// Caller 是一次请求的操作者。网页会话时 Session 非空、Identity.Tool 为 web；
-// SessionVia 是会话来源（password：账号密码登录；device：cohive web 免密），令牌请求为空。
+// Caller 是一次请求的操作者。四类鉴权（设计稿第 4 节）：
+// 网页会话（Session 非空；SessionVia 为 password 或 device）、成员令牌（Token 非空）、设备密钥（Device 非空）。
 type Caller struct {
-	Identity   store.Identity
-	Member     store.Member
+	Account    store.Account
 	Session    string
 	SessionVia string
+	Token      *store.Identity // 成员令牌：属于某个成员资格，即某个工作空间
+	Device     *store.Device   // 设备密钥
 	MustChange bool
 }
 
@@ -43,20 +44,44 @@ var allowedWhileMustChange = map[string]bool{
 	"POST /api/v1/auth/password": true,
 }
 
-// authMiddleware 先认会话 Cookie，没有 Authorization 头时才看 Cookie；有令牌时按令牌鉴权。
+// authMiddleware 有 Authorization 头时按令牌或设备密钥鉴权，否则认会话 Cookie。
+// 每类凭据能调哪些接口由 handle 注册时声明，在 allowed 里统一判定。
 func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
-	bearer := authn.Middleware(svc.Pool)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		who, _ := authn.FromContext(r.Context())
-		m, err := store.MemberByID(r.Context(), svc.Pool, who.MemberID)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		next.ServeHTTP(w, withCaller(r, Caller{Identity: who, Member: m}))
-	}))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "" {
-			bearer.ServeHTTP(w, r)
+		if h := r.Header.Get("Authorization"); h != "" {
+			plain, ok := strings.CutPrefix(h, "Bearer ")
+			if !ok || plain == "" {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "令牌格式不对"})
+				return
+			}
+			if strings.HasPrefix(plain, core.DeviceSecretPrefix) {
+				d, a, err := svc.AuthenticateDevice(r.Context(), plain)
+				if errors.Is(err, store.ErrUnauthorized) {
+					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "设备密钥无效、设备已吊销或账号已停用，请重新执行 cohive login"})
+					return
+				}
+				if err != nil {
+					writeError(w, err)
+					return
+				}
+				next.ServeHTTP(w, withCaller(r, Caller{Account: a, Device: &d}))
+				return
+			}
+			who, err := store.LookupToken(r.Context(), svc.Pool, plain)
+			if errors.Is(err, store.ErrUnauthorized) {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "令牌无效或已吊销"})
+				return
+			}
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			a, err := svc.Account(r.Context(), who.AccountID)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			next.ServeHTTP(w, withCaller(r, Caller{Account: a, Token: &who}))
 			return
 		}
 		c, err := r.Cookie(sessionCookie)
@@ -64,7 +89,7 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "请先登录"})
 			return
 		}
-		m, via, err := svc.SessionMember(r.Context(), c.Value)
+		a, via, err := svc.SessionAccount(r.Context(), c.Value)
 		if errors.Is(err, store.ErrUnauthorized) {
 			clearSessionCookie(w, r)
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "登录已过期，请重新登录"})
@@ -78,7 +103,7 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "跨站请求已拒绝"})
 			return
 		}
-		pw, err := svc.PasswordStatus(r.Context(), m.ID)
+		pw, err := svc.PasswordStatus(r.Context(), a.ID)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -87,8 +112,70 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "请先修改密码", "must_change_password": true})
 			return
 		}
-		who := store.Identity{MemberID: m.ID, WorkspaceID: m.WorkspaceID, MemberName: m.Name, Tool: "web"}
-		next.ServeHTTP(w, withCaller(r, Caller{Identity: who, Member: m, Session: c.Value, SessionVia: via, MustChange: pw.MustChange}))
+		next.ServeHTTP(w, withCaller(r, Caller{Account: a, Session: c.Value, SessionVia: via, MustChange: pw.MustChange}))
+	})
+}
+
+// 接口接受的凭据种类
+type allow int
+
+const (
+	aPassword    allow = 1 << iota // 账号密码登录的网页会话
+	aDeviceWeb                     // cohive web 免密会话
+	aToken                         // 成员令牌
+	aDeviceToken                   // 属于某台设备的成员令牌（cohive web 兼容 M5 配对的旧电脑）
+	aDevice                        // 设备密钥
+
+	aSession = aPassword | aDeviceWeb
+)
+
+// errNeedPassword 是需要密码登录的网页会话时的提示。
+const errNeedPassword = "管理操作请在网页上用账号密码登录后进行"
+
+// allowed 判定这次请求的凭据能否调用该接口；不能时已写好响应。
+func allowed(w http.ResponseWriter, c Caller, kinds allow) bool {
+	switch {
+	case c.Device != nil:
+		if kinds&aDevice != 0 {
+			return true
+		}
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "设备密钥不能用于这个接口"})
+		return false
+	case c.Token != nil:
+		if kinds&aToken != 0 || (kinds&aDeviceToken != 0 && c.Token.DeviceID != nil) {
+			return true
+		}
+		if kinds&aDeviceToken != 0 {
+			writeError(w, core.ErrNoDevice)
+			return false
+		}
+		if kinds&aSession == aPassword {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": errNeedPassword, "need_password_login": true})
+			return false
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "这个操作只能在网页上进行"})
+		return false
+	default:
+		if (c.SessionVia == store.SessionViaPassword && kinds&aPassword != 0) ||
+			(c.SessionVia == store.SessionViaDevice && kinds&aDeviceWeb != 0) {
+			return true
+		}
+		if kinds&aPassword != 0 {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": errNeedPassword, "need_password_login": true})
+			return false
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "这个接口不能在网页上使用"})
+		return false
+	}
+}
+
+// handle 注册一个需要身份的接口，并声明它接受的凭据种类。
+func handle(mux *http.ServeMux, pattern string, kinds allow, h http.HandlerFunc) {
+	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		if !allowed(w, caller(r), kinds) {
+			return
+		}
+		h(w, r)
 	})
 }
 
@@ -136,27 +223,21 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 
 // decode 读取不超过 8KB 的 JSON 请求体；失败时已写好错误响应。
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(v); err != nil {
+	return decodeLimit(w, r, v, 8192)
+}
+
+func decodeLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(v); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求格式不对"})
 		return false
 	}
 	return true
 }
 
-// sessionOnly 要求请求来自网页会话（设备授权、改密码等只能在网页上做）。
-func sessionOnly(w http.ResponseWriter, r *http.Request) bool {
-	if caller(r).Session == "" {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "这个操作只能在网页上进行"})
-		return false
+// loginMethod 返回这次请求的登录方式：password（账号密码）、device（cohive web 免密）、token（编程工具令牌）。
+func loginMethod(c Caller) string {
+	if c.Session == "" {
+		return "token"
 	}
-	return true
-}
-
-// deviceOnly 要求请求来自已配对设备上的令牌。
-func deviceOnly(w http.ResponseWriter, r *http.Request) bool {
-	if caller(r).Identity.DeviceID == nil {
-		writeError(w, core.ErrNoDevice)
-		return false
-	}
-	return true
+	return c.SessionVia
 }

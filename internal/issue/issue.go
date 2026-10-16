@@ -82,6 +82,8 @@ const (
 	ActClose               Action = "close"
 	ActReopen              Action = "reopen"
 	ActComment             Action = "comment"
+	// ActReassign 是管理员改派（移出成员时转交），不属于状态机动作，不经编程工具，状态不变。
+	ActReassign Action = "reassign"
 )
 
 // Role 是操作者相对于某张问题单的角色。

@@ -30,15 +30,22 @@ type DBTX interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// Member 是成员资格：某个账号在某个工作空间里的身份。名字、显示名、Telegram 取自账号。
 type Member struct {
 	ID               int64
 	WorkspaceID      int64
-	Name             string
+	Name             string // 账号的登录名
 	DisplayName      string
 	TelegramUsername string
-	TelegramUserID   *int64 // 连接的 Telegram 账号编号，用于识别群里点审批按钮的人
+	TelegramUserID   *int64 // 账号连接的 Telegram 账号编号，用于识别群里点审批按钮的人
 	Role             string // member 或 admin；管理员可以生成邀请、审批配对申请
+	AccountID        int64
+	Status           string // active 或 removed
+	AccountDisabled  bool
 }
+
+// Active 判断成员资格在册且账号未停用。
+func (m Member) Active() bool { return m.Status == MemberActive && !m.AccountDisabled }
 
 // 成员角色
 const (
@@ -52,6 +59,7 @@ func (m Member) IsAdmin() bool { return m.Role == RoleAdmin }
 // Identity 是一次调用的操作者：哪个人的哪个工具。
 type Identity struct {
 	TokenID     int64
+	AccountID   int64
 	MemberID    int64
 	WorkspaceID int64
 	MemberName  string
@@ -123,22 +131,6 @@ func DefaultWorkspace(ctx context.Context, q DBTX) (int64, error) {
 	return id, err
 }
 
-func CreateMember(ctx context.Context, q DBTX, wsID int64, name, display string) (Member, error) {
-	m := Member{WorkspaceID: wsID, Name: name, DisplayName: display, Role: RoleMember}
-	err := q.QueryRow(ctx,
-		`INSERT INTO members (workspace_id, name, display_name) VALUES ($1, $2, $3) RETURNING id`,
-		wsID, name, display).Scan(&m.ID)
-	return m, err
-}
-
-func MemberByName(ctx context.Context, q DBTX, wsID int64, name string) (Member, error) {
-	m := Member{WorkspaceID: wsID, Name: name}
-	err := q.QueryRow(ctx,
-		`SELECT id, display_name, telegram_username, telegram_user_id, role FROM members WHERE workspace_id = $1 AND name = $2`,
-		wsID, name).Scan(&m.ID, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role)
-	return m, notFound(err)
-}
-
 // ---- 令牌 ----
 
 func hashToken(plain string) []byte {
@@ -162,12 +154,15 @@ func IssueToken(ctx context.Context, q DBTX, memberID int64, tool string) (plain
 func LookupToken(ctx context.Context, q DBTX, plain string) (Identity, error) {
 	var id Identity
 	err := q.QueryRow(ctx, `
-		SELECT t.id, m.id, m.workspace_id, m.name, t.tool, t.device_id
+		SELECT t.id, a.id, m.id, m.workspace_id, a.name, t.tool, t.device_id
 		FROM tokens t JOIN members m ON m.id = t.member_id
+		JOIN accounts a ON a.id = m.account_id
 		LEFT JOIN devices d ON d.id = t.device_id
 		WHERE t.token_hash = $1 AND t.revoked_at IS NULL
-		AND (t.device_id IS NULL OR d.revoked_at IS NULL)`,
-		hashToken(plain)).Scan(&id.TokenID, &id.MemberID, &id.WorkspaceID, &id.MemberName, &id.Tool, &id.DeviceID)
+		AND (t.device_id IS NULL OR d.revoked_at IS NULL)
+		-- 第二道防线：移出、停用时令牌已吊销，这里再查一次
+		AND m.status = 'active' AND a.disabled_at IS NULL`,
+		hashToken(plain)).Scan(&id.TokenID, &id.AccountID, &id.MemberID, &id.WorkspaceID, &id.MemberName, &id.Tool, &id.DeviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Identity{}, ErrUnauthorized
 	}
@@ -208,20 +203,17 @@ func UpsertService(ctx context.Context, q DBTX, wsID int64, name string, ownerID
 	return err
 }
 
+// ServiceOwner 返回服务的负责人；负责人已移出时视为未登记。
 func ServiceOwner(ctx context.Context, q DBTX, wsID int64, service string) (Member, error) {
-	m := Member{WorkspaceID: wsID}
-	err := q.QueryRow(ctx, `
-		SELECT m.id, m.name, m.display_name, m.telegram_username, m.telegram_user_id, m.role
-		FROM services s JOIN members m ON m.id = s.owner_id
-		WHERE s.workspace_id = $1 AND s.name = $2`,
-		wsID, service).Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role)
-	return m, notFound(err)
+	return scanMember(q.QueryRow(ctx, `SELECT `+memberColumns+`
+		FROM services s JOIN members m ON m.id = s.owner_id JOIN accounts a ON a.id = m.account_id
+		WHERE s.workspace_id = $1 AND s.name = $2 AND m.status = 'active'`, wsID, service))
 }
 
 // ---- 问题单 ----
 
 const issueColumns = `
-	i.id, i.workspace_id, i.source_member_id, sm.name, i.source_tool, i.owner_id, COALESCE(om.name, ''),
+	i.id, i.workspace_id, i.source_member_id, sa.name, i.source_tool, i.owner_id, COALESCE(oa.name, ''),
 	i.target_service, i.severity, i.title, i.brief, i.summary, i.expected, i.actual,
 	i.repro_script, i.repro_env, i.repro_exit_code, i.evidence, i.repo, i.branch, i.commit_sha,
 	i.status, i.version, i.reopen_count, i.escalated_at, i.escalation_reason, i.created_at, i.updated_at`
@@ -229,7 +221,9 @@ const issueColumns = `
 const issueFrom = `
 	FROM issues i
 	JOIN members sm ON sm.id = i.source_member_id
-	LEFT JOIN members om ON om.id = i.owner_id`
+	JOIN accounts sa ON sa.id = sm.account_id
+	LEFT JOIN members om ON om.id = i.owner_id
+	LEFT JOIN accounts oa ON oa.id = om.account_id`
 
 func scanIssue(row pgx.Row) (Issue, error) {
 	var is Issue
@@ -357,9 +351,9 @@ func InsertEvent(ctx context.Context, q DBTX, ev Event) error {
 
 func ListEvents(ctx context.Context, q DBTX, issueID int64) ([]Event, error) {
 	rows, err := q.Query(ctx, `
-		SELECT e.id, e.issue_id, e.actor_member_id, m.name, e.actor_tool, e.action,
+		SELECT e.id, e.issue_id, e.actor_member_id, a.name, e.actor_tool, e.action,
 		       e.from_status, e.to_status, e.note, e.payload, e.created_at
-		FROM issue_events e JOIN members m ON m.id = e.actor_member_id
+		FROM issue_events e JOIN members m ON m.id = e.actor_member_id JOIN accounts a ON a.id = m.account_id
 		WHERE e.issue_id = $1 ORDER BY e.id`, issueID)
 	if err != nil {
 		return nil, err
@@ -422,27 +416,10 @@ type ServiceInfo struct {
 	OwnerName string
 }
 
-func ListMembers(ctx context.Context, q DBTX, wsID int64) ([]Member, error) {
-	rows, err := q.Query(ctx, `SELECT id, name, display_name, telegram_username, telegram_user_id, role FROM members WHERE workspace_id = $1 ORDER BY id`, wsID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Member
-	for rows.Next() {
-		m := Member{WorkspaceID: wsID}
-		if err := rows.Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role); err != nil {
-			return nil, err
-		}
-		out = append(out, m)
-	}
-	return out, rows.Err()
-}
-
 func ListTokens(ctx context.Context, q DBTX, wsID int64) ([]TokenInfo, error) {
 	rows, err := q.Query(ctx, `
-		SELECT t.id, m.name, t.tool, t.created_at, t.revoked_at
-		FROM tokens t JOIN members m ON m.id = t.member_id
+		SELECT t.id, a.name, t.tool, t.created_at, t.revoked_at
+		FROM tokens t JOIN members m ON m.id = t.member_id JOIN accounts a ON a.id = m.account_id
 		WHERE m.workspace_id = $1 ORDER BY t.id`, wsID)
 	if err != nil {
 		return nil, err
@@ -461,7 +438,7 @@ func ListTokens(ctx context.Context, q DBTX, wsID int64) ([]TokenInfo, error) {
 
 func ListServices(ctx context.Context, q DBTX, wsID int64) ([]ServiceInfo, error) {
 	rows, err := q.Query(ctx, `
-		SELECT s.name, m.name FROM services s JOIN members m ON m.id = s.owner_id
+		SELECT s.name, a.name FROM services s JOIN members m ON m.id = s.owner_id JOIN accounts a ON a.id = m.account_id
 		WHERE s.workspace_id = $1 ORDER BY s.name`, wsID)
 	if err != nil {
 		return nil, err

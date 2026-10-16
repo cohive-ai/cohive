@@ -54,7 +54,7 @@ func runCLI(ctx context.Context, in io.Reader, out io.Writer, args []string) err
 	case "web":
 		return openWeb(ctx, out, args[1:])
 	case "init":
-		return initProject(out, args[1:])
+		return initProject(ctx, out, args[1:])
 	case "mcp-proxy":
 		return runProxy(ctx, in, out, os.Stderr, args[1:])
 	case "help", "-h", "--help":
@@ -105,12 +105,19 @@ func status(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if len(creds.Logins) == 0 {
+	if len(creds.Logins) == 0 && len(creds.Devices) == 0 {
 		fmt.Fprintln(out, "还没有登录。执行 cohive login --server <协作服务地址>，在浏览器里授权即可。")
 		return nil
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "服务\t工作空间\t成员\t工具\t登录时间")
+	if len(creds.Devices) > 0 {
+		fmt.Fprintln(tw, "服务\t账号\t设备编号\t配对时间")
+		for _, d := range creds.Devices {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", d.Server, d.Account, d.DeviceID, d.CreatedAt.Local().Format("2006-01-02 15:04"))
+		}
+		fmt.Fprintln(tw, "\t\t\t")
+	}
+	fmt.Fprintln(tw, "服务\t工作空间\t账号\t工具\t登录时间")
 	for _, l := range creds.Logins {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", l.Server, l.Workspace, l.Member, l.Tool, l.CreatedAt.Local().Format("2006-01-02 15:04"))
 	}

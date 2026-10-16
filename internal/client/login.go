@@ -21,7 +21,7 @@ func CheckServer(server string) (string, error) {
 	return server, nil
 }
 
-// Whoami 用令牌向服务端确认它属于哪个成员、工作空间与工具。
+// Whoami 用令牌向服务端确认它属于哪个账号、工作空间与工具。
 func Whoami(ctx context.Context, server, token string) (Login, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server+"/api/v1/me", nil)
 	if err != nil {
@@ -40,9 +40,14 @@ func Whoami(ctx context.Context, server, token string) (Login, error) {
 	if resp.StatusCode == http.StatusUnauthorized {
 		return Login{}, errors.New("令牌无效或已吊销")
 	}
-	var out struct{ Member, Workspace, Tool string }
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out) != nil || out.Member == "" {
+	var out struct {
+		Account   struct{ Name string } `json:"account"`
+		Workspace struct{ Name string } `json:"workspace"`
+		Tool      string                `json:"tool"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out) != nil ||
+		out.Account.Name == "" || out.Workspace.Name == "" {
 		return Login{}, fmt.Errorf("协作服务返回了无法识别的内容（HTTP %d），请确认服务地址", resp.StatusCode)
 	}
-	return Login{Server: server, Workspace: out.Workspace, Member: out.Member, Tool: out.Tool, Token: token, CreatedAt: time.Now()}, nil
+	return Login{Server: server, Workspace: out.Workspace.Name, Member: out.Account.Name, Tool: out.Tool, Token: token, CreatedAt: time.Now()}, nil
 }
