@@ -17,7 +17,7 @@ type BoundMember struct {
 // MembersByTelegramUserID 返回绑定到该 Telegram 用户编号的所有成员（可能跨多个工作空间）。
 func MembersByTelegramUserID(ctx context.Context, q DBTX, userID int64) ([]BoundMember, error) {
 	rows, err := q.Query(ctx, `
-		SELECT m.id, m.workspace_id, m.name, m.display_name, m.telegram_username, m.telegram_user_id, w.name
+		SELECT m.id, m.workspace_id, m.name, m.display_name, m.telegram_username, m.telegram_user_id, m.role, w.name
 		FROM members m JOIN workspaces w ON w.id = m.workspace_id
 		WHERE m.telegram_user_id = $1 ORDER BY w.name`, userID)
 	if err != nil {
@@ -27,7 +27,7 @@ func MembersByTelegramUserID(ctx context.Context, q DBTX, userID int64) ([]Bound
 	var out []BoundMember
 	for rows.Next() {
 		var b BoundMember
-		if err := rows.Scan(&b.ID, &b.WorkspaceID, &b.Name, &b.DisplayName, &b.TelegramUsername, &b.TelegramUserID, &b.WorkspaceName); err != nil {
+		if err := rows.Scan(&b.ID, &b.WorkspaceID, &b.Name, &b.DisplayName, &b.TelegramUsername, &b.TelegramUserID, &b.Role, &b.WorkspaceName); err != nil {
 			return nil, err
 		}
 		out = append(out, b)
@@ -57,8 +57,8 @@ func ConsumeLoginCode(ctx context.Context, q DBTX, codeHash []byte) (int64, erro
 // MemberByID 返回成员。
 func MemberByID(ctx context.Context, q DBTX, id int64) (Member, error) {
 	m := Member{ID: id}
-	err := q.QueryRow(ctx, `SELECT workspace_id, name, display_name, telegram_username, telegram_user_id
-		FROM members WHERE id = $1`, id).Scan(&m.WorkspaceID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID)
+	err := q.QueryRow(ctx, `SELECT workspace_id, name, display_name, telegram_username, telegram_user_id, role
+		FROM members WHERE id = $1`, id).Scan(&m.WorkspaceID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role)
 	return m, notFound(err)
 }
 

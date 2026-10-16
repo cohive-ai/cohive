@@ -37,7 +37,17 @@ type Member struct {
 	DisplayName      string
 	TelegramUsername string
 	TelegramUserID   *int64 // Telegram 用户编号，用于私聊领取登录码时识别身份
+	Role             string // member 或 admin；管理员可以审批加入申请
 }
+
+// 成员角色
+const (
+	RoleMember = "member"
+	RoleAdmin  = "admin"
+)
+
+// IsAdmin 判断成员是否为管理员。
+func (m Member) IsAdmin() bool { return m.Role == RoleAdmin }
 
 // Identity 是一次调用的操作者：哪个人的哪个工具。
 type Identity struct {
@@ -113,7 +123,7 @@ func DefaultWorkspace(ctx context.Context, q DBTX) (int64, error) {
 }
 
 func CreateMember(ctx context.Context, q DBTX, wsID int64, name, display string) (Member, error) {
-	m := Member{WorkspaceID: wsID, Name: name, DisplayName: display}
+	m := Member{WorkspaceID: wsID, Name: name, DisplayName: display, Role: RoleMember}
 	err := q.QueryRow(ctx,
 		`INSERT INTO members (workspace_id, name, display_name) VALUES ($1, $2, $3) RETURNING id`,
 		wsID, name, display).Scan(&m.ID)
@@ -123,8 +133,8 @@ func CreateMember(ctx context.Context, q DBTX, wsID int64, name, display string)
 func MemberByName(ctx context.Context, q DBTX, wsID int64, name string) (Member, error) {
 	m := Member{WorkspaceID: wsID, Name: name}
 	err := q.QueryRow(ctx,
-		`SELECT id, display_name, telegram_username, telegram_user_id FROM members WHERE workspace_id = $1 AND name = $2`,
-		wsID, name).Scan(&m.ID, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID)
+		`SELECT id, display_name, telegram_username, telegram_user_id, role FROM members WHERE workspace_id = $1 AND name = $2`,
+		wsID, name).Scan(&m.ID, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role)
 	return m, notFound(err)
 }
 
@@ -198,10 +208,10 @@ func UpsertService(ctx context.Context, q DBTX, wsID int64, name string, ownerID
 func ServiceOwner(ctx context.Context, q DBTX, wsID int64, service string) (Member, error) {
 	m := Member{WorkspaceID: wsID}
 	err := q.QueryRow(ctx, `
-		SELECT m.id, m.name, m.display_name, m.telegram_username, m.telegram_user_id
+		SELECT m.id, m.name, m.display_name, m.telegram_username, m.telegram_user_id, m.role
 		FROM services s JOIN members m ON m.id = s.owner_id
 		WHERE s.workspace_id = $1 AND s.name = $2`,
-		wsID, service).Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID)
+		wsID, service).Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role)
 	return m, notFound(err)
 }
 
@@ -410,7 +420,7 @@ type ServiceInfo struct {
 }
 
 func ListMembers(ctx context.Context, q DBTX, wsID int64) ([]Member, error) {
-	rows, err := q.Query(ctx, `SELECT id, name, display_name, telegram_username, telegram_user_id FROM members WHERE workspace_id = $1 ORDER BY id`, wsID)
+	rows, err := q.Query(ctx, `SELECT id, name, display_name, telegram_username, telegram_user_id, role FROM members WHERE workspace_id = $1 ORDER BY id`, wsID)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +428,7 @@ func ListMembers(ctx context.Context, q DBTX, wsID int64) ([]Member, error) {
 	var out []Member
 	for rows.Next() {
 		m := Member{WorkspaceID: wsID}
-		if err := rows.Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID); err != nil {
+		if err := rows.Scan(&m.ID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

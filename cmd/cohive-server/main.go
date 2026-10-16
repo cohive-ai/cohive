@@ -19,6 +19,8 @@ const usage = `用法：cohive-server <命令>
 工作空间（一个业务组一个工作空间、一个群）：
   workspace add --name <名称>                      创建工作空间
   workspace list                                  列出工作空间与群通知配置
+  workspace set --workspace <名称> --join-approval=false
+                                                  群里 /join 不需要管理员批准（默认需要）
   workspace notify --workspace <名称> --telegram-chat <群聊编号（群里发 /chatid 获取）>
       [--show-title=false] [--show-brief=false] [--public-url <看板地址>]
                                                   配置群通知；--off 关闭
@@ -28,6 +30,7 @@ const usage = `用法：cohive-server <命令>
 成员、令牌与服务（都可加 --workspace <名称>，缺省为 default）：
   member add --name <名称> [--display <显示名>]    添加成员
   member set --name <名称> --telegram <用户名>      登记 Telegram 用户名，用于群里 @ 提醒
+  member set --name <名称> --role admin            设为管理员（可审批加入申请）
   member list                                     列出成员
   token issue --member <名称> --tool <工具>        为成员的某个工具签发令牌（只显示一次）
   token list                                      列出令牌
