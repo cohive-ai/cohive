@@ -31,3 +31,9 @@ export function revokeDeviceMessage(name: string, onlyActive: boolean): string {
   }
   return `吊销后，“${n}”上的编程工具会立即失去访问权限；以后要在这台电脑上再用，需要重新执行 cohive login 并等管理员批准。`;
 }
+
+// 设备授权页上说明“以谁、在哪个工作空间授权”，避免登错账号时把设备授权给别人。
+export function authorizeAsText(me: { member: string; display_name?: string; workspace: string }): string {
+  const who = me.display_name && me.display_name !== me.member ? `${me.member}（${me.display_name}）` : me.member;
+  return `将以成员 ${who} 在工作空间 ${me.workspace} 授权这台电脑。`;
+}

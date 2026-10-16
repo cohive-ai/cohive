@@ -5,11 +5,13 @@ import { api, ApiError } from "../api";
 import { Notice } from "../components";
 import { absoluteTime, deviceAuthStatusLabel, relativeTime, toolsText } from "../format";
 import { btn, Callout, ErrorText, errMsg } from "../ui";
+import { authorizeAsText } from "../rules";
 
 // 终端执行 cohive login 后打开的授权页
 export function DeviceAuthPage() {
   const { nonce } = useParams({ from: "/layout/device/$nonce" });
   const auth = useQuery({ queryKey: ["device-auth", nonce], queryFn: () => api.deviceAuth(nonce), retry: false });
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const [result, setResult] = useState<string>("");
   const [busy, setBusy] = useState<"" | "approve" | "deny">("");
   const [error, setError] = useState("");
@@ -72,8 +74,9 @@ export function DeviceAuthPage() {
             <p className="text-sm text-muted">
               {d.first_device
                 ? "这是你的第一台设备，授权后立即生效。"
-                : "你已经有其他设备，这台新设备授权后还需要管理员批准才能使用。"}
+                : "你之前配对过设备（包括已吊销的），这台新设备授权后还需要管理员批准才能使用。"}
             </p>
+            {me.data && <p className="text-sm font-medium">{authorizeAsText(me.data)}</p>}
             <ErrorText>{error}</ErrorText>
             <div className="flex flex-wrap gap-3">
               <button type="button" onClick={() => decide(true)} disabled={!!busy} className={btn.primary}>

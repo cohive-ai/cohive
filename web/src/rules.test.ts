@@ -1,6 +1,13 @@
 import { expect, it } from "vitest";
 import { ApiError } from "./api";
-import { inviteLookupFailure, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "./rules";
+import { authorizeAsText, inviteLookupFailure, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "./rules";
+
+it("授权页写明以哪个成员、在哪个工作空间授权", () => {
+  expect(authorizeAsText({ member: "ann", display_name: "Ann", workspace: "payments" })).toBe(
+    "将以成员 ann（Ann） 在工作空间 payments 授权这台电脑。",
+  );
+  expect(authorizeAsText({ member: "lee", workspace: "default" })).toBe("将以成员 lee 在工作空间 default 授权这台电脑。");
+});
 
 it("吊销提示区分是否为唯一在用的设备", () => {
   const only = revokeDeviceMessage("mac", true);
