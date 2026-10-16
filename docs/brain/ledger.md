@@ -19,14 +19,14 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| M5 | `feature/phase1-m5-bot-onboarding`（基于 main `3e7e513`） | 英文名和项目目录设置 / `local_da15ce4c-fbe6-4bce-9079-5a9e07ee14ef` | 代码已验收 = `b1afd46` | 待用户（测试服实测 D6） | 返工清单已发（A1–A6 必修、B1–B21 次要、C1 已定按 D7 A 做、C2 待 D8）。复验：核对新 tip；全量；重打 P1（`core/admin.go` 最后一名管理员判定改为永不触发，必须变红）；新探针至少两条，候选“吊销全部设备后再配对仍需审批”“首台批准后、领取前吊销设备，领到的令牌无效”“等待管理员批准时中途退出后 `--resume` 能领取”；测试服实测待 D6 |
+| M5 | `feature/phase1-m5-bot-onboarding`（基于 main `3e7e513`） | 英文名和项目目录设置 / `local_da15ce4c-fbe6-4bce-9079-5a9e07ee14ef` | 代码已验收 = `b1afd46`；测试服实测主脑部分通过 | 待用户（lee 做 Telegram 两项） | 返工清单已发（A1–A6 必修、B1–B21 次要、C1 已定按 D7 A 做、C2 待 D8）。复验：核对新 tip；全量；重打 P1（`core/admin.go` 最后一名管理员判定改为永不触发，必须变红）；新探针至少两条，候选“吊销全部设备后再配对仍需审批”“首台批准后、领取前吊销设备，领到的令牌无效”“等待管理员批准时中途退出后 `--resume` 能领取”；测试服实测待 D6 |
 | M5b-设计 | `claude/docs-m5b-accounts-design-ec8f74`（基于 main `4536d5e`，只出文档） | m5b / `local_2e577d38-8052-4c21-97ab-a6422db710a3` | `0dd4127`（前提已改正，主脑已核） | 待用户（D10） | 产出 `docs/superpowers/plans/2026-10-17-phase1-m5b-accounts.md`：权限矩阵、数据模型与第七号迁移、流程、接口字段级清单、安全、任务拆分、待拍板；主脑审完给 lee 过目 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
-| D6 | M5 测试服实测怎么做 | A 主脑在本机 127.0.0.1:8787 用内置浏览器走通网页与命令行全流程，lee 只做 Telegram 连接与群审批按钮；B lee 全程亲手走 | A；另需新库（第六号迁移在返工中又改过，`cohive_m5` 已不能用），建议新建 `cohive_test` 作长期测试库，不删旧库（备选：给 `cohive_m5` 补列 `ALTER TABLE web_sessions ADD COLUMN via text NOT NULL DEFAULT 'password'`，不删数据，但旧库里的迁移记录与新版第六号内容仍不一致） | M5 合入 |
+| D6 | M5 实测（lee 选 A）：主脑部分已通过，剩 lee 亲手两项 | ① 用 admin 登录测试服，个人中心连接 Telegram；② 管理 → 工作空间填“小项目”群编号（群里有其他真人，审批消息会发进去），再触发一次团队注册，在群里点批准 | — | M5 合入 |
 | D10 | M5b 设计稿第 7 节 12 条待拍板（`docs/superpowers/plans/2026-10-17-phase1-m5b-accounts.md`，在设计分支上） | 逐条 A/B | 全部按设计稿建议（主脑审过，均同意） | M5b 实施 |
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
@@ -44,10 +44,9 @@
 - P4 接第二种通讯工具前，把成员的通讯账号拆成独立表 —— 来源 M5 会话
 
 ## 4. 环境与待清理
-- 测试服：现跑 M5 分支程序 + 独立库 `cohive_m5`，监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（隧道跑在 lee 的终端标签 c3）。
-- 启动脚本：`/private/tmp/claude-503/-Users-jiali-MyCode-cohive/b79d8e5e-e753-47ac-88fa-fe21e1d4575e/scratchpad/m5-restart.sh <仓库目录>`；切回 main 用同目录 `restart.sh`。**这是临时目录，重启电脑可能丢失**，M6-b 部署做完后改用仓库里的脚本。
-- 初始管理员密码文件：上述临时目录 `m5-data/initial_admin_password`，lee 尚未首次登录。
+- 测试服（2026-10-16 起）：验收工作树 `/private/tmp/claude-503/-Users-jiali-MyCode-cohive/f7d08f07-8081-4977-b6d1-3be664ac942f/scratchpad/m5-accept`（`b1afd46`）的程序 + 长期测试库 `cohive_test`，监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（隧道跑在 lee 的终端标签 c3）。重启：同目录上一级 `test-restart.sh`。**临时目录，重启电脑可能丢失**，M5 合入后改为用 main 构建，M6-a 把启动脚本收进仓库。
+- 测试服数据目录 `…/scratchpad/test-data/`：初始密码文件已在首登改密后自动删除；admin 新密码在 `admin-password-new.txt`，测试成员 `tester-a`、`tester-b` 的密码在 `member-password.txt`（权限 600，只是测试凭据）。
+- 实测用的命令行凭据目录 `…/scratchpad/cli-a`（已吊销）、`cli-a2`、`cli-adm`，用 `COHIVE_CONFIG_DIR` 指定，没动 lee 的 `~/.config/cohive`。
+- 旧库：`cohive`（M4 数据，群编号 `-1004357698945`，停用不删）、`cohive_m5`（旧版第六号，停用；里面的 `claude-test`、`tester-ann` 随库停用，不再单独删）。
 - 机器人：同一个机器人令牌同时只能有一个程序收消息，测试服与本机调试不要同时跑。
-- M5 合入后：测试服立即切回 main，并改用新库 `cohive_m5`，原库 `cohive` 停用（lee 2026-10-16 定）；lee 本机重新 `cohive login`。
-- 待删测试账号：`cohive_m5` 里的 `claude-test`（管理员）、`tester-ann`，M5 实测结束后删（删前再告知 lee）。
 - 待归档会话：无。
