@@ -7,10 +7,11 @@ import (
 	"testing"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
-// opsWorkspace 在夹具上再建一个工作空间 ops：管理员 ops-admin（有密码），成员 ops-dev 起草了一张单。
+// opsWorkspace 在夹具上再建一个工作空间 ops：管理员 ops-admin（有密码），成员 ops-dev 发出了一张单给他。
 func opsWorkspace(t *testing.T, f fixture) (admin *browser, opsToken string, opsIssue int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -41,8 +42,12 @@ func opsWorkspace(t *testing.T, f fixture) (admin *browser, opsToken string, ops
 	if err != nil {
 		t.Fatal(err)
 	}
-	is, err := f.svc.Draft(ctx, who, core.DraftInput{Title: "ops 的单"})
+	// 发出（不是草稿）：草稿对别人本来就不可见，隔离要靠工作空间判定
+	is, err := f.svc.Draft(ctx, who, core.DraftInput{Title: "ops 的单", Owner: "ops-admin"})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if is, err = f.svc.Act(ctx, who, core.ActInput{IssueID: is.ID, Action: issue.ActSubmit, ExpectedVersion: is.Version}); err != nil {
 		t.Fatal(err)
 	}
 	admin = newBrowser(t, f.url)
