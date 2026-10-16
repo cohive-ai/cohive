@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/cohive-ai/cohive/internal/core"
@@ -405,8 +406,9 @@ func TestGroupBoundOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	var se *core.StateError
-	if err := svc.UpdateWorkspace(ctx, &p.opsAdmin, p.ops, core.WorkspaceSettings{TelegramChat: "-1001"}); !errors.As(err, &se) {
-		t.Fatalf("同一个群不能绑第二个工作空间：%v", err)
+	if err := svc.UpdateWorkspace(ctx, &p.opsAdmin, p.ops, core.WorkspaceSettings{TelegramChat: "-1001"}); !errors.As(err, &se) ||
+		!strings.Contains(err.Error(), "pay") {
+		t.Fatalf("同一个群不能绑第二个工作空间，并说明已绑给谁：%v", err)
 	}
 	if err := svc.UpdateWorkspace(ctx, &p.payAdmin, p.pay, core.WorkspaceSettings{TelegramChat: "-1001", ShowTitle: true}); err != nil {
 		t.Fatalf("重存自己的群编号不受影响：%v", err)
