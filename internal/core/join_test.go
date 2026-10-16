@@ -55,6 +55,13 @@ func TestAcceptTeamInviteCreatesJoinRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// 已是 ops 成员的人接受 ops 的团队邀请：提示已是成员，不生成申请、不消耗次数
+	if _, err := svc.AcceptInvite(ctx, p.ann, inv.Code); !errors.Is(err, store.ErrAlreadyMember) {
+		t.Fatalf("已是成员应拒绝：%v", err)
+	}
+	if list, _ := svc.PendingSignups(ctx, &p.opsAdmin, p.ops); len(list) != 0 {
+		t.Fatalf("不应为已是成员的人生成申请：%+v", list)
+	}
 	res, err := svc.AcceptInvite(ctx, p.payAdmin, inv.Code)
 	if err != nil || res.Signup == nil || !res.Signup.Existing || res.Signup.Name != "pay-admin" || res.Member != nil {
 		t.Fatalf("应生成加入申请：%+v %v", res, err)
