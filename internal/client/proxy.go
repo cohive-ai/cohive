@@ -28,11 +28,12 @@ type Proxy struct {
 	// 每个进程只换一次：重签也失败就报错，不循环。
 	Refresh func(ctx context.Context) (string, error)
 
-	outMu     sync.Mutex
-	stateMu   sync.Mutex
-	refreshed bool   // 已用 Refresh 换过令牌
-	protocol  string // 初始化时协商的协议版本
-	session   string // 服务端若返回会话编号则带上
+	outMu      sync.Mutex
+	stateMu    sync.Mutex
+	refreshed  bool   // 已用 Refresh 换过令牌
+	refreshErr error  // 换令牌失败的原因，告诉用户
+	protocol   string // 初始化时协商的协议版本
+	session    string // 服务端若返回会话编号则带上
 }
 
 type rpcHead struct {
@@ -129,6 +130,7 @@ func (p *Proxy) renew(ctx context.Context, used string) bool {
 	tok, err := p.Refresh(ctx)
 	if err != nil {
 		p.logf("重新签发令牌失败：%v", err)
+		p.refreshErr = err
 		return false
 	}
 	p.logf("令牌已失效，已用这台电脑的设备密钥重新签发")
@@ -148,7 +150,16 @@ func (p *Proxy) forward(ctx context.Context, msg []byte, head rpcHead, out io.Wr
 		if p.renew(ctx, strings.TrimPrefix(used, "Bearer ")) {
 			resp, err = p.send(ctx, msg)
 		} else {
-			p.fail(out, head, "Cohive 令牌无效或已吊销：如果你已被移出这个工作空间，请联系管理员；否则请执行 cohive login --force 重新配对这台电脑")
+			msg := "Cohive 令牌无效或已吊销：如果你已被移出这个工作空间，请联系管理员；否则请执行 cohive login --force 重新配对这台电脑"
+			p.stateMu.Lock()
+			switch {
+			case errors.Is(p.refreshErr, ErrNotMember):
+				msg = "Cohive 令牌已失效：你已不是这个工作空间的成员（可能已被移出），请联系它的管理员"
+			case p.refreshErr != nil:
+				msg = "Cohive 令牌已失效，重新签发也失败：" + p.refreshErr.Error()
+			}
+			p.stateMu.Unlock()
+			p.fail(out, head, msg)
 			return
 		}
 	}

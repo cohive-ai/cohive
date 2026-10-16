@@ -247,7 +247,7 @@ func memberRemove(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int
 func tokenIssue(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
 	var member, tool string
 	if err := parse("token issue", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&member, "member", "", "成员名")
+		fs.StringVar(&member, "member", "", "登录名")
 		fs.StringVar(&tool, "tool", "", "工具名，例如 claude-code、codex")
 	}); err != nil {
 		return err
@@ -310,7 +310,7 @@ func serviceAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 	var name, owner string
 	if err := parse("service add", args, func(fs *flag.FlagSet) {
 		fs.StringVar(&name, "name", "", "服务名")
-		fs.StringVar(&owner, "owner", "", "负责人成员名")
+		fs.StringVar(&owner, "owner", "", "负责人的登录名")
 	}); err != nil {
 		return err
 	}

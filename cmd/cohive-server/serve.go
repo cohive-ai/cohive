@@ -49,7 +49,7 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	if path, err := svc.EnsureInitialAdmin(ctx); err != nil {
 		return fmt.Errorf("生成初始管理员：%w", err)
 	} else if path != "" {
-		fmt.Fprintf(out, "  已生成初始管理员，成员名与密码在 %s（仅本人可读）；首次登录网页后须修改密码，改完该文件自动删除\n", path)
+		fmt.Fprintf(out, "  已生成初始管理员，登录名与密码在 %s（仅本人可读）；首次登录网页后须修改密码，改完该文件自动删除\n", path)
 	}
 
 	opts := server.Options{AllowedHosts: hosts}

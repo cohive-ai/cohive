@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-// 按成员名的登录失败退避：连续失败达到 loginFreeTries 次后开始锁定，
+// 按登录名的登录失败退避：连续失败达到 loginFreeTries 次后开始锁定，
 // 每多失败一次锁定时间翻倍，最长 loginMaxLock。成功登录清零。
 const (
 	loginFreeTries = 5
 	loginBaseLock  = 30 * time.Second
 	loginMaxLock   = 15 * time.Minute
-	loginGuardMax  = 10000 // 记录的成员名上限，超过时清掉已过期的
+	loginGuardMax  = 10000 // 记录的登录名上限，超过时清掉已过期的
 )
 
 type loginGuard struct {
@@ -34,7 +34,7 @@ func newLoginGuard() *loginGuard {
 
 func guardKey(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
 
-// locked 返回该成员名还要锁定多久；未锁定时返回 0。
+// locked 返回该登录名还要锁定多久；未锁定时返回 0。
 func (g *loginGuard) locked(name string) time.Duration {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -75,7 +75,7 @@ func (g *loginGuard) failed(name string) {
 	}
 }
 
-// succeeded 清除该成员名的失败记录。
+// succeeded 清除该登录名的失败记录。
 func (g *loginGuard) succeeded(name string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

@@ -63,7 +63,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			return
 		}
 		if d := guard.locked(in.Name); d > 0 {
-			svc.DummyPasswordCheck(r.Context(), in.Password) // 锁定时也耗同样的时间，不暴露成员名是否存在
+			svc.DummyPasswordCheck(r.Context(), in.Password) // 锁定时也耗同样的时间，不暴露登录名是否存在
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{
 				"error": fmt.Sprintf("这个登录名连续登录失败次数过多，请 %d 秒后再试", int(d.Seconds())+1)})
 			return

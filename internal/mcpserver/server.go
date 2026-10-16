@@ -66,7 +66,7 @@ type DraftArgs struct {
 	Branch         string `json:"branch,omitempty"`
 	Commit         string `json:"commit,omitempty" jsonschema:"发现问题时的提交号；工作树有未提交改动时请在 summary 中说明"`
 	TargetService  string `json:"target_service,omitempty" jsonschema:"出问题的服务名，用于自动找到负责人"`
-	Owner          string `json:"owner,omitempty" jsonschema:"直接指定负责人（成员名）；为空时按 target_service 查找"`
+	Owner          string `json:"owner,omitempty" jsonschema:"直接指定负责人（登录名）；为空时按 target_service 查找"`
 	Severity       string `json:"severity,omitempty" jsonschema:"low、normal、high、critical，默认 normal"`
 	IdempotencyKey string `json:"idempotency_key,omitempty" jsonschema:"重试时传同一个值，避免重复创建"`
 }
@@ -74,7 +74,7 @@ type DraftArgs struct {
 type SubmitArgs struct {
 	IssueID         int64  `json:"issue_id"`
 	ExpectedVersion int    `json:"expected_version" jsonschema:"问题单当前版本号"`
-	Assignee        string `json:"assignee,omitempty" jsonschema:"草稿还没有负责人时，在此指定成员名"`
+	Assignee        string `json:"assignee,omitempty" jsonschema:"草稿还没有负责人时，在此指定负责人的登录名"`
 	Note            string `json:"note,omitempty"`
 	IdempotencyKey  string `json:"idempotency_key,omitempty"`
 }
@@ -84,7 +84,7 @@ type AcceptArgs struct {
 	ExpectedVersion int    `json:"expected_version" jsonschema:"问题单当前版本号"`
 	Decision        string `json:"decision" jsonschema:"accept（接单）、decline（退回）、transfer（转交，需填 transfer_to）。退回和转交都必须在 note 中说明理由，发起人会看到"`
 	Note            string `json:"note,omitempty"`
-	TransferTo      string `json:"transfer_to,omitempty" jsonschema:"转交的接收人（成员名）"`
+	TransferTo      string `json:"transfer_to,omitempty" jsonschema:"转交的接收人（登录名）"`
 	IdempotencyKey  string `json:"idempotency_key,omitempty"`
 }
 
