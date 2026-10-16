@@ -3,14 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
-	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
-	"github.com/cohive-ai/cohive/internal/client"
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/db"
 	"github.com/cohive-ai/cohive/internal/server"
@@ -19,9 +18,10 @@ import (
 )
 
 type testServer struct {
-	url string
-	svc *core.Service
-	uid int64
+	url      string
+	svc      *core.Service
+	uid      int64
+	memberID int64
 }
 
 // newTestServer 起一个真实的协作服务，并把成员 lee-codex 绑定到 Telegram 用户编号 42。
@@ -45,18 +45,53 @@ func newTestServer(t *testing.T) testServer {
 		t.Fatal(err)
 	}
 	svc := &core.Service{Pool: pool}
-	srv := httptest.NewServer(server.New(svc, fstest.MapFS{}, server.Options{BotName: func() string { return "CohiveBot" }}))
+	srv := httptest.NewServer(server.New(svc, fstest.MapFS{}, server.Options{}))
 	t.Cleanup(srv.Close)
-	return testServer{url: srv.URL, svc: svc, uid: uid}
+	return testServer{url: srv.URL, svc: svc, uid: uid, memberID: m.ID}
 }
 
-func (s testServer) code(t *testing.T) string {
+// token 直接为 lee-codex 签发一个不属于设备的令牌（相当于管理员手工签发）。
+func (s testServer) token(t *testing.T, tool string) string {
 	t.Helper()
-	res, err := s.svc.IssueLoginCode(context.Background(), s.uid, "")
+	plain, _, err := store.IssueToken(context.Background(), s.svc.Pool, s.memberID, tool)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return res.Code
+	return plain
+}
+
+// approve 模拟成员在浏览器里授权最近一次待授权的设备。
+func (s testServer) approve(t *testing.T, ok bool) {
+	ctx := context.Background()
+	m, err := store.MemberByID(ctx, s.svc.Pool, s.memberID)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	for i := 0; i < 300; i++ {
+		var nonce string
+		err := s.svc.Pool.QueryRow(ctx, `SELECT nonce FROM device_auths WHERE status = 'pending' ORDER BY id DESC LIMIT 1`).Scan(&nonce)
+		if err == nil {
+			if _, err := s.svc.AuthorizeDevice(ctx, m, nonce, ok); err != nil {
+				t.Error(err)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Error("没有等到设备授权请求")
+}
+
+// login 走完整的设备授权登录这台电脑。
+func (s testServer) login(t *testing.T, tools ...string) string {
+	t.Helper()
+	fastDevice(t)
+	go s.approve(t, true)
+	out, err := run(t, "login", "--server", s.url, "--tools", strings.Join(tools, ","), "--open=false")
+	if err != nil {
+		t.Fatalf("登录失败：%v\n%s", err, out)
+	}
+	return out
 }
 
 func run(t *testing.T, args ...string) (string, error) {
@@ -69,63 +104,4 @@ func run(t *testing.T, args ...string) (string, error) {
 func configDir(t *testing.T) {
 	t.Helper()
 	t.Setenv("COHIVE_CONFIG_DIR", filepath.Join(t.TempDir(), "cohive"))
-}
-
-func TestLogin(t *testing.T) {
-	configDir(t)
-	s := newTestServer(t)
-	out, err := run(t, "login", "--server", s.url+"/", "--code", s.code(t), "--tool", "codex")
-	if err != nil {
-		t.Fatalf("登录失败：%v\n%s", err, out)
-	}
-	if !strings.Contains(out, "lee-codex") || !strings.Contains(out, "cohive init") {
-		t.Fatalf("应提示登录成功和下一步：%s", out)
-	}
-	if strings.Contains(out, "cohive_") {
-		t.Fatalf("输出里不应出现令牌：%s", out)
-	}
-
-	creds, err := client.LoadCredentials()
-	if err != nil {
-		t.Fatal(err)
-	}
-	l, ok := creds.Find(s.url, "default", "codex")
-	if !ok {
-		t.Fatalf("应保存登录：%+v", creds)
-	}
-	req, _ := http.NewRequest(http.MethodGet, s.url+"/api/v1/me", nil)
-	req.Header.Set("Authorization", "Bearer "+l.Token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("保存的令牌应可用，得到 %d", resp.StatusCode)
-	}
-
-	status, err := run(t, "status")
-	if err != nil || !strings.Contains(status, "lee-codex") || strings.Contains(status, l.Token) {
-		t.Fatalf("status 应列出登录且不显示令牌：%v\n%s", err, status)
-	}
-}
-
-func TestLoginErrors(t *testing.T) {
-	configDir(t)
-	s := newTestServer(t)
-	if _, err := run(t, "login", "--server", s.url, "--code", "AAAA-AAAA", "--tool", "codex"); err == nil || !strings.Contains(err.Error(), "/login") {
-		t.Fatalf("错误的登录码应提示重新领取，得到 %v", err)
-	}
-	if _, err := run(t, "login", "--server", "cohive.example.com", "--code", "X", "--tool", "codex"); err == nil || !strings.Contains(err.Error(), "http") {
-		t.Fatalf("服务地址缺协议时应报错，得到 %v", err)
-	}
-	if _, err := run(t, "login", "--server", s.url, "--tool", "codex"); err == nil || !strings.Contains(err.Error(), "--code") {
-		t.Fatalf("缺登录码时应报错，得到 %v", err)
-	}
-	// 照抄占位文字、长度不对时在本地就提示格式，不发到服务端
-	for _, bad := range []string{"登录码", "ABC-DEF", "ABCD-EFGH-IJ"} {
-		if _, err := run(t, "login", "--server", "http://127.0.0.1:1", "--code", bad, "--tool", "codex"); err == nil || !strings.Contains(err.Error(), "ABCD-EFGH") {
-			t.Fatalf("%q 应在本地提示登录码格式，得到 %v", bad, err)
-		}
-	}
 }

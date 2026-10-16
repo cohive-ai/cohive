@@ -19,7 +19,7 @@ func TestChatIDCommand(t *testing.T) {
 		if !ok {
 			t.Fatalf("%q 应被处理", text)
 		}
-		if !strings.Contains(reply, "-1001234567890") || !strings.Contains(reply, "workspace notify") {
+		if !strings.Contains(reply, "-1001234567890") || !strings.Contains(reply, "管理 → 工作空间") {
 			t.Fatalf("应回复群编号与配置命令：%s", reply)
 		}
 	}
@@ -34,12 +34,11 @@ func TestChatIDInPrivateChat(t *testing.T) {
 
 func TestWhoAmICommand(t *testing.T) {
 	reply, ok := notify.HandleCommand(msg("/whoami", "group", -1, "lee_dev"), "CohiveBot")
-	if !ok || !strings.Contains(reply, "lee_dev") || !strings.Contains(reply, "member set") ||
-		!strings.Contains(reply, "--telegram-id 42") {
-		t.Fatalf("应回复用户名、用户编号与登记命令：%s", reply)
+	if !ok || !strings.Contains(reply, "lee_dev") || !strings.Contains(reply, "<code>42</code>") || !strings.Contains(reply, "连接 Telegram") {
+		t.Fatalf("应回复用户名、用户编号与连接方式：%s", reply)
 	}
 	reply, ok = notify.HandleCommand(msg("/whoami", "group", -1, ""), "CohiveBot")
-	if !ok || !strings.Contains(reply, "还没有设置") || !strings.Contains(reply, "--telegram-id 42") {
+	if !ok || !strings.Contains(reply, "未设置") || !strings.Contains(reply, "<code>42</code>") {
 		t.Fatalf("没有用户名时应提示先设置，但仍给出用户编号：%s", reply)
 	}
 }

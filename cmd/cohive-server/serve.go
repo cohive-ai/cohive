@@ -15,6 +15,7 @@ import (
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/db"
+	"github.com/cohive-ai/cohive/internal/httpapi"
 	"github.com/cohive-ai/cohive/internal/notify"
 	"github.com/cohive-ai/cohive/internal/server"
 	"github.com/cohive-ai/cohive/web"
@@ -43,26 +44,34 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	svc := &core.Service{Pool: pool, DataDir: dataDir()}
+	// 还没有任何管理员时生成初始管理员，密码只写进数据目录下的文件，不进日志
+	if path, err := svc.EnsureInitialAdmin(ctx); err != nil {
+		return fmt.Errorf("生成初始管理员：%w", err)
+	} else if path != "" {
+		fmt.Fprintf(out, "  已生成初始管理员，成员名与密码在 %s（仅本人可读）；首次登录网页后须修改密码，改完该文件自动删除\n", path)
+	}
+
 	opts := server.Options{AllowedHosts: hosts}
 	// 群通知与机器人：设置了机器人令牌才启用；没设置时待发记录会保留，设置后重启即可补发
 	if tg := telegramFromEnv(); tg != nil {
 		d := &notify.Dispatcher{Pool: pool, Senders: map[string]notify.Sender{"telegram": tg}}
 		go d.Run(ctx, 2*time.Second)
-		bot := &notify.Bot{TG: tg, Core: &core.Service{Pool: pool}}
+		bot := &notify.Bot{TG: tg, Core: svc}
 		go bot.Run(ctx)
-		opts.BotName = bot.Username
+		opts.API = httpapi.Options{BotName: bot.Username, Announcer: bot}
 		fmt.Fprintln(out, "  群通知：Telegram 已启用；群里发 /chatid 可获取群编号")
 	} else {
 		fmt.Fprintln(out, "  群通知：未设置 COHIVE_TELEGRAM_BOT_TOKEN，暂不发送（待发记录会保留）")
 	}
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           server.New(&core.Service{Pool: pool}, web.Dist(), opts),
+		Handler:           server.New(svc, web.Dist(), opts),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
-	fmt.Fprintf(out, "Cohive 协作服务已启动\n  看板：http://%[1]s/\n  MCP： http://%[1]s/mcp\n", displayAddr(*addr))
+	fmt.Fprintf(out, "Cohive 协作服务已启动\n  网页：http://%[1]s/\n  MCP： http://%[1]s/mcp\n", displayAddr(*addr))
 	if len(hosts) > 0 {
 		fmt.Fprintf(out, "  允许经这些域名访问 MCP：%s\n", strings.Join(hosts, "、"))
 	}
@@ -79,6 +88,14 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		defer cancel()
 		return srv.Shutdown(shutdownCtx)
 	}
+}
+
+// dataDir 返回服务器数据目录（COHIVE_DATA_DIR，缺省为当前目录下的 data），保存初始管理员密码等文件。
+func dataDir() string {
+	if d := os.Getenv("COHIVE_DATA_DIR"); d != "" {
+		return d
+	}
+	return "data"
 }
 
 // allowedHosts 读取 COHIVE_ALLOWED_HOSTS（逗号分隔），即经隧道等方式访问时使用的公网域名。

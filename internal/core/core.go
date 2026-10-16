@@ -24,6 +24,8 @@ const ActDraft issue.Action = "draft"
 
 type Service struct {
 	Pool *pgxpool.Pool
+	// DataDir 是服务器数据目录，保存初始管理员密码文件；只有服务端进程需要设置。
+	DataDir string
 }
 
 // InputError 表示调用参数不完整或不合法。

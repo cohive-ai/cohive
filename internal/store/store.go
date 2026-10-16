@@ -36,8 +36,8 @@ type Member struct {
 	Name             string
 	DisplayName      string
 	TelegramUsername string
-	TelegramUserID   *int64 // Telegram 用户编号，用于私聊领取登录码时识别身份
-	Role             string // member 或 admin；管理员可以审批加入申请
+	TelegramUserID   *int64 // 连接的 Telegram 账号编号，用于识别群里点审批按钮的人
+	Role             string // member 或 admin；管理员可以生成邀请、审批配对申请
 }
 
 // 成员角色
@@ -56,6 +56,7 @@ type Identity struct {
 	WorkspaceID int64
 	MemberName  string
 	Tool        string
+	DeviceID    *int64 // 令牌所属设备；管理员手工签发的令牌为空
 }
 
 type Issue struct {
@@ -161,10 +162,10 @@ func IssueToken(ctx context.Context, q DBTX, memberID int64, tool string) (plain
 func LookupToken(ctx context.Context, q DBTX, plain string) (Identity, error) {
 	var id Identity
 	err := q.QueryRow(ctx, `
-		SELECT t.id, m.id, m.workspace_id, m.name, t.tool
+		SELECT t.id, m.id, m.workspace_id, m.name, t.tool, t.device_id
 		FROM tokens t JOIN members m ON m.id = t.member_id
 		WHERE t.token_hash = $1 AND t.revoked_at IS NULL`,
-		hashToken(plain)).Scan(&id.TokenID, &id.MemberID, &id.WorkspaceID, &id.MemberName, &id.Tool)
+		hashToken(plain)).Scan(&id.TokenID, &id.MemberID, &id.WorkspaceID, &id.MemberName, &id.Tool, &id.DeviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Identity{}, ErrUnauthorized
 	}

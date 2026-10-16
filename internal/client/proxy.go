@@ -146,7 +146,7 @@ func (p *Proxy) forward(ctx context.Context, msg []byte, head rpcHead, out io.Wr
 	case resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusNoContent:
 		return
 	case resp.StatusCode == http.StatusUnauthorized:
-		p.fail(out, head, "Cohive 令牌无效或已吊销：请私聊机器人发 /login 领取新的登录码，再执行 cohive login")
+		p.fail(out, head, "Cohive 令牌无效或已吊销：请执行 cohive login --force 重新配对这台电脑")
 		return
 	case resp.StatusCode >= 300:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))

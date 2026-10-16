@@ -20,10 +20,13 @@ import (
 	"github.com/cohive-ai/cohive/internal/client"
 )
 
-// devicePollInterval 是等待机器人确认时的轮询间隔，测试里会调小。
-var devicePollInterval = 2 * time.Second
+// devicePollInterval 是等待浏览器授权时的轮询间隔，deviceAdminWait 是等待管理员批准的最长时间；测试里会调小。
+var (
+	devicePollInterval = 2 * time.Second
+	deviceAdminWait    = 10 * time.Minute
+)
 
-// openURL 用系统默认方式打开链接（t.me 链接会跳到 Telegram）；测试里替换掉。
+// openURL 用系统默认浏览器打开链接；测试里替换掉。
 var openURL = func(link string) error {
 	switch runtime.GOOS {
 	case "darwin":
@@ -146,15 +149,17 @@ func confirmServer(in io.Reader, out io.Writer, srv string) error {
 func login(ctx context.Context, in io.Reader, out io.Writer, args []string) error {
 	fs := flag.NewFlagSet("login", flag.ContinueOnError)
 	server := fs.String("server", "", "协作服务地址；在已执行过 cohive init 的仓库里可省略")
-	workspace := fs.String("workspace", "", "工作空间名；在已执行过 cohive init 的仓库里可省略")
 	toolsFlag := fs.String("tools", "", "要登录的编程工具，逗号分隔；默认是仓库里配置了的工具，没有时为 claude-code,codex")
 	dir := fs.String("dir", ".", "仓库目录，用于读取服务地址")
-	open := fs.Bool("open", true, "自动打开 Telegram 确认链接")
-	code := fs.String("code", "", "备用：私聊机器人 /login 得到的登录码")
-	tool := fs.String("tool", "", "与 --code 一起使用：这个令牌给哪个编程工具用")
+	open := fs.Bool("open", true, "自动打开浏览器授权页")
+	resume := fs.Bool("resume", false, "领取之前等待管理员批准的设备授权")
+	force := fs.Bool("force", false, "这台电脑已登录时也重新配对")
 	tokenStdin := fs.Bool("token-stdin", false, "备用：从标准输入读取管理员签发的令牌")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *resume {
+		return resumeLogin(ctx, out)
 	}
 	repo, err := readRepoTarget(findRepoDir(*dir))
 	if err != nil {
@@ -174,28 +179,12 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 		return loginWithToken(ctx, in, out, srv)
 	}
 	if srv == "" {
-		return errors.New("缺少 --server（协作服务地址）。在已执行过 cohive init 的仓库目录里执行时可以省略")
+		return errors.New("缺少 --server（协作服务地址）。网页“个人中心”里有带地址的完整命令；在已执行过 cohive init 的仓库目录里执行时可以省略")
 	}
-	srv, err = client.CheckServer(srv)
-	if err != nil {
+	if srv, err = client.CheckServer(srv); err != nil {
 		return err
 	}
-	if *tool != "" && *code == "" {
-		return errors.New("--tool 只和 --code 一起使用；用机器人确认登录时请用 --tools，例如 --tools codex")
-	}
-	if *code != "" {
-		return loginWithCode(ctx, out, srv, *code, *tool)
-	}
-	if *server == "" {
-		if err := confirmServer(in, out, srv); err != nil {
-			return err
-		}
-	}
-
-	ws := *workspace
-	if ws == "" && srv == repo.Server {
-		ws = repo.Workspace
-	}
+	repoReady := len(repo.Tools) > 0 && srv == repo.Server
 	var tools []string
 	switch {
 	case *toolsFlag != "":
@@ -204,44 +193,93 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 				tools = append(tools, t)
 			}
 		}
-	case len(repo.Tools) > 0 && srv == repo.Server:
+	case repoReady:
 		tools = repo.Tools
 	default:
 		tools = knownTools
 	}
-	return loginWithDevice(ctx, out, srv, ws, tools, *open, len(repo.Tools) > 0 && srv == repo.Server)
-}
 
-// loginWithDevice 走设备授权：终端显示链接与二维码，成员在机器人私聊里点“确认登录”即完成登录。
-func loginWithDevice(ctx context.Context, out io.Writer, srv, ws string, tools []string, open, repoReady bool) error {
-	host, _ := os.Hostname()
-	st, err := client.StartDevice(ctx, srv, tools, host, ws)
+	creds, err := client.LoadCredentials()
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "请在 Telegram 里确认登录（%d 分钟内有效）：\n\n  打开链接：%s\n", st.ExpiresIn/60, st.Link)
-	if qr, err := client.QRText(st.Link); err == nil {
-		fmt.Fprintf(out, "  或用手机扫码：\n\n%s\n", qr)
+	// 这台电脑已配对过这个服务：缺的工具直接用本机令牌补签，不必再去浏览器授权
+	if dev, ok := pairedDevice(creds, srv); ok && !*force {
+		var missing []string
+		for _, t := range tools {
+			if _, has := creds.Find(srv, dev.Workspace, t); !has {
+				missing = append(missing, t)
+			}
+		}
+		if len(missing) == 0 {
+			fmt.Fprintf(out, "这台电脑已登录：%s 工作空间 %s，成员 %s。要重新配对请加 --force。\n", srv, dev.Workspace, dev.Member)
+			return nil
+		}
+		p, err := client.AddTools(ctx, srv, dev.Token, missing)
+		if err != nil {
+			return err
+		}
+		return saveDeviceLogins(out, srv, p, repoReady, repo)
 	}
-	fmt.Fprint(out, "  在机器人私聊里核对工作空间与设备名，点“确认登录”。\n\n")
-	if open {
-		_ = openURL(st.Link)
+	if *server == "" {
+		if err := confirmServer(in, out, srv); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintln(out, "等待确认……（按 Ctrl+C 放弃）")
 
-	deadline := time.Now().Add(time.Duration(st.ExpiresIn)*time.Second + time.Minute)
+	host, _ := os.Hostname()
+	st, err := client.StartDevice(ctx, srv, tools, host)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "请在浏览器里授权这台电脑（%d 分钟内有效）：\n\n  %s\n", st.ExpiresIn/60, st.URL)
+	if qr, err := client.QRText(st.URL); err == nil {
+		fmt.Fprintf(out, "\n  也可以用手机扫码打开：\n\n%s", qr)
+	}
+	fmt.Fprintln(out, "\n  没有登录网页的话会先让你登录；只授权你自己刚刚发起的这一次。")
+	if *open {
+		_ = openURL(st.URL)
+	}
+	fmt.Fprintln(out, "\n等待授权……（按 Ctrl+C 放弃）")
+	return waitDevice(ctx, out, srv, st.RequestID, st.PollSecret, repoReady, repo)
+}
+
+// pairedDevice 找出本机在这个服务上已配对的设备登录（有设备编号的那条）。
+func pairedDevice(creds *client.Credentials, srv string) (client.Login, bool) {
+	for _, l := range creds.Logins {
+		if l.Server == srv && l.DeviceID != 0 {
+			return l, true
+		}
+	}
+	return client.Login{}, false
+}
+
+// resumeLogin 领取之前等待管理员批准的设备授权。
+func resumeLogin(ctx context.Context, out io.Writer) error {
+	p, err := client.LoadPending()
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return errors.New("没有等待领取的设备授权，请直接执行 cohive login")
+	}
+	fmt.Fprintf(out, "继续领取 %s 上的设备授权……\n", p.Server)
+	return waitDevice(ctx, out, p.Server, p.RequestID, p.PollSecret, false, repoTarget{})
+}
+
+// waitDevice 轮询授权结果。等待管理员批准超过 deviceAdminWait 时保存进度，之后用 --resume 领取。
+func waitDevice(ctx context.Context, out io.Writer, srv string, id int64, secret string, repoReady bool, repo repoTarget) error {
 	failures := 0
+	var awaitingSince time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(devicePollInterval):
 		}
-		if time.Now().After(deadline) {
-			return errors.New("等待超时，请重新执行 cohive login")
-		}
-		p, err := client.PollDevice(ctx, srv, st)
+		p, err := client.PollDevice(ctx, srv, id, secret)
 		if errors.Is(err, client.ErrDeviceGone) {
+			client.ClearPending()
 			return err
 		}
 		if err != nil {
@@ -254,28 +292,44 @@ func loginWithDevice(ctx context.Context, out io.Writer, srv, ws string, tools [
 		switch p.Status {
 		case "pending":
 			continue
+		case "awaiting_admin":
+			if awaitingSince.IsZero() {
+				awaitingSince = time.Now()
+				fmt.Fprintln(out, "你已授权；这不是你的第一台设备，正在等待管理员批准……")
+			}
+			if time.Since(awaitingSince) > deviceAdminWait {
+				if err := client.SavePending(client.Pending{Server: srv, RequestID: id, PollSecret: secret, CreatedAt: time.Now()}); err != nil {
+					return err
+				}
+				return errors.New("管理员还没有批准。批准后执行 cohive login --resume 领取（24 小时内有效）")
+			}
 		case "approved":
-			return saveDeviceLogins(out, srv, p, repoReady)
+			client.ClearPending()
+			return saveDeviceLogins(out, srv, p, repoReady, repo)
 		case "denied":
-			return errors.New("登录没有通过：在机器人里点了取消，或链接被别的账号打开过。请重新执行 cohive login")
+			client.ClearPending()
+			return errors.New("授权被拒绝（你在浏览器里点了拒绝，或管理员没有批准）")
 		case "expired":
-			return errors.New("登录请求已过期，请重新执行 cohive login")
+			client.ClearPending()
+			return errors.New("授权已过期，请重新执行 cohive login")
 		case "delivered":
-			return errors.New("服务端显示令牌已经交付，但本机没有收到（可能是网络中断）。请重新执行 cohive login；如担心令牌泄露，请管理员用 cohive-server token list 查看并吊销多出的令牌")
+			client.ClearPending()
+			return errors.New("服务端显示令牌已经交付，但本机没有收到（可能是网络中断）。请重新执行 cohive login --force；多出的设备可在网页“个人中心”吊销")
 		default:
 			return fmt.Errorf("协作服务返回了未知状态 %q", p.Status)
 		}
 	}
 }
 
-func saveDeviceLogins(out io.Writer, srv string, p client.DevicePoll, repoReady bool) error {
+func saveDeviceLogins(out io.Writer, srv string, p client.DevicePoll, repoReady bool, repo repoTarget) error {
 	creds, err := client.LoadCredentials()
 	if err != nil {
 		return err
 	}
 	var saved []string
 	for _, t := range knownToolsFirst(p.Tokens) {
-		creds.Upsert(client.Login{Server: srv, Workspace: p.Workspace, Member: p.Member, Tool: t, Token: p.Tokens[t], CreatedAt: time.Now()})
+		creds.Upsert(client.Login{Server: srv, Workspace: p.Workspace, Member: p.Member, Tool: t, Token: p.Tokens[t],
+			DeviceID: p.DeviceID, CreatedAt: time.Now()})
 		saved = append(saved, t)
 	}
 	if len(saved) == 0 {
@@ -286,9 +340,13 @@ func saveDeviceLogins(out io.Writer, srv string, p client.DevicePoll, repoReady 
 	}
 	fmt.Fprintf(out, "\n已登录：工作空间 %s，成员 %s，工具 %s\n令牌已保存到 %s（仅本人可读）\n",
 		p.Workspace, p.Member, strings.Join(saved, "、"), client.CredentialsPath())
-	if repoReady {
+	switch {
+	case repoReady && repo.Workspace != "" && repo.Workspace != p.Workspace:
+		fmt.Fprintf(out, "\n注意：这个仓库配置的是工作空间 %s，而你登录的是 %s，编程工具会找不到登录。请确认仓库配置，或在仓库里重新执行 cohive init。\n",
+			repo.Workspace, p.Workspace)
+	case repoReady:
 		fmt.Fprintln(out, "\n这个仓库已经配置好 Cohive：Claude Code 里用 /cohive，Codex 里用 $cohive。")
-	} else {
+	default:
 		fmt.Fprintln(out, "\n下一步：在项目目录执行 cohive init")
 	}
 	return nil
@@ -310,4 +368,50 @@ func knownToolsFirst(tokens map[string]string) []string {
 	}
 	sort.Strings(rest)
 	return append(out, rest...)
+}
+
+// openWeb 实现 cohive web：用本机设备令牌换一次性登录链接，在浏览器里免密打开网页。
+func openWeb(ctx context.Context, out io.Writer, args []string) error {
+	fs := flag.NewFlagSet("web", flag.ContinueOnError)
+	server := fs.String("server", "", "协作服务地址；本机只配对过一个服务时可省略")
+	dir := fs.String("dir", ".", "仓库目录，用于读取服务地址")
+	open := fs.Bool("open", true, "自动打开浏览器")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	creds, err := client.LoadCredentials()
+	if err != nil {
+		return err
+	}
+	srv := client.NormalizeServer(*server)
+	if srv == "" {
+		if repo, err := readRepoTarget(findRepoDir(*dir)); err == nil {
+			srv = repo.Server
+		}
+	}
+	byServer := map[string]client.Login{}
+	for _, l := range creds.Logins {
+		if l.DeviceID != 0 && (srv == "" || l.Server == srv) {
+			byServer[l.Server] = l
+		}
+	}
+	if len(byServer) == 0 {
+		return errors.New("这台电脑还没有配对：先执行 cohive login")
+	}
+	if len(byServer) > 1 {
+		return errors.New("这台电脑配对了多个协作服务，请用 --server 指定")
+	}
+	var dev client.Login
+	for _, l := range byServer {
+		dev = l
+	}
+	link, err := client.WebLogin(ctx, dev.Server, dev.Token)
+	if err != nil {
+		return err
+	}
+	if *open {
+		_ = openURL(link)
+	}
+	fmt.Fprintf(out, "已在浏览器打开 Cohive（链接 2 分钟内有效、只能用一次）：\n  %s\n", link)
+	return nil
 }

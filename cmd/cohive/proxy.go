@@ -31,7 +31,7 @@ func runProxy(ctx context.Context, in io.Reader, out, errOut io.Writer, args []s
 		p.Server, p.Token = l.Server, l.Token
 	} else {
 		// 照常启动，对请求返回原因，用户能在编程工具里直接看到，而不只是在日志里
-		p.Unavailable = fmt.Sprintf("本机还没有登录 %s 的工作空间 %s（工具 %s）：私聊机器人发 /login 领取登录码，再执行 cohive login --server %s --code <登录码> --tool %s",
+		p.Unavailable = fmt.Sprintf("本机还没有登录 %s 的工作空间 %s（工具 %s）：在仓库目录执行 cohive login --server %s --tools %s，在浏览器里授权即可",
 			client.NormalizeServer(*server), *workspace, *tool, client.NormalizeServer(*server), *tool)
 	}
 	return p.Run(ctx, in, out)

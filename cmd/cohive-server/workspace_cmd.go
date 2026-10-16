@@ -48,7 +48,7 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 			return err
 		}
 		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "编号\t名称\t群通知\t加入方式\t待发/失败\t看板地址")
+		fmt.Fprintln(tw, "编号\t名称\t群通知\t待发/失败\t公网地址")
 		for _, w := range list {
 			pending, failed, err := store.CountNotifications(ctx, pool, w.ID)
 			if err != nil {
@@ -59,42 +59,11 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 				notify = fmt.Sprintf("%s %s（标题 %s，简述 %s）", w.Notify.Channel, w.Notify.Target,
 					onOff(w.Notify.ShowTitle), onOff(w.Notify.ShowBrief))
 			}
-			join := "加入需审批"
-			if !w.JoinRequiresApproval {
-				join = "自助加入"
-			}
-			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%d/%d\t%s\n", w.ID, w.Name, notify, join, pending, failed, w.PublicURL)
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%d/%d\t%s\n", w.ID, w.Name, notify, pending, failed, w.PublicURL)
 		}
 		return tw.Flush()
 	case "notify":
 		return workspaceNotify(ctx, out, pool, args)
-	case "set":
-		var name string
-		var approval bool
-		set := false
-		fs := flag.NewFlagSet("workspace set", flag.ContinueOnError)
-		fs.StringVar(&name, "workspace", "default", "工作空间名")
-		fs.BoolVar(&approval, "join-approval", true, "群里 /join 加入是否需要管理员批准")
-		if err := fs.Parse(args); err != nil {
-			return err
-		}
-		fs.Visit(func(f *flag.Flag) { set = set || f.Name == "join-approval" })
-		if !set {
-			return fmt.Errorf("没有要修改的项：例如 --join-approval=false")
-		}
-		wsID, err := resolveWorkspace(ctx, pool, name)
-		if err != nil {
-			return err
-		}
-		if err := store.SetJoinApproval(ctx, pool, wsID, approval); err != nil {
-			return err
-		}
-		if approval {
-			fmt.Fprintf(out, "工作空间 %s：群成员发 /join 后需管理员批准\n", name)
-		} else {
-			fmt.Fprintf(out, "工作空间 %s：群成员发 /join 直接加入\n", name)
-		}
-		return nil
 	}
 	fmt.Fprint(out, usage)
 	return fmt.Errorf("未知命令 %q", "workspace "+sub)
@@ -159,7 +128,7 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 	fs := flag.NewFlagSet("member set", flag.ContinueOnError)
 	fs.StringVar(&name, "name", "", "成员名")
 	fs.StringVar(&tg, "telegram", "", "Telegram 用户名，群通知里用于 @ 提醒；传空字符串可清除")
-	fs.StringVar(&tgID, "telegram-id", "", "Telegram 用户编号（私聊机器人 /whoami 获取），用于领取登录码；传空字符串可解绑")
+	fs.StringVar(&tgID, "telegram-id", "", "Telegram 用户编号（私聊机器人 /whoami 获取），用于识别群里点审批按钮的人；传空字符串可解绑。一般由成员在网页个人中心自行连接")
 	var role string
 	fs.StringVar(&role, "role", "", "角色：admin（可审批加入申请）或 member")
 	if err := fs.Parse(args); err != nil {
@@ -228,7 +197,7 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 		if userID == nil {
 			fmt.Fprintf(out, "已解绑 %s 的 Telegram 用户编号\n", name)
 		} else {
-			fmt.Fprintf(out, "%s 已绑定 Telegram 用户编号 %d，可以私聊机器人发 /login 领取登录码\n", name, *userID)
+			fmt.Fprintf(out, "%s 已绑定 Telegram 用户编号 %d\n", name, *userID)
 		}
 	}
 	return nil

@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -16,11 +19,11 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 )
 
-// DeviceStart 是发起设备授权登录的结果。
+// DeviceStart 是终端发起设备授权的结果。
 type DeviceStart struct {
 	RequestID  int64  `json:"request_id"`
 	PollSecret string `json:"poll_secret"`
-	Link       string `json:"link"`
+	URL        string `json:"url"`
 	ExpiresIn  int    `json:"expires_in"`
 }
 
@@ -29,20 +32,24 @@ type DevicePoll struct {
 	Status    string            `json:"status"`
 	Member    string            `json:"member"`
 	Workspace string            `json:"workspace"`
+	DeviceID  int64             `json:"device_id"`
 	Tokens    map[string]string `json:"tokens"`
 }
 
-// ErrDeviceGone 表示服务端已找不到这次登录请求。
-var ErrDeviceGone = errors.New("这次登录请求已失效，请重新执行 cohive login")
+// ErrDeviceGone 表示服务端已找不到这次授权。
+var ErrDeviceGone = errors.New("这次设备授权已失效，请重新执行 cohive login")
 
-// post 发送 JSON 请求；返回状态码，非 200 时把服务端的错误说明作为 error。
-func post(ctx context.Context, server, path string, in, out any) (int, error) {
+// post 发送 JSON 请求（token 非空时带令牌）；非 200 时把服务端的错误说明作为 error 返回。
+func post(ctx context.Context, server, path, token string, in, out any) (int, error) {
 	body, _ := json.Marshal(in)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server+path, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 	if err != nil {
 		var ue *url.Error
@@ -53,6 +60,9 @@ func post(ctx context.Context, server, path string, in, out any) (int, error) {
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if resp.StatusCode == http.StatusUnauthorized && token != "" {
+		return resp.StatusCode, errors.New("本机保存的令牌无效或已吊销")
+	}
 	if resp.StatusCode != http.StatusOK {
 		var e struct{ Error string }
 		if json.Unmarshal(raw, &e) != nil || e.Error == "" {
@@ -66,30 +76,111 @@ func post(ctx context.Context, server, path string, in, out any) (int, error) {
 	return resp.StatusCode, nil
 }
 
-// deviceLink 是服务端可以返回的确认链接：只能是 Telegram 机器人的深链。
-// 终端会打开并画出这个链接，不校验的话恶意服务可以让终端打开任意程序或文件。
-var deviceLink = regexp.MustCompile(`^https://t\.me/[A-Za-z0-9_]{5,32}\?start=dl_[A-Za-z0-9_-]{1,60}$`)
+var authPath = regexp.MustCompile(`^/device/da_[A-Za-z0-9_-]{1,60}$`)
 
-// StartDevice 向服务发起设备授权登录。
-func StartDevice(ctx context.Context, server string, tools []string, device, workspace string) (DeviceStart, error) {
+// StartDevice 向服务发起设备授权。授权页地址只取服务端返回的路径、拼在已知的服务地址后面，
+// 终端只会打开这个服务上的授权页，不会打开服务端给的任意地址。
+func StartDevice(ctx context.Context, server string, tools []string, device string) (DeviceStart, error) {
 	var st DeviceStart
-	_, err := post(ctx, server, "/api/v1/device/start",
-		map[string]any{"tools": tools, "device_name": device, "workspace": workspace}, &st)
-	if err == nil && (!deviceLink.MatchString(st.Link) || st.PollSecret == "" || st.ExpiresIn <= 0) {
-		err = errors.New("协作服务返回的登录信息不对（确认链接应是 https://t.me/ 开头的机器人链接），请确认服务地址")
+	if _, err := post(ctx, server, "/api/v1/device/start", "", map[string]any{"tools": tools, "device_name": device}, &st); err != nil {
+		return st, err
 	}
-	return st, err
+	u, err := url.Parse(st.URL)
+	if err != nil || !authPath.MatchString(u.Path) || st.PollSecret == "" || st.ExpiresIn <= 0 {
+		return st, errors.New("协作服务返回的授权信息不对，请确认服务地址")
+	}
+	st.URL = server + u.Path
+	return st, nil
 }
 
-// PollDevice 查询一次登录结果。请求已失效时返回 ErrDeviceGone。
-func PollDevice(ctx context.Context, server string, st DeviceStart) (DevicePoll, error) {
+// PollDevice 查询一次授权结果。授权已失效时返回 ErrDeviceGone。
+func PollDevice(ctx context.Context, server string, requestID int64, secret string) (DevicePoll, error) {
 	var p DevicePoll
-	code, err := post(ctx, server, "/api/v1/device/poll",
-		map[string]any{"request_id": st.RequestID, "poll_secret": st.PollSecret}, &p)
+	code, err := post(ctx, server, "/api/v1/device/poll", "", map[string]any{"request_id": requestID, "poll_secret": secret}, &p)
 	if code == http.StatusNotFound {
 		return p, ErrDeviceGone
 	}
 	return p, err
+}
+
+// AddTools 用本机已有的设备令牌为其他工具补签令牌。
+func AddTools(ctx context.Context, server, token string, tools []string) (DevicePoll, error) {
+	var p DevicePoll
+	_, err := post(ctx, server, "/api/v1/devices/self/tools", token, map[string]any{"tools": tools}, &p)
+	return p, err
+}
+
+var oncePath = regexp.MustCompile(`^/auth/once/[A-Za-z0-9_-]{1,64}$`)
+
+// WebLogin 用本机设备令牌换一个一次性网页登录链接。
+func WebLogin(ctx context.Context, server, token string) (string, error) {
+	var out struct {
+		URL string `json:"url"`
+	}
+	if _, err := post(ctx, server, "/api/v1/auth/web-login", token, map[string]any{}, &out); err != nil {
+		return "", err
+	}
+	u, err := url.Parse(out.URL)
+	if err != nil || !oncePath.MatchString(u.Path) {
+		return "", errors.New("协作服务返回的登录链接不对")
+	}
+	return server + u.Path, nil
+}
+
+// Pending 是等待管理员批准、尚未领取的设备授权，保存在本机以便稍后 cohive login --resume。
+type Pending struct {
+	Server     string    `json:"server"`
+	RequestID  int64     `json:"request_id"`
+	PollSecret string    `json:"poll_secret"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+func pendingPath() (string, error) {
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "pending.json"), nil
+}
+
+// SavePending 保存待领取的授权（仅本人可读）。
+func SavePending(p Pending) error {
+	path, err := pendingPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	b, _ := json.Marshal(p)
+	return os.WriteFile(path, b, 0o600)
+}
+
+// LoadPending 读取待领取的授权；没有时返回 nil。
+func LoadPending() (*Pending, error) {
+	path, err := pendingPath()
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var p Pending
+	if err := json.Unmarshal(b, &p); err != nil {
+		return nil, nil
+	}
+	return &p, nil
+}
+
+// ClearPending 删除待领取的授权记录。
+func ClearPending() {
+	if path, err := pendingPath(); err == nil {
+		_ = os.Remove(path)
+	}
 }
 
 // QRText 把内容画成终端里的二维码：每个字符表示上下两个模块。

@@ -9,9 +9,7 @@ type Workspace struct {
 	ID        int64
 	Name      string
 	Notify    NotifyConfig
-	PublicURL string // 看板的外部地址，用于群消息里的链接；可为空
-	// JoinRequiresApproval 为 true 时，群里 /join 需要管理员批准
-	JoinRequiresApproval bool
+	PublicURL string // 协作服务的外部地址，用于群消息与邀请链接；可为空
 }
 
 // NotifyConfig 是工作空间的群通知配置。Channel 为空表示不发群通知。
@@ -22,11 +20,11 @@ type NotifyConfig struct {
 	ShowBrief bool
 }
 
-const workspaceColumns = `id, name, notify_channel, notify_target, notify_show_title, notify_show_brief, public_url, join_requires_approval`
+const workspaceColumns = `id, name, notify_channel, notify_target, notify_show_title, notify_show_brief, public_url`
 
 func scanWorkspace(row interface{ Scan(...any) error }) (Workspace, error) {
 	var w Workspace
-	err := row.Scan(&w.ID, &w.Name, &w.Notify.Channel, &w.Notify.Target, &w.Notify.ShowTitle, &w.Notify.ShowBrief, &w.PublicURL, &w.JoinRequiresApproval)
+	err := row.Scan(&w.ID, &w.Name, &w.Notify.Channel, &w.Notify.Target, &w.Notify.ShowTitle, &w.Notify.ShowBrief, &w.PublicURL)
 	return w, notFound(err)
 }
 
@@ -98,19 +96,7 @@ func SetWorkspaceNotifyTarget(ctx context.Context, q DBTX, wsID int64, target st
 	return err
 }
 
-// SetJoinApproval 设置加入工作空间是否需要管理员批准。
-func SetJoinApproval(ctx context.Context, q DBTX, wsID int64, required bool) error {
-	_, err := q.Exec(ctx, `UPDATE workspaces SET join_requires_approval = $2 WHERE id = $1`, wsID, required)
-	return err
-}
-
 // SetMemberRole 设置成员角色。
 func SetMemberRole(ctx context.Context, q DBTX, memberID int64, role string) error {
 	return updateMember(ctx, q, `UPDATE members SET role = $2 WHERE id = $1`, memberID, role)
-}
-
-// WorkspaceByTelegramChat 按群聊编号找工作空间（群 /join 时用）。
-func WorkspaceByTelegramChat(ctx context.Context, q DBTX, chatID string) (Workspace, error) {
-	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces
-		WHERE notify_channel = 'telegram' AND notify_target = $1 ORDER BY id LIMIT 1`, chatID))
 }
