@@ -103,7 +103,7 @@ function ResultMessage({ status }: { status: string }) {
   const msg: Record<string, React.ReactNode> = {
     approved: "已授权，回到终端即可。",
     delivered: "已授权，终端已经完成登录。",
-    awaiting_admin: "已提交，等待管理员批准，终端会自动完成。",
+    awaiting_admin: "已提交，等待管理员批准。终端开着的话批准后会自动完成；终端已经关掉的话，批准后在那台电脑上执行 cohive login --resume 领取。",
     denied: "已拒绝。这次登录不会生效。",
     expired: "这个授权请求已过期。回到终端重新执行 cohive login。",
   };

@@ -241,7 +241,8 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 		_ = openURL(st.URL)
 	}
 	fmt.Fprintln(out, "\n等待授权……（按 Ctrl+C 放弃）")
-	return waitDevice(ctx, out, srv, st.RequestID, st.PollSecret, repoReady, repo)
+	return waitDevice(ctx, out, client.Pending{Server: srv, RequestID: st.RequestID, PollSecret: st.PollSecret, CreatedAt: time.Now()},
+		repoReady, repo)
 }
 
 // pairedDevice 找出本机在这个服务上已配对的设备登录（有设备编号的那条）。
@@ -254,21 +255,34 @@ func pairedDevice(creds *client.Credentials, srv string) (client.Login, bool) {
 	return client.Login{}, false
 }
 
-// resumeLogin 领取之前等待管理员批准的设备授权。
+// resumeLogin 继续领取之前没领完的设备授权（中途退出、等管理员批准超时、网络中断）。
 func resumeLogin(ctx context.Context, out io.Writer) error {
-	p, err := client.LoadPending()
+	list, err := client.LoadPendings()
 	if err != nil {
 		return err
 	}
-	if p == nil {
+	if len(list) == 0 {
 		return errors.New("没有等待领取的设备授权，请直接执行 cohive login")
 	}
-	fmt.Fprintf(out, "继续领取 %s 上的设备授权……\n", p.Server)
-	return waitDevice(ctx, out, p.Server, p.RequestID, p.PollSecret, false, repoTarget{})
+	var last error
+	for _, p := range list {
+		fmt.Fprintf(out, "继续领取 %s 上的设备授权（申请 %d）……\n", p.Server, p.RequestID)
+		if err := waitDevice(ctx, out, p, false, repoTarget{}); err != nil {
+			fmt.Fprintf(out, "  %v\n", err)
+			last = err
+		}
+	}
+	return last
 }
 
-// waitDevice 轮询授权结果。等待管理员批准超过 deviceAdminWait 时保存进度，之后用 --resume 领取。
-func waitDevice(ctx context.Context, out io.Writer, srv string, id int64, secret string, repoReady bool, repo repoTarget) error {
+// waitDevice 轮询授权结果。发起后立刻在本机保存进度，到终态（领到、拒绝、过期）才删除；
+// 中途 Ctrl+C、合盖、网络中断或等管理员超时，之后都能 cohive login --resume 接着领。
+func waitDevice(ctx context.Context, out io.Writer, pending client.Pending, repoReady bool, repo repoTarget) error {
+	srv, id := pending.Server, pending.RequestID
+	if err := client.SavePending(pending); err != nil {
+		return err
+	}
+	done := func() { client.ClearPending(srv, id) }
 	failures := 0
 	var awaitingSince time.Time
 	for {
@@ -277,14 +291,14 @@ func waitDevice(ctx context.Context, out io.Writer, srv string, id int64, secret
 			return ctx.Err()
 		case <-time.After(devicePollInterval):
 		}
-		p, err := client.PollDevice(ctx, srv, id, secret)
+		p, err := client.PollDevice(ctx, srv, id, pending.PollSecret)
 		if errors.Is(err, client.ErrDeviceGone) {
-			client.ClearPending()
+			done()
 			return err
 		}
 		if err != nil {
 			if failures++; failures >= 5 {
-				return err
+				return fmt.Errorf("%w。网络恢复后执行 cohive login --resume 继续领取", err)
 			}
 			continue
 		}
@@ -295,25 +309,22 @@ func waitDevice(ctx context.Context, out io.Writer, srv string, id int64, secret
 		case "awaiting_admin":
 			if awaitingSince.IsZero() {
 				awaitingSince = time.Now()
-				fmt.Fprintln(out, "你已授权；这不是你的第一台设备，正在等待管理员批准……")
+				fmt.Fprintln(out, "你已授权；这不是你的第一台设备，正在等待管理员批准……（可以先按 Ctrl+C 退出，批准后执行 cohive login --resume 领取）")
 			}
 			if time.Since(awaitingSince) > deviceAdminWait {
-				if err := client.SavePending(client.Pending{Server: srv, RequestID: id, PollSecret: secret, CreatedAt: time.Now()}); err != nil {
-					return err
-				}
 				return errors.New("管理员还没有批准。批准后执行 cohive login --resume 领取（24 小时内有效）")
 			}
 		case "approved":
-			client.ClearPending()
+			done()
 			return saveDeviceLogins(out, srv, p, repoReady, repo)
 		case "denied":
-			client.ClearPending()
-			return errors.New("授权被拒绝（你在浏览器里点了拒绝，或管理员没有批准）")
+			done()
+			return errors.New("授权被拒绝（你在浏览器里点了拒绝，或管理员没有批准，或设备已被吊销）")
 		case "expired":
-			client.ClearPending()
+			done()
 			return errors.New("授权已过期，请重新执行 cohive login")
 		case "delivered":
-			client.ClearPending()
+			done()
 			return errors.New("服务端显示令牌已经交付，但本机没有收到（可能是网络中断）。请重新执行 cohive login --force；多出的设备可在网页“个人中心”吊销")
 		default:
 			return fmt.Errorf("协作服务返回了未知状态 %q", p.Status)

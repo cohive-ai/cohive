@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -127,7 +129,7 @@ func WebLogin(ctx context.Context, server, token string) (string, error) {
 	return server + u.Path, nil
 }
 
-// Pending 是等待管理员批准、尚未领取的设备授权，保存在本机以便稍后 cohive login --resume。
+// Pending 是尚未领取令牌的设备授权，保存在本机，中途退出后可以 cohive login --resume 继续。
 type Pending struct {
 	Server     string    `json:"server"`
 	RequestID  int64     `json:"request_id"`
@@ -135,51 +137,84 @@ type Pending struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-func pendingPath() (string, error) {
+func pendingDir() (string, error) {
 	dir, err := ConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "pending.json"), nil
+	return filepath.Join(dir, "pending"), nil
 }
 
-// SavePending 保存待领取的授权（仅本人可读）。
+// pendingFile 按“服务地址 + 申请编号”给每条记录一个文件，互不覆盖。
+func pendingFile(dir, server string, id int64) string {
+	h := sha256.Sum256([]byte(NormalizeServer(server)))
+	return filepath.Join(dir, fmt.Sprintf("%x-%d.json", h[:6], id))
+}
+
+// SavePending 原子地保存一条待领取记录（仅本人可读）。
 func SavePending(p Pending) error {
-	path, err := pendingPath()
+	dir, err := pendingDir()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	b, _ := json.Marshal(p)
-	return os.WriteFile(path, b, 0o600)
+	tmp, err := os.CreateTemp(dir, ".pending-*.json")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), pendingFile(dir, p.Server, p.RequestID))
 }
 
-// LoadPending 读取待领取的授权；没有时返回 nil。
-func LoadPending() (*Pending, error) {
-	path, err := pendingPath()
+// LoadPendings 读取全部待领取记录（按创建时间先后）；格式不对的文件跳过。
+func LoadPendings() ([]Pending, error) {
+	dir, err := pendingDir()
 	if err != nil {
 		return nil, err
 	}
-	b, err := os.ReadFile(path)
+	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	var p Pending
-	if err := json.Unmarshal(b, &p); err != nil {
-		return nil, nil
+	var out []Pending
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var p Pending
+		if json.Unmarshal(b, &p) == nil && p.Server != "" && p.RequestID > 0 {
+			out = append(out, p)
+		}
 	}
-	return &p, nil
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
 }
 
-// ClearPending 删除待领取的授权记录。
-func ClearPending() {
-	if path, err := pendingPath(); err == nil {
-		_ = os.Remove(path)
+// ClearPending 只删除这一条待领取记录。
+func ClearPending(server string, id int64) {
+	if dir, err := pendingDir(); err == nil {
+		_ = os.Remove(pendingFile(dir, server, id))
 	}
 }
 
