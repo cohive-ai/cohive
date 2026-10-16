@@ -367,11 +367,18 @@ func ListAwaitingDeviceAuths(ctx context.Context, q DBTX, wsID int64) ([]DeviceA
 	return out, rows.Err()
 }
 
-// CountActiveDevices 返回成员未吊销的设备数。
-func CountActiveDevices(ctx context.Context, q DBTX, memberID int64) (int, error) {
+// CountEverDevices 返回成员有过的设备数（含已吊销）。首台设备免审只看“从未有过设备”，
+// 吊销全部设备后再配对不算首台。
+func CountEverDevices(ctx context.Context, q DBTX, memberID int64) (int, error) {
 	var n int
-	err := q.QueryRow(ctx, `SELECT count(*) FROM devices WHERE member_id = $1 AND revoked_at IS NULL`, memberID).Scan(&n)
+	err := q.QueryRow(ctx, `SELECT count(*) FROM devices WHERE member_id = $1`, memberID).Scan(&n)
 	return n, err
+}
+
+// LockMember 在事务内锁住成员行，让同一成员的并发操作（例如两次设备授权）排队执行。
+func LockMember(ctx context.Context, q DBTX, memberID int64) error {
+	var id int64
+	return notFound(q.QueryRow(ctx, `SELECT id FROM members WHERE id = $1 FOR UPDATE`, memberID).Scan(&id))
 }
 
 // ---- 通讯工具连接 ----

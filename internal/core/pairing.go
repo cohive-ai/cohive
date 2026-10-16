@@ -406,7 +406,7 @@ func (s *Service) ViewDeviceAuth(ctx context.Context, viewer store.Member, nonce
 	if err != nil {
 		return DeviceAuthView{}, err
 	}
-	n, err := store.CountActiveDevices(ctx, s.Pool, viewer.ID)
+	n, err := store.CountEverDevices(ctx, s.Pool, viewer.ID)
 	if err != nil {
 		return DeviceAuthView{}, err
 	}
@@ -433,7 +433,11 @@ func (s *Service) AuthorizeDevice(ctx context.Context, m store.Member, nonce str
 		case !approve:
 			a.Status = store.AuthDenied
 		default:
-			n, err := store.CountActiveDevices(ctx, tx, m.ID)
+			// 先锁成员行，同一成员并发授权时第二个会看到第一个建的设备
+			if err := store.LockMember(ctx, tx, m.ID); err != nil {
+				return err
+			}
+			n, err := store.CountEverDevices(ctx, tx, m.ID)
 			if err != nil {
 				return err
 			}
