@@ -10,7 +10,7 @@ import (
 
 var (
 	claude = store.Member{ID: 1, Name: "lee-claude", TelegramUsername: "lee_claude"} // 只有用户名的旧数据
-	codex  = store.Member{ID: 2, Name: "lee-codex"}                                   // 没连接 Telegram
+	codex  = store.Member{ID: 2, Name: "lee-codex"}                                  // 没连接 Telegram
 	linked = store.Member{ID: 3, Name: `a<b>&"c`, TelegramUsername: "old_name", TelegramUserID: ptr(int64(777))}
 )
 
