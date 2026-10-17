@@ -2,6 +2,7 @@
 # Cohive 命令行安装脚本（macOS、Linux），由协作服务 {{.Server}} 生成。
 # 只从这台协作服务下载，安装前核对 SHA-256；不需要管理员权限，不改 shell 配置文件。
 # 安装位置默认 ~/.local/bin，可用 COHIVE_INSTALL_DIR 指定。
+# 装完接着配对这台电脑：curl -fsSL {{.Server}}/install.sh | sh -s -- --login（或设 COHIVE_LOGIN=1）
 # 整个脚本包在函数里、最后一行才执行：下载中断时不会执行半截脚本。
 set -eu
 
@@ -10,6 +11,14 @@ cohive_install() {
   dir="${COHIVE_INSTALL_DIR:-$HOME/.local/bin}"
 
   fail() { printf '错误：%s\n' "$*" >&2; exit 1; }
+
+  login="${COHIVE_LOGIN:-0}"
+  for arg in "$@"; do
+    case "$arg" in
+      --login) login=1 ;;
+      *) fail "不认识的参数 $arg（只支持 --login）" ;;
+    esac
+  done
 {{- if .Missing}}
   fail '{{.Missing}}'
 {{- else}}
@@ -76,6 +85,15 @@ cohive_install() {
     http://localhost*|http://127.*|http://\[::1\]*) ;;
     http://*) printf '\n提醒：服务地址是 http://，传输没有加密，只应在内网使用。\n' ;;
   esac
+  if [ "$login" = 1 ]; then
+    # curl | sh 时标准输入是脚本本身，配对要从终端读按键，所以接到 /dev/tty
+    if (: </dev/tty) 2>/dev/null; then
+      printf '\n接着配对这台电脑（会打开浏览器，点“授权”即可）……\n\n'
+      "$dir/cohive" login --server "$server" </dev/tty
+      return
+    fi
+    printf '\n没有可交互的终端，没法接着配对。'
+  fi
   printf '\n下一步：配对这台电脑（会打开浏览器，点“授权”即可）\n  cohive login --server %s\n' "$server"
 {{- end}}
 }

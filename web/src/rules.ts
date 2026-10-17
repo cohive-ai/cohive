@@ -55,7 +55,20 @@ export function adminNeedsPasswordLogin(me: { login_method?: string }): boolean 
 }
 
 // 安装命令行的命令：只从本服务下载（安装脚本会核对校验和）。origin 形如 https://cohive.example.com
-export function installCommands(origin: string): { unix: string; windows: string } {
+// login 为 true 时装完接着执行 cohive login 配对这台电脑。
+export function installCommands(origin: string, login = false): { unix: string; windows: string } {
   const o = origin.replace(/\/+$/, "");
+  if (login) {
+    return {
+      unix: `curl -fsSL ${o}/install.sh | sh -s -- --login`,
+      windows: `$env:COHIVE_LOGIN=1; irm ${o}/install.ps1 | iex`,
+    };
+  }
   return { unix: `curl -fsSL ${o}/install.sh | sh`, windows: `irm ${o}/install.ps1 | iex` };
+}
+
+// 在项目目录执行的初始化命令：只在一个工作空间时不用指定，多个时每个工作空间一条。
+export function initCommands(workspaces: string[]): string[] {
+  if (workspaces.length <= 1) return ["cohive init"];
+  return workspaces.map((w) => `cohive init --workspace ${w}`);
 }

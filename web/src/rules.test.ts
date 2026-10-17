@@ -4,6 +4,7 @@ import {
   adminNeedsPasswordLogin,
   authorizeAsText,
   deviceScopeText,
+  initCommands,
   installCommands,
   inviteLookupFailure,
   isTelegramLink,
@@ -74,4 +75,14 @@ it("安装命令只指向本服务", () => {
     unix: "curl -fsSL https://cohive.example.com/install.sh | sh",
     windows: "irm https://cohive.example.com/install.ps1 | iex",
   });
+  expect(installCommands("https://cohive.example.com", true)).toEqual({
+    unix: "curl -fsSL https://cohive.example.com/install.sh | sh -s -- --login",
+    windows: "$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex",
+  });
+});
+
+it("一个工作空间时 cohive init 不用指定，多个时逐个列出", () => {
+  expect(initCommands([])).toEqual(["cohive init"]);
+  expect(initCommands(["pay"])).toEqual(["cohive init"]);
+  expect(initCommands(["pay", "shop"])).toEqual(["cohive init --workspace pay", "cohive init --workspace shop"]);
 });

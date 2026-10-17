@@ -2,6 +2,7 @@
 # 用法：在 PowerShell 里执行  irm {{.Server}}/install.ps1 | iex
 # 只从这台协作服务下载，安装前核对 SHA-256；装到当前用户目录，不需要管理员权限。
 # 安装位置默认 %LOCALAPPDATA%\Programs\cohive，可用环境变量 COHIVE_INSTALL_DIR 指定。
+# 装完接着配对这台电脑：$env:COHIVE_LOGIN=1; irm {{.Server}}/install.ps1 | iex
 & {
   $ErrorActionPreference = 'Stop'
   $server = '{{.Server}}'
@@ -40,7 +41,12 @@
     Write-Host '提醒：服务地址是 http://，传输没有加密，只应在内网使用。'
   }
   Write-Host ''
-  Write-Host '下一步：配对这台电脑（会打开浏览器，点“授权”即可）'
-  Write-Host "  cohive login --server $server"
+  if ($env:COHIVE_LOGIN -eq '1') {
+    Write-Host '接着配对这台电脑（会打开浏览器，点“授权”即可）……'
+    & (Join-Path $dir 'cohive.exe') login --server $server
+  } else {
+    Write-Host '下一步：配对这台电脑（会打开浏览器，点“授权”即可）'
+    Write-Host "  cohive login --server $server"
+  }
 {{- end}}
 }

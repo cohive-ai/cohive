@@ -5,7 +5,7 @@ import { api, ApiError, type Me } from "../api";
 import { DeviceTokens, Notice } from "../components";
 import { absoluteTime, roleLabel, workspaceLabel } from "../format";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
-import { installCommands, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
+import { initCommands, installCommands, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
 
 export function MePage() {
@@ -62,7 +62,7 @@ export function MePage() {
         )}
       </Section>
 
-      <BindComputer />
+      <BindComputer workspaces={m.workspaces.map((w) => w.name)} />
 
       <MyDevices />
 
@@ -75,18 +75,18 @@ export function MePage() {
   );
 }
 
-// 绑定新电脑：先装命令行（只从本服务下载、核对校验和），再配对
-function BindComputer() {
+// 绑定新电脑：一条命令装好命令行（只从本服务下载、核对校验和）并接着配对，再在项目目录初始化
+function BindComputer({ workspaces }: { workspaces: string[] }) {
   const v = useQuery({ queryKey: ["version"], queryFn: api.version, staleTime: 5 * 60_000 });
   const origin = window.location.origin;
-  const cmd = installCommands(origin);
+  const cmd = installCommands(origin, true);
   const code = (t: string) => <code className="rounded bg-sunken px-1 font-mono text-ink">{t}</code>;
 
   return (
     <Section title="绑定新电脑" description="让这台电脑上的编程工具以你的身份使用协作服务。">
       <ol className="space-y-4 text-sm">
         <li>
-          <p className="mb-2 font-medium">1. 安装命令行 cohive</p>
+          <p className="mb-2 font-medium">1. 安装命令行并配对这台电脑</p>
           {v.isPending ? (
             <p className="text-muted">正在读取…</p>
           ) : v.isError ? (
@@ -96,20 +96,26 @@ function BindComputer() {
           ) : (
             <div className="space-y-2">
               <p className="text-muted">macOS、Linux：在终端执行</p>
-              <CopyField label="macOS、Linux 安装命令" value={cmd.unix} />
+              <CopyField label="macOS、Linux 安装并配对" value={cmd.unix} />
               <p className="text-muted">Windows：在 PowerShell 执行</p>
-              <CopyField label="Windows 安装命令" value={cmd.windows} />
+              <CopyField label="Windows 安装并配对" value={cmd.windows} />
               <p className="text-muted">
-                版本 {v.data.cli.version}。只从本服务下载，安装前会核对校验和；装在 {code("~/.local/bin")}（Windows
-                装在当前用户目录），不需要管理员权限。装过的电脑再执行一次即可升级。
+                装好后会接着打开浏览器，点“授权”即可。版本 {v.data.cli.version}。只从本服务下载，安装前会核对校验和；装在{" "}
+                {code("~/.local/bin")}（Windows 装在当前用户目录），不需要管理员权限。装过的电脑再执行一次即可升级。
               </p>
+              <p className="text-muted">已经装好命令行、只需配对时：</p>
+              <CopyField label="配对命令" value={`cohive login --server ${origin}`} />
             </div>
           )}
         </li>
         <li>
-          <p className="mb-2 font-medium">2. 配对这台电脑</p>
-          <p className="mb-2">执行下面的命令，会自动打开浏览器，在浏览器里点“授权”即可：</p>
-          <CopyField label="绑定命令" value={`cohive login --server ${origin}`} />
+          <p className="mb-2 font-medium">2. 在项目目录执行</p>
+          <p className="mb-2 text-muted">
+            写入编程工具的配置（不含令牌，可以提交进仓库）。团队里已经有人提交过这些配置的项目不用再做。
+          </p>
+          {initCommands(workspaces).map((c) => (
+            <CopyField key={c} label="初始化命令" value={c} />
+          ))}
         </li>
         <li>
           <p className="mb-1 font-medium">3. 以后免密打开网页</p>
