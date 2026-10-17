@@ -214,7 +214,6 @@ func fakeServer(t *testing.T, dir string) string {
 
 import (
 	"fmt"
-	"io/fs"
 	"net/http"
 	"os"
 )
