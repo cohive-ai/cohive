@@ -32,6 +32,9 @@ const usage = `用法：cohive <命令>
   version            显示本机 cohive 的版本
   mcp-proxy --server <地址> --workspace <名称> --tool <工具>
                      供编程工具调用的本机转发器，不需要手动运行
+  hook --server <地址> --workspace <名称> --tool <工具>
+                     供编程工具的会话钩子调用，有新动态时在会话里插入一行提醒，不需要手动运行；
+                     加 --check 手动排查为什么没有提醒
 
 凭据保存在 ~/.config/cohive/credentials.json（仅本人可读），可用 COHIVE_CONFIG_DIR 改变目录。
 `
@@ -60,6 +63,10 @@ func runCLI(ctx context.Context, in io.Reader, out io.Writer, args []string) err
 		return openWeb(ctx, out, args[1:])
 	case "init":
 		return initProject(ctx, out, args[1:])
+	case "hook":
+		// 编程工具的会话钩子：任何情况下都正常退出，出错只是没有提醒
+		runHook(ctx, in, out, args[1:])
+		return nil
 	case "mcp-proxy":
 		return runProxy(ctx, in, out, os.Stderr, args[1:])
 	case "help", "-h", "--help":

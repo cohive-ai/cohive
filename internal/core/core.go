@@ -331,6 +331,9 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 		if err := queueNotifications(ctx, tx, who, is, in.Action, payload["escalated"] == true); err != nil {
 			return err
 		}
+		if err := queueAlerts(ctx, tx, who, is, in.Action, payload["escalated"] == true); err != nil {
+			return err
+		}
 		if in.IdempotencyKey != "" {
 			if err := store.PutIdempotent(ctx, tx, who.TokenID, in.IdempotencyKey,
 				store.IdemRecord{IssueID: is.ID, Action: string(in.Action)}); err != nil {

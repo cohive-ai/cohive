@@ -67,6 +67,10 @@ func queueNotifications(ctx context.Context, tx store.DBTX, who store.Identity, 
 // queueReassign 在管理员改派的同一事务里给新接手人写待发群通知：
 // 新负责人在他该动手的状态下收到“新单交给你”；新发起人在待验证时收到“请验证”。
 func queueReassign(ctx context.Context, tx store.DBTX, who store.Identity, is store.Issue, ownerChanged, sourceChanged bool) error {
+	// 会话内提醒与有没有配群无关，先写
+	if err := queueReassignAlerts(ctx, tx, who, is, ownerChanged, sourceChanged); err != nil {
+		return err
+	}
 	ws, err := store.GetWorkspace(ctx, tx, is.WorkspaceID)
 	if err != nil {
 		return err

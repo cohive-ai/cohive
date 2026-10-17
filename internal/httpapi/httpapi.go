@@ -60,6 +60,7 @@ func Handler(svc *core.Service, opts Options) http.Handler {
 	mux := http.NewServeMux()
 	accountRoutes(mux, svc, opts)
 	workspaceRoutes(mux, svc)
+	alertRoutes(mux, svc)
 	adminRoutes(mux, svc, opts)
 	serverRoutes(mux, svc, opts)
 	eventRoutes(mux, svc)
