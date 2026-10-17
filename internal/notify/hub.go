@@ -93,7 +93,7 @@ func deviceText(w *writer, a store.DeviceAuth, workspaces []string) string {
 // post 发一条审批消息并记下，处理后据此把各群里的消息都改成结果。
 func (h *Hub) post(ctx context.Context, ch Channel, chat string, a Approval, m Rendered) error {
 	ref, err := ch.SendApproval(ctx, chat, m, a)
-	if err != nil {
+	if err != nil || ref == "" { // 没有消息编号：通道发的是不带按钮的降级消息，处理后也不用改
 		return err
 	}
 	return h.Core.RecordBotPost(ctx, store.BotPost{Kind: a.Kind, RefID: a.RefID, WorkspaceID: a.WorkspaceID,
@@ -234,7 +234,7 @@ func (h *Hub) Click(ctx context.Context, c Click) ClickResult {
 	if a.Kind != "su" && a.Kind != "da" {
 		return ClickResult{}
 	}
-	ws, err := h.Core.WorkspaceByChat(ctx, c.Provider, c.Tenant, chat)
+	ws, err := h.Core.WorkspaceByChat(ctx, c.Provider, "", chat)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && ws.ID != a.WorkspaceID) {
 		return ClickResult{Toast: "这条审批消息与本群绑定的工作空间不符，请在网页上处理"}
 	}
@@ -295,7 +295,7 @@ func (h *Hub) Whoami(ctx context.Context, who ChatUser, chatID string) (account,
 	if chatID == "" {
 		return acc.Name, "", "", true
 	}
-	ws, err := h.Core.WorkspaceByChat(ctx, who.Provider, who.Tenant, chatID)
+	ws, err := h.Core.WorkspaceByChat(ctx, who.Provider, "", chatID) // 群编号全局唯一，工作空间群表不记企业
 	if err != nil {
 		return acc.Name, "", "", true
 	}

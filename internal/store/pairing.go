@@ -478,24 +478,31 @@ const (
 	LinkLinked  = "linked"
 	LinkFailed  = "failed"
 	LinkExpired = "expired" // 只用于展示：过期的请求在库里仍是 pending
+	// LinkAwaitingConfirm 表示机器人已收到绑定码、记下了发码的人，等本人在网页确认（钉钉）
+	LinkAwaitingConfirm = "awaiting_confirm"
 )
 
-// LinkRequest 是一次通讯工具连接请求。
+// LinkRequest 是一次通讯工具连接请求。钉钉先由机器人记下发码的人（Candidate*，状态 awaiting_confirm），
+// 本人在网页确认后才连接。
 type LinkRequest struct {
-	ID        int64
-	AccountID int64
-	Provider  string
-	Nonce     string
-	Status    string
-	Detail    string
-	ExpiresAt time.Time
+	ID              int64
+	AccountID       int64
+	Provider        string
+	Nonce           string // Telegram 是机器人链接参数；钉钉是发给机器人的绑定码
+	Status          string
+	Detail          string
+	ExpiresAt       time.Time
+	CandidateTenant string
+	CandidateUserID string
+	CandidateName   string
 }
 
-const linkColumns = `id, account_id, provider, nonce, status, detail, expires_at`
+const linkColumns = `id, account_id, provider, nonce, status, detail, expires_at, candidate_tenant, candidate_user_id, candidate_name`
 
 func scanLink(row interface{ Scan(...any) error }) (LinkRequest, error) {
 	var l LinkRequest
-	err := row.Scan(&l.ID, &l.AccountID, &l.Provider, &l.Nonce, &l.Status, &l.Detail, &l.ExpiresAt)
+	err := row.Scan(&l.ID, &l.AccountID, &l.Provider, &l.Nonce, &l.Status, &l.Detail, &l.ExpiresAt,
+		&l.CandidateTenant, &l.CandidateUserID, &l.CandidateName)
 	return l, notFound(err)
 }
 
@@ -514,6 +521,17 @@ func LinkRequestByNonceForUpdate(ctx context.Context, q DBTX, provider, nonce st
 // GetLinkRequest 读取账号自己的连接请求。
 func GetLinkRequest(ctx context.Context, q DBTX, accountID, id int64) (LinkRequest, error) {
 	return scanLink(q.QueryRow(ctx, `SELECT `+linkColumns+` FROM link_requests WHERE id = $1 AND account_id = $2`, id, accountID))
+}
+
+// LinkRequestForUpdate 读取并锁定账号自己的连接请求（网页确认时）。
+func LinkRequestForUpdate(ctx context.Context, q DBTX, accountID, id int64) (LinkRequest, error) {
+	return scanLink(q.QueryRow(ctx, `SELECT `+linkColumns+` FROM link_requests WHERE id = $1 AND account_id = $2 FOR UPDATE`, id, accountID))
+}
+
+// SetLinkCandidate 记下发来绑定码的通讯账号，状态改为等网页确认。
+func SetLinkCandidate(ctx context.Context, q DBTX, id int64, tenant, userID, name, detail string) error {
+	return execOne(ctx, q, `UPDATE link_requests SET status = 'awaiting_confirm', candidate_tenant = $2, candidate_user_id = $3,
+		candidate_name = $4, detail = $5 WHERE id = $1`, id, tenant, userID, name, detail)
 }
 
 // FinishLinkRequest 写回连接结果。

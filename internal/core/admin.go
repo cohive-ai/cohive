@@ -944,3 +944,8 @@ func (s *Service) BotPostByMessage(ctx context.Context, provider, chatID, msgRef
 func (s *Service) BotPosts(ctx context.Context, kind string, refID int64) ([]store.BotPost, error) {
 	return store.ListBotPosts(ctx, s.Pool, kind, refID)
 }
+
+// WorkspaceChats 返回工作空间绑定的群。
+func (s *Service) WorkspaceChats(ctx context.Context, wsID int64) ([]store.WorkspaceChat, error) {
+	return store.WorkspaceChats(ctx, s.Pool, wsID)
+}

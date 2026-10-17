@@ -61,6 +61,7 @@ type Options struct {
 type ChannelInfo struct {
 	Provider string `json:"provider"`           // telegram、dingtalk
 	BotName  string `json:"bot_name,omitempty"` // Telegram 机器人用户名
+	AppID    string `json:"app_id,omitempty"`   // 钉钉应用 Client ID 的尾号（核对用的是哪个应用）
 	Online   bool   `json:"online"`             // 收件循环是否在线
 	Detail   string `json:"detail,omitempty"`   // 不在线的原因、配置提示等，给服务器管理员看
 }
@@ -74,6 +75,16 @@ func channels(opts Options) []ChannelInfo {
 		return []ChannelInfo{{Provider: core.ProviderTelegram, BotName: name, Online: true}}
 	}
 	return []ChannelInfo{}
+}
+
+// providerEnabled 判断服务器是否启用了某种通讯工具。
+func providerEnabled(opts Options, provider string) bool {
+	for _, c := range channels(opts) {
+		if c.Provider == provider {
+			return true
+		}
+	}
+	return false
 }
 
 // enabledProviders 是给成员看的启用列表（不含状态细节）。

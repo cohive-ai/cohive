@@ -160,6 +160,7 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 	sendCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	msg := RenderFor(sender.Format(), ws.Notify.Channel, d.baseURL(ctx), ws, is, n, people)
+	msg.Key = fmt.Sprintf("n%d", n.ID)
 	sendErr := sender.Send(sendCtx, ws.Notify.Target, msg)
 	if sendErr == nil {
 		if d.downMsg != "" {

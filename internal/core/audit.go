@@ -74,38 +74,42 @@ func systemActor() Actor { return Actor{Via: ViaSystem} }
 
 // 动作。
 const (
-	ActSignupApprove     = "signup.approve"
-	ActSignupReject      = "signup.reject"
-	ActJoinApprove       = "join.approve"
-	ActJoinReject        = "join.reject"
-	ActDeviceApprove     = "device.approve"
-	ActDeviceDeny        = "device.deny"
-	ActDeviceSelfApprove = "device.self_approve"
-	ActMemberRole        = "member.role"
-	ActInviteCreate      = "invite.create"
-	ActInviteRevoke      = "invite.revoke"
-	ActInviteUse         = "invite.use"
-	ActDeviceRevoke      = "device.revoke"
-	ActMemberAdd         = "member.add"
-	ActMemberHandover    = "member.handover"
-	ActMemberRemove      = "member.remove"
-	ActAccountDisable    = "account.disable"
-	ActAccountEnable     = "account.enable"
-	ActServerAdminGrant  = "account.server_admin_grant"
-	ActServerAdminRevoke = "account.server_admin_revoke"
-	ActResetPassword     = "account.reset_password"
-	ActAccountUpdate     = "account.update"
-	ActTelegramUnlink    = "account.telegram_unlink"
-	ActTelegramLink      = "account.telegram_link"
-	ActPasswordChange    = "account.password_change"
-	ActAccountCreate     = "account.create"
-	ActWorkspaceCreate   = "workspace.create"
-	ActWorkspaceDelete   = "workspace.delete"
-	ActWorkspaceSettings = "workspace.settings"
-	ActTokenIssue        = "token.issue"
-	ActTokenRevoke       = "token.revoke"
-	ActServiceOwner      = "service.owner"
-	ActAccessDenied      = "access.denied"
+	ActSignupApprove       = "signup.approve"
+	ActSignupReject        = "signup.reject"
+	ActJoinApprove         = "join.approve"
+	ActJoinReject          = "join.reject"
+	ActDeviceApprove       = "device.approve"
+	ActDeviceDeny          = "device.deny"
+	ActDeviceSelfApprove   = "device.self_approve"
+	ActMemberRole          = "member.role"
+	ActInviteCreate        = "invite.create"
+	ActInviteRevoke        = "invite.revoke"
+	ActInviteUse           = "invite.use"
+	ActDeviceRevoke        = "device.revoke"
+	ActMemberAdd           = "member.add"
+	ActMemberHandover      = "member.handover"
+	ActMemberRemove        = "member.remove"
+	ActAccountDisable      = "account.disable"
+	ActAccountEnable       = "account.enable"
+	ActServerAdminGrant    = "account.server_admin_grant"
+	ActServerAdminRevoke   = "account.server_admin_revoke"
+	ActResetPassword       = "account.reset_password"
+	ActAccountUpdate       = "account.update"
+	ActTelegramUnlink      = "account.telegram_unlink"
+	ActTelegramLink        = "account.telegram_link"
+	ActDingTalkLink        = "account.dingtalk_link"
+	ActDingTalkUnlink      = "account.dingtalk_unlink"
+	ActWorkspaceChatBind   = "workspace.chat_bind"
+	ActWorkspaceChatUnbind = "workspace.chat_unbind"
+	ActPasswordChange      = "account.password_change"
+	ActAccountCreate       = "account.create"
+	ActWorkspaceCreate     = "workspace.create"
+	ActWorkspaceDelete     = "workspace.delete"
+	ActWorkspaceSettings   = "workspace.settings"
+	ActTokenIssue          = "token.issue"
+	ActTokenRevoke         = "token.revoke"
+	ActServiceOwner        = "service.owner"
+	ActAccessDenied        = "access.denied"
 
 	ActServerSettings       = "server.settings"
 	ActWorkspaceDisplayName = "workspace.display_name"
@@ -239,7 +243,22 @@ var actions = map[string]actionInfo{
 		}
 		return "断开了 " + e.TargetName + " 的 Telegram 连接"
 	}},
-	ActTelegramLink:   {"连接 Telegram", CatAccount, func(e store.AdminEvent) string { return "连接了自己的 Telegram 账号" }},
+	ActTelegramLink: {"连接 Telegram", CatAccount, func(e store.AdminEvent) string { return "连接了自己的 Telegram 账号" }},
+	ActDingTalkLink: {"连接钉钉", CatAccount, func(e store.AdminEvent) string {
+		return fmt.Sprintf("连接了自己的钉钉账号（%v）", e.Detail["dingtalk_name"])
+	}},
+	ActDingTalkUnlink: {"断开钉钉", CatAccount, func(e store.AdminEvent) string {
+		if b(e, "self") {
+			return "断开了自己的钉钉连接"
+		}
+		return "断开了 " + e.TargetName + " 的钉钉连接"
+	}},
+	ActWorkspaceChatBind: {"绑定群", CatWorkspace, func(e store.AdminEvent) string {
+		return fmt.Sprintf("把工作空间 %s 绑定到%s群“%v”", e.TargetName, providerName(str(e, "provider")), e.Detail["chat_title"])
+	}},
+	ActWorkspaceChatUnbind: {"解绑群", CatWorkspace, func(e store.AdminEvent) string {
+		return fmt.Sprintf("解除了工作空间 %s 绑定的%s群“%v”", e.TargetName, providerName(str(e, "provider")), e.Detail["chat_title"])
+	}},
 	ActPasswordChange: {"修改密码", CatAccount, func(e store.AdminEvent) string { return "修改了自己的密码" }},
 	ActAccountCreate: {"建账号", CatAccount, func(e store.AdminEvent) string {
 		if b(e, "initial_admin") {

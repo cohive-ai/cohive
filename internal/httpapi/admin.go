@@ -280,6 +280,45 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
+	// 群绑定码（钉钉）：生成后在群里 @机器人 发“绑定群 绑定码”
+	adm("POST "+p+"/chat-binds", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
+		var in struct {
+			Provider string `json:"provider"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		if !providerEnabled(opts, in.Provider) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "协作服务没有启用这种通讯工具"})
+			return
+		}
+		b, err := svc.StartChatBind(r.Context(), core.WebActor(*actor), ws.ID, in.Provider)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"id": b.ID, "code": b.Code, "expires_in": int(time.Until(b.ExpiresAt).Seconds())})
+	})
+	adm("GET "+p+"/chat-binds/{id}", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
+		id, ok := pathID(w, r, "id")
+		if !ok {
+			return
+		}
+		b, err := svc.ChatBindStatus(r.Context(), core.WebActor(*actor), ws.ID, id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": b.Status, "detail": b.Detail})
+	})
+	adm("DELETE "+p+"/chats/{provider}", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
+		if err := svc.UnbindChat(r.Context(), core.WebActor(*actor), ws.ID, r.PathValue("provider")); err != nil {
+			writeError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	adm("GET "+p+"/workspace", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
 		ws, err := svc.AdminWorkspace(r.Context(), actor, ws.ID)
 		if err != nil {
@@ -299,7 +338,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		writeJSON(w, http.StatusOK, map[string]any{"name": ws.Name, "path": ws.Name, "display_name": ws.Label(),
 			"telegram_chat": telegramChat(ws), "show_title": ws.Notify.ShowTitle, "show_brief": ws.Notify.ShowBrief,
 			"bot_enabled": botName(opts) != "", "external_url_set": ext.URL != "", "issue_link_example": example,
-			"chat": workspaceChatJSON(ws), "channels": enabledProviders(opts)})
+			"chat": workspaceChatJSON(r.Context(), svc, ws), "channels": enabledProviders(opts)})
 	})
 	adm("POST "+p+"/workspace", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
 		// 旧页面还会带 public_url：对外地址已改为服务器级，忽略它
@@ -329,12 +368,14 @@ func telegramChat(ws store.Workspace) string {
 	return ws.Notify.Target
 }
 
-// workspaceChatJSON 是工作空间绑定的群；没绑时为 nil。
-func workspaceChatJSON(ws store.Workspace) map[string]string {
-	if ws.Notify.Channel == "" || ws.Notify.Target == "" {
+// workspaceChatJSON 是工作空间绑定的群（第一期最多一个）；没绑时为 nil。
+func workspaceChatJSON(ctx context.Context, svc *core.Service, ws store.Workspace) map[string]string {
+	chats, err := svc.WorkspaceChats(ctx, ws.ID)
+	if err != nil || len(chats) == 0 {
 		return nil
 	}
-	return map[string]string{"provider": ws.Notify.Channel, "chat_id": ws.Notify.Target}
+	c := chats[0]
+	return map[string]string{"provider": c.Provider, "chat_id": c.ChatID, "title": c.Title}
 }
 
 // pendingDevicesJSON 是待批设备列表，每条列出申请人全部在册工作空间（批准后可用于这些）。

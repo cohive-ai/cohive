@@ -120,11 +120,12 @@ func onOff(b bool) string {
 }
 
 func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, args []string) error {
-	var name, chat, publicURL string
+	var name, chat, dtChat, publicURL string
 	var showTitle, showBrief, off bool
 	if err := parse("workspace notify", args, func(fs *flag.FlagSet) {
 		fs.StringVar(&name, "workspace", "default", "工作空间名")
 		fs.StringVar(&chat, "telegram-chat", "", "Telegram 群聊编号（群里发 /chatid 获取）")
+		fs.StringVar(&dtChat, "dingtalk-chat", "", "钉钉群编号（群里 @机器人 发“群编号”获取；也可以在网页上用群绑定码绑定）")
 		fs.BoolVar(&showTitle, "show-title", true, "群消息里显示标题")
 		fs.BoolVar(&showBrief, "show-brief", true, "群消息里显示群通知简述")
 		fs.StringVar(&publicURL, "public-url", "", "已废弃：对外地址改为服务器级，用 server set --external-url")
@@ -136,9 +137,20 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 	if err != nil {
 		return err
 	}
+	svc := &core.Service{Pool: pool}
+	if dtChat != "" {
+		if chat != "" || off {
+			return fmt.Errorf("--dingtalk-chat 不能与 --telegram-chat、--off 同时使用")
+		}
+		if err := svc.BindChat(ctx, core.ServerCLI(), wsID, core.ProviderDingTalk, dtChat); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "工作空间 %s 的群通知发往钉钉群 %s\n", name, dtChat)
+		return nil
+	}
 	if !off {
 		if chat == "" {
-			return fmt.Errorf("缺少参数 --telegram-chat；关闭群通知请用 --off")
+			return fmt.Errorf("缺少参数 --telegram-chat 或 --dingtalk-chat；关闭群通知请用 --off")
 		}
 		if _, err := fmt.Sscan(chat, new(int64)); err != nil {
 			return fmt.Errorf("Telegram 群聊编号应为数字，例如 -1001234567890")
@@ -150,7 +162,12 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 		return fmt.Errorf("--public-url 已废弃：对外地址改为服务器级，只设一个，请用 cohive-server server set --external-url %s", publicURL)
 	}
 	// 经业务层写入：一个群只能绑一个工作空间
-	if err := (&core.Service{Pool: pool}).UpdateWorkspace(ctx, core.ServerCLI(), wsID, core.WorkspaceSettings{
+	if off { // 关闭群通知：钉钉群也一并解绑
+		if err := svc.UnbindChat(ctx, core.ServerCLI(), wsID, core.ProviderDingTalk); err != nil {
+			return err
+		}
+	}
+	if err := svc.UpdateWorkspace(ctx, core.ServerCLI(), wsID, core.WorkspaceSettings{
 		TelegramChat: chat, ShowTitle: showTitle, ShowBrief: showBrief}); err != nil {
 		return err
 	}

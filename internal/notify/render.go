@@ -88,7 +88,7 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 	}
 	lines = append(lines, fmt.Sprintf("在编程工具里用 /cohive %d（Codex 用 $cohive %d）处理", is.ID, is.ID))
 	if link := core.IssueLink(base, ws.Name, is.ID); link != "" {
-		lines = append(lines, esc(link))
+		lines = append(lines, f.Link(link))
 	}
 	return w.done(fmt.Sprintf("#%d %s", is.ID, eventTitle(n.Event)), lines...)
 }
@@ -115,6 +115,7 @@ type TelegramFormat struct{}
 
 func (TelegramFormat) Esc(s string) string  { return html.EscapeString(s) }
 func (TelegramFormat) Code(s string) string { return "<code>" + html.EscapeString(s) + "</code>" }
+func (TelegramFormat) Link(u string) string { return html.EscapeString(u) }
 
 // Mention 见 tgMention；只登记了用户名、没有编号的旧数据退回 @用户名。
 func (TelegramFormat) Mention(label string, id *store.ChatIdentity, withLabel bool) string {

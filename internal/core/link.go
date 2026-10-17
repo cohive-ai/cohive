@@ -24,21 +24,28 @@ var ErrLinkGone = errors.New("这个连接链接已失效，请回到 Cohive 网
 
 // StartLink 由账号在个人中心发起通讯工具连接，返回链接参数。
 func (s *Service) StartLink(ctx context.Context, accountID int64, provider string) (store.LinkRequest, error) {
-	if provider != ProviderTelegram {
-		return store.LinkRequest{}, inputErr("暂只支持连接 telegram")
+	var nonce string
+	var err error
+	switch provider {
+	case ProviderTelegram:
+		nonce, err = randomString(18)
+		nonce = LinkStartPrefix + nonce
+	case ProviderDingTalk: // 发给机器人的绑定码，人要照着输入
+		nonce, err = newCode()
+	default:
+		return store.LinkRequest{}, inputErr("暂只支持连接 telegram、dingtalk")
 	}
-	nonce, err := randomString(18)
 	if err != nil {
 		return store.LinkRequest{}, err
 	}
 	return store.CreateLinkRequest(ctx, s.Pool, store.LinkRequest{AccountID: accountID, Provider: provider,
-		Nonce: LinkStartPrefix + nonce, ExpiresAt: time.Now().Add(LinkTTL)})
+		Nonce: nonce, ExpiresAt: time.Now().Add(LinkTTL)})
 }
 
 // LinkStatus 返回账号自己的连接请求状态。
 func (s *Service) LinkStatus(ctx context.Context, accountID, id int64) (store.LinkRequest, error) {
 	l, err := store.GetLinkRequest(ctx, s.Pool, accountID, id)
-	if err == nil && l.Status == store.LinkPending && time.Now().After(l.ExpiresAt) {
+	if err == nil && (l.Status == store.LinkPending || l.Status == store.LinkAwaitingConfirm) && time.Now().After(l.ExpiresAt) {
 		l.Status = store.LinkExpired
 	}
 	return l, err
@@ -115,7 +122,7 @@ func (s *Service) UnlinkTelegram(ctx context.Context, act Actor, accountID int64
 }
 
 // unlinkActions 是各通讯工具“断开连接”的管理操作。
-var unlinkActions = map[string]string{ProviderTelegram: ActTelegramUnlink}
+var unlinkActions = map[string]string{ProviderTelegram: ActTelegramUnlink, ProviderDingTalk: ActDingTalkUnlink}
 
 // Unlink 断开账号在某种通讯工具上的连接：本人或服务器管理员可操作；没有连接时什么也不做。
 func (s *Service) Unlink(ctx context.Context, act Actor, accountID int64, provider string) error {

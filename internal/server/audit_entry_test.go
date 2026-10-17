@@ -241,6 +241,25 @@ func webCases() []webCase {
 			code, _ := w.admin.do("DELETE", "/api/v1/server/accounts/lee-claude/links/telegram", nil, "")
 			return code
 		}, core.ActTelegramUnlink, core.ViaWeb, "", "lee-codex"},
+		{"POST /api/v1/me/links/{id}/confirm", "个人中心确认连接钉钉", func(t *testing.T, w *auditWeb) int {
+			l, err := w.f.svc.StartLink(ctx, w.claude.ID, core.ProviderDingTalk)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := w.f.svc.SubmitLinkCode(ctx, core.ProviderDingTalk, l.Nonce, core.ChatSender{Tenant: "corp1", UserID: "u-claude", Name: "克"}, true); err != nil {
+				t.Fatal(err)
+			}
+			code, _ := w.member.do("POST", fmt.Sprintf("/api/v1/me/links/%d/confirm", l.ID), map[string]any{"accept": true}, "")
+			return code
+		}, core.ActDingTalkLink, core.ViaWeb, "", "lee-claude"},
+		{"DELETE /api/v1/w/{ws}/admin/chats/{provider}", "管理页解绑钉钉群", func(t *testing.T, w *auditWeb) int {
+			ws, _ := store.DefaultWorkspace(ctx, w.f.svc.Pool)
+			if err := store.SetWorkspaceChat(ctx, w.f.svc.Pool, store.WorkspaceChat{WorkspaceID: ws, Provider: store.ProviderDingTalk, ChatID: "cid-d", Title: "群"}); err != nil {
+				t.Fatal(err)
+			}
+			code, _ := w.admin.do("DELETE", "/api/v1/w/default/admin/chats/dingtalk", nil, "")
+			return code
+		}, core.ActWorkspaceChatUnbind, core.ViaWeb, "default", "lee-codex"},
 		{"DELETE /api/v1/me/links/{provider}", "个人中心断开 Telegram", func(t *testing.T, w *auditWeb) int {
 			tg := int64(77)
 			if err := store.SetAccountTelegram(ctx, w.f.svc.Pool, w.claude.ID, &tg, "claudetg"); err != nil {
@@ -285,13 +304,14 @@ func webCases() []webCase {
 
 // notAdminWrites 是不属于管理操作、不留记录的写接口，各附理由。新增写接口必须归到上表或这里。
 var notAdminWrites = map[string]string{
-	"POST /api/v1/auth/login":     "登录：不改变权限，量大",
-	"POST /api/v1/auth/logout":    "登出：同上",
-	"POST /api/v1/auth/web-login": "cohive web 换一次性登录码：本人已配对的电脑免密打开网页，不改变权限",
-	"POST /api/v1/device/start":   "终端发起设备授权：还没有身份，授权与审批另有记录",
-	"POST /api/v1/device/poll":    "终端轮询领取：领取的是已批准（已记录）的授权",
-	"POST /api/v1/device/tokens":  "设备密钥为本人已加入的工作空间补签令牌：设备授权与加入时已记录",
-	"POST /api/v1/me/links":       "发起 Telegram 连接：连接完成时在机器人那边记录",
+	"POST /api/v1/auth/login":              "登录：不改变权限，量大",
+	"POST /api/v1/auth/logout":             "登出：同上",
+	"POST /api/v1/auth/web-login":          "cohive web 换一次性登录码：本人已配对的电脑免密打开网页，不改变权限",
+	"POST /api/v1/device/start":            "终端发起设备授权：还没有身份，授权与审批另有记录",
+	"POST /api/v1/device/poll":             "终端轮询领取：领取的是已批准（已记录）的授权",
+	"POST /api/v1/device/tokens":           "设备密钥为本人已加入的工作空间补签令牌：设备授权与加入时已记录",
+	"POST /api/v1/me/links":                "发起通讯工具连接：Telegram 连接完成时在机器人那边记录，钉钉在网页确认时记录",
+	"POST /api/v1/w/{ws}/admin/chat-binds": "生成钉钉群绑定码：绑定完成时（群里 @机器人）记录",
 }
 
 // 网页上每个管理入口都留记录，入口、工作空间、操作人都对。

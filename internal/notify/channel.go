@@ -23,8 +23,9 @@ type Channel interface {
 
 // Formatter 是一种通讯工具的消息格式。
 type Formatter interface {
-	Esc(s string) string  // 转义纯文本
-	Code(s string) string // 等宽显示（参数为未转义的纯文本）
+	Esc(s string) string    // 转义纯文本
+	Code(s string) string   // 等宽显示（参数为未转义的纯文本）
+	Link(url string) string // 消息末尾的问题单链接
 	// Mention 是提到一个人。label 为已转义的名字；id 为这个人在本通讯工具上的连接，没有时为空。
 	// withLabel 为真时，按用户名提及后再括注 label（审批消息里用）。
 	Mention(label string, id *store.ChatIdentity, withLabel bool) string
@@ -35,6 +36,8 @@ type Rendered struct {
 	Title    string               // 钉钉卡片标题与会话列表摘要；Telegram 不用
 	Text     string               // 按本通讯工具格式写好的正文
 	Mentions []store.ChatIdentity // 正文里按编号 @ 到的人（钉钉要单独传）
+	// Key 是幂等键：同一条通知重发时不变（钉钉用作卡片编号，重发不会出现第二张卡）；为空时由通道自己生成
+	Key string
 }
 
 // Approval 是审批消息对应的申请：按钮数据与审批消息记录都据此生成。
@@ -55,8 +58,9 @@ type ChatUser struct {
 
 // Click 是群里有人点了审批按钮。
 type Click struct {
-	Provider, Tenant, ChatID, MsgRef string
-	From                             ChatUser
+	// ChatID 是按钮所在的群（群编号全局唯一，不带企业）；钉钉卡片回调不带群，为空，以审批消息记录为准
+	Provider, ChatID, MsgRef string
+	From                     ChatUser // 点击者；钉钉的 Tenant 为 corpId
 	// Approval 来自按钮数据（Telegram）；钉钉卡片回调不带，为零值，由 MsgRef 在审批消息记录里反查。
 	Approval Approval
 	Approve  bool

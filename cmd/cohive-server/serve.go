@@ -83,21 +83,51 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	}
 	opts := server.Options{AllowedHosts: hosts, CLI: dist}
 	opts.API.TrustedProxies = proxies
-	// 群通知与机器人：设置了机器人令牌才启用；没设置时待发记录会保留，设置后重启即可补发
+	// 群通知与机器人：设置了 Telegram 机器人令牌或钉钉应用凭据才启用（可以同时启用）；
+	// 都没设置时待发记录会保留，设置后重启即可补发
+	dt, err := dingtalkFromEnv()
+	if err != nil {
+		return err
+	}
+	hub := &notify.Hub{Core: svc, Channels: map[string]notify.Channel{}}
+	senders := map[string]notify.Sender{}
+	var infos []func() httpapi.ChannelInfo
 	if tg := telegramFromEnv(); tg != nil {
-		bot := &notify.Bot{TG: tg, Core: svc}
-		d := &notify.Dispatcher{Pool: pool, Senders: map[string]notify.Sender{store.ProviderTelegram: bot},
+		bot := &notify.Bot{TG: tg, Core: svc, Hub: hub}
+		hub.Channels[store.ProviderTelegram], senders[store.ProviderTelegram] = bot, bot
+		go bot.Run(ctx)
+		opts.API.BotName = bot.Username
+		infos = append(infos, func() httpapi.ChannelInfo {
+			online, detail := bot.Status()
+			return httpapi.ChannelInfo{Provider: store.ProviderTelegram, BotName: bot.Username(), Online: online, Detail: detail}
+		})
+		fmt.Fprintln(out, "  群通知：Telegram 已启用；群里发 /chatid 可获取群编号")
+	}
+	if dt != nil {
+		dt.Core, dt.Hub = svc, hub
+		hub.Channels[store.ProviderDingTalk], senders[store.ProviderDingTalk] = dt, dt
+		go dt.Run(ctx)
+		infos = append(infos, func() httpapi.ChannelInfo {
+			online, detail := dt.Status()
+			return httpapi.ChannelInfo{Provider: store.ProviderDingTalk, Online: online, Detail: detail,
+				AppID: "…" + tail(dt.API.ClientID, 4)}
+		})
+		fmt.Fprintf(out, "  群通知：钉钉已启用（Client ID 尾号 …%s），Stream 连接中；同一个钉钉应用只能接一台 Cohive\n", tail(dt.API.ClientID, 4))
+	}
+	if len(hub.Channels) > 0 {
+		d := &notify.Dispatcher{Pool: pool, Senders: senders,
 			BaseURL: func(ctx context.Context) string { ext, _ := svc.ExternalURL(ctx); return ext.URL }}
 		go d.Run(ctx, 2*time.Second)
-		go bot.Run(ctx)
-		opts.API.BotName, opts.API.Announcer = bot.Username, bot
+		opts.API.Announcer = hub
 		opts.API.Channels = func() []httpapi.ChannelInfo {
-			online, detail := bot.Status()
-			return []httpapi.ChannelInfo{{Provider: store.ProviderTelegram, BotName: bot.Username(), Online: online, Detail: detail}}
+			out := make([]httpapi.ChannelInfo, 0, len(infos))
+			for _, f := range infos {
+				out = append(out, f())
+			}
+			return out
 		}
-		fmt.Fprintln(out, "  群通知：Telegram 已启用；群里发 /chatid 可获取群编号")
 	} else {
-		fmt.Fprintln(out, "  群通知：未设置 COHIVE_TELEGRAM_BOT_TOKEN，暂不发送（待发记录会保留）")
+		fmt.Fprintln(out, "  群通知：未设置 COHIVE_TELEGRAM_BOT_TOKEN 或钉钉应用凭据，暂不发送（待发记录会保留）")
 	}
 	srv := &http.Server{
 		Addr:              *addr,

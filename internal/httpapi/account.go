@@ -240,13 +240,22 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "协作服务没有启用 Telegram 机器人"})
 			return
 		}
+		if in.Provider == core.ProviderDingTalk && !providerEnabled(opts, core.ProviderDingTalk) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "协作服务没有启用钉钉"})
+			return
+		}
 		l, err := svc.StartLink(r.Context(), caller(r).Account.ID, in.Provider)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"id": l.ID, "url": "https://t.me/" + name + "?start=" + l.Nonce,
-			"expires_in": int(time.Until(l.ExpiresAt).Seconds())})
+		out := map[string]any{"id": l.ID, "expires_in": int(time.Until(l.ExpiresAt).Seconds())}
+		if l.Provider == core.ProviderTelegram {
+			out["url"] = "https://t.me/" + name + "?start=" + l.Nonce
+		} else { // 钉钉：把绑定码私聊发给机器人，再回网页确认
+			out["code"] = l.Nonce
+		}
+		writeJSON(w, http.StatusOK, out)
 	})
 	handle(mux, "GET /api/v1/me/links/{id}", aSession, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r, "id")
@@ -258,7 +267,26 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": l.Status, "detail": l.Detail})
+		writeJSON(w, http.StatusOK, map[string]string{"status": l.Status, "detail": l.Detail, "provider": l.Provider,
+			"candidate_name": l.CandidateName})
+	})
+	// 钉钉：机器人收到绑定码后等本人确认
+	handle(mux, "POST /api/v1/me/links/{id}/confirm", aSession, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r, "id")
+		if !ok {
+			return
+		}
+		var in struct {
+			Accept bool `json:"accept"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		if err := svc.ConfirmLink(r.Context(), core.WebActor(caller(r).Account), id, in.Accept); err != nil {
+			writeError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	handle(mux, "DELETE /api/v1/me/links/{provider}", aSession, func(w http.ResponseWriter, r *http.Request) {
 		a := caller(r).Account

@@ -28,6 +28,7 @@ const usage = `用法：cohive-server <命令>
   workspace remove --name <路径>                  删除工作空间（只限没有任何问题单的）
   workspace list                                  列出工作空间与群通知配置
   workspace notify --workspace <路径> --telegram-chat <群聊编号（群里发 /chatid 获取）>
+  workspace notify --workspace <路径> --dingtalk-chat <钉钉群编号（群里 @机器人 发“群编号”获取）>
       [--show-title=false] [--show-brief=false]   配置群通知；--off 关闭；一个群只能绑一个工作空间
   notify test --workspace <名称>                   往工作空间的群里发一条测试消息
   notify retry --workspace <名称>                  把发送失败的通知重新排队
@@ -61,6 +62,9 @@ const usage = `用法：cohive-server <命令>
 环境变量：
   COHIVE_DATABASE_URL          数据库地址（必填）
   COHIVE_TELEGRAM_BOT_TOKEN    Telegram 机器人令牌（使用群通知时必填）
+  COHIVE_DINGTALK_CLIENT_ID    钉钉企业内部应用的 Client ID；与 COHIVE_DINGTALK_CLIENT_SECRET 一起设置即启用钉钉
+  COHIVE_DINGTALK_CLIENT_SECRET 钉钉应用的 Client Secret
+  COHIVE_DINGTALK_NOTICE_TEMPLATE、COHIVE_DINGTALK_APPROVAL_TEMPLATE  钉钉通知卡片、审批卡片模板编号（可选，不设时降级）
   COHIVE_EXTERNAL_URL          对外地址（可选）；设了就锁定，网页与命令行不能改
   COHIVE_ALLOWED_HOSTS         除对外地址外，经隧道等方式访问 MCP 时还允许的域名，逗号分隔
   COHIVE_DATA_DIR              数据目录（缺省为 ./data），首次启动时初始管理员密码写在这里
