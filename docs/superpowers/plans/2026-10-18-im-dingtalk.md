@@ -383,36 +383,45 @@ type ChatUser struct{ Provider, Tenant, UserID, Handle, Name string }
 ### 第 0 步
 
 #### T1：迁移与存储
-- [ ] 迁移测试 `TestMigrate0011`：在 0010 结构上造数据，迁移后逐项断言 `chat_identities`、`workspace_chats`、`bot_posts`。造的数据：
+- [x] 迁移测试 `TestMigrate0011`：在 0010 结构上造数据，迁移后逐项断言 `chat_identities`、`workspace_chats`、`bot_posts`。造的数据：
   - 账号：有编号和用户名 / 只有用户名 / 只有编号 / 都没有；
   - 工作空间：已绑群 / 已关闭；
   - `bot_posts` 两条。
-- [ ] 存储层：两张新表的增删查；`AccountByChatIdentity(provider, tenant, userID)`；`WorkspaceByChat(provider, tenant, chatID)`；成员列表带上各通讯工具的连接信息（替换 `TelegramUsername/TelegramUserID` 字段）。
-- [ ] commit：`feat(im-T1): 通讯账号表与工作空间群表，Telegram 数据无损迁移`
+- [x] 存储层：两张新表的增删查；`AccountByChatIdentity(provider, tenant, userID)`；`WorkspaceByChat(provider, tenant, chatID)`；成员列表带上各通讯工具的连接信息（替换 `TelegramUsername/TelegramUserID` 字段）。
+- [x] commit：`feat(im-T1): 通讯账号表与工作空间群表，Telegram 数据无损迁移`
 
 #### T2：通道接口与 Telegram 适配
-- [ ] 按 1.2 拆出 `Channel`、`Formatter`、`Hub`；`Dispatcher` 改用 `Channels`。
-- [ ] 现有 `internal/notify` 用例全部照常通过，只做适配接口的必要改动。
-- [ ] 新用例：
+- [x] 按 1.2 拆出 `Channel`、`Formatter`、`Hub`；`Dispatcher` 改用 `Channels`。
+- [x] 现有 `internal/notify` 用例全部照常通过，只做适配接口的必要改动。
+- [x] 新用例：
   - 按编号 @ 的写法与转义（显示名带 `<&"`）；
   - 只有用户名的老数据仍按 `@用户名` 提及；
   - 两种通道同时启用时，按工作空间的群分发到对应通道（用假通道）；
   - 点击时审批对象以 `bot_posts` 为准，按钮数据与之不符时拒绝。
-- [ ] commit：`refactor(im-T2): 通知通道抽象，Telegram 改为按用户编号 @`
+- [x] commit：`refactor(im-T2): 通知通道抽象，Telegram 改为按用户编号 @`
 
 #### T3：业务层、接口、网页、命令行（多通道形状）
-- [ ] 用例：
+- [x] 用例：
   - 第一期“一个工作空间只允许一个群”；
   - 一个群不能绑两个工作空间；
   - 解除连接与记录；
   - `/api/v1/me` 同时有新旧字段；
   - `GET /api/v1/server/channels` 的权限；
   - 命令行表驱动更新。
-- [ ] vitest：个人中心与工作空间设置页在只有 Telegram 时表现不变。
-- [ ] 全量验证，**回报主脑：第 0 步完成**。
-- [ ] commit：`feat(im-T3): 接口与网页改为多通讯工具形状（行为不变）`
+- [x] vitest：个人中心与工作空间设置页在只有 Telegram 时表现不变。
+- [x] 全量验证，**回报主脑：第 0 步完成**。
+- [x] commit：`feat(im-T3): 接口与网页改为多通讯工具形状（行为不变）`
 
 ### 钉钉
+
+**第 0 步实施记录（2026-10-18，T1 `f2c37b8`、T2 `2263f71`、T3 `ec5608a`）：** 与上文不同的地方：
+- Telegram 按用户编号 @ 在本分支开始前已由 main 做完（`tgMention`），本步只把它收进 `TelegramFormat`。
+- 账号、成员、工作空间结构体上的 `TelegramUsername/TelegramUserID`、`Notify.Channel/Target` 保留，改为从新表读（取第一个群），调用方基本不动；新代码用 `ChatIdentitiesOf`、`WorkspaceChats`。
+- `Dispatcher` 字段仍叫 `Senders`（只要 `Format` 与 `Send`）；`Bot` 作为 Telegram 通道实现 `Channel`，没配 `Hub` 时自建一个只含自己的，原有用例几乎不用改。
+- 按消息编号反查审批记录要带群编号：Telegram 的消息编号只在群内唯一；钉钉卡片编号全局唯一，传空群编号，核对工作空间时用记录里的群。
+- 已绑钉钉群的工作空间，在管理页保存 Telegram 群编号为空时不解除钉钉群；填了 Telegram 群编号则要求先解绑。
+- 网页这一步只补类型，界面不变；通讯工具状态面板随钉钉部分做。
+- 变异 7 项全部变红：迁移丢只有用户名的连接、迁移把关闭群通知的也迁过去、点击不核对按钮数据、回写时只按消息编号跳过、Mentions 带上未连接的人、改开关解除钉钉群、按 Telegram 编号找账号不限通讯工具。
 
 #### T4：钉钉客户端与配置
 - [ ] 假钉钉服务器（`httptest`）：取令牌、投放卡片、更新卡片、群消息、`sessionWebhook`。

@@ -34,6 +34,27 @@ func TestChatIdentities(t *testing.T) {
 		t.Fatalf("按 Telegram 编号找账号：%+v %v", a, err)
 	}
 
+	// 钉钉账号的编号碰巧与 Telegram 编号相同：按 Telegram 编号找账号时不串号
+	if err := store.UpsertChatIdentity(ctx, pool, store.ChatIdentity{AccountID: bob.AccountID, Provider: store.ProviderDingTalk,
+		Tenant: "", UserID: "7001"}); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := store.AccountByTelegramUserID(ctx, pool, 7001); err != nil || a.ID != ann.AccountID {
+		t.Fatalf("按 Telegram 编号只找 Telegram 连接：%+v %v", a, err)
+	}
+	if _, err := store.AccountByTelegramUserID(ctx, pool, 8888); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("没有这个 Telegram 编号：%v", err)
+	}
+	if err := store.UpsertChatIdentity(ctx, pool, store.ChatIdentity{AccountID: bob.AccountID, Provider: store.ProviderDingTalk,
+		UserID: "8888"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AccountByTelegramUserID(ctx, pool, 8888); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("钉钉连接不应被当成 Telegram 连接：%v", err)
+	}
+	if err := store.DeleteChatIdentity(ctx, pool, bob.AccountID, store.ProviderDingTalk); err != nil {
+		t.Fatal(err)
+	}
 	// 同一 Telegram 编号不能连第二个账号
 	if err := store.SetAccountTelegram(ctx, pool, bob.AccountID, &id, "x"); err == nil {
 		t.Fatal("同一 Telegram 编号不应能连第二个账号")
