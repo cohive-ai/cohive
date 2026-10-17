@@ -226,7 +226,8 @@ func main() {
 	if os.Getenv("COHIVE_TELEGRAM_BOT_TOKEN") != "" {
 		set = "yes"
 	}
-	fmt.Println("TOKEN_SET=" + set, "DATA_DIR_SET=" + fmt.Sprint(os.Getenv("COHIVE_DATA_DIR") != ""))
+	fmt.Println("TOKEN_SET=" + set, "DATA_DIR_SET=" + fmt.Sprint(os.Getenv("COHIVE_DATA_DIR") != ""),
+		"DT_SET=" + fmt.Sprint(os.Getenv("COHIVE_DINGTALK_CLIENT_SECRET") != ""))
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprintln(w, "ok") })
 	fmt.Println(http.ListenAndServe(os.Args[3], nil))
 }
@@ -266,7 +267,13 @@ func TestServerScriptLifecycle(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "server.env"), []byte(conf), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env := map[string]string{"HOME": tmp, "COHIVE_HOME": home, "COHIVE_BIN": fakeServer(t, tmp), "COHIVE_TELEGRAM_ENV": tg}
+	dtSecret := "dt-secret-" + strings.Repeat("y", 24)
+	dt := filepath.Join(tmp, "dingtalk.env")
+	if err := os.WriteFile(dt, []byte("export COHIVE_DINGTALK_CLIENT_ID=dingabc123\nexport COHIVE_DINGTALK_CLIENT_SECRET="+dtSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"HOME": tmp, "COHIVE_HOME": home, "COHIVE_BIN": fakeServer(t, tmp), "COHIVE_TELEGRAM_ENV": tg,
+		"COHIVE_DINGTALK_ENV": dt}
 
 	out, err := script(t, "cohive-server.sh", env, "start")
 	if err != nil {
@@ -285,10 +292,10 @@ func TestServerScriptLifecycle(t *testing.T) {
 	}
 	logB, _ := os.ReadFile(filepath.Join(home, "logs", "server.log"))
 	all := out + string(logB)
-	if !strings.Contains(string(logB), "TOKEN_SET=yes DATA_DIR_SET=true") {
-		t.Fatalf("机器人令牌应传给服务进程：%s", logB)
+	if !strings.Contains(string(logB), "TOKEN_SET=yes DATA_DIR_SET=true DT_SET=true") {
+		t.Fatalf("机器人令牌与钉钉凭据应传给服务进程：%s", logB)
 	}
-	if strings.Contains(all, token[:20]) || strings.Contains(all, "pw-in-url") {
+	if strings.Contains(all, token[:20]) || strings.Contains(all, "pw-in-url") || strings.Contains(all, dtSecret) {
 		t.Fatalf("输出与日志里不应有令牌或数据库密码：%s", all)
 	}
 	if fi, _ := os.Stat(filepath.Join(home, "data")); fi == nil || !fi.IsDir() {
@@ -522,5 +529,37 @@ func TestServerScriptRunsUnderUTF8Locale(t *testing.T) {
 	out := string(b)
 	if err != nil || !strings.Contains(out, "监听 127.0.0.1:18799）") || !strings.Contains(out, "fake serve --addr 127.0.0.1:18799") {
 		t.Fatalf("UTF-8 语言环境下 run 应正常打印监听地址并启动服务：%v\n%s", err, out)
+	}
+}
+
+// 保存钉钉凭据：文件仅本人可读，内容能被启动脚本加载；Client Secret 不出现在输出里；格式不对时拒绝。
+func TestSetDingTalkCredentials(t *testing.T) {
+	tmp := t.TempDir()
+	secret := "Sec" + strings.Repeat("z", 30)
+	run := func(input string) (string, error) {
+		cmd := exec.Command("bash", "set-dingtalk-credentials.sh")
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + tmp}
+		cmd.Stdin = strings.NewReader(input)
+		b, err := cmd.CombinedOutput()
+		return string(b), err
+	}
+	out, err := run("dingabc123\n" + secret + "\ntpl-notice\n\n")
+	if err != nil || strings.Contains(out, secret) {
+		t.Fatalf("保存应成功、输出不含密钥：%v\n%s", err, out)
+	}
+	file := filepath.Join(tmp, ".config", "cohive", "dingtalk.env")
+	fi, err := os.Stat(file)
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("文件应仅本人可读：%v %v", fi, err)
+	}
+	b, _ := os.ReadFile(file)
+	for _, want := range []string{"COHIVE_DINGTALK_CLIENT_ID=dingabc123", "COHIVE_DINGTALK_CLIENT_SECRET=" + secret,
+		"COHIVE_DINGTALK_NOTICE_TEMPLATE=tpl-notice", "COHIVE_DINGTALK_APPROVAL_TEMPLATE=\n"} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("文件里应有 %q：%s", want, b)
+		}
+	}
+	if out, err := run("dingabc123\nshort\n\n\n"); err == nil || !strings.Contains(out, "Client Secret 格式不对") {
+		t.Fatalf("密钥格式不对应拒绝：%v %s", err, out)
 	}
 }

@@ -13,5 +13,12 @@ if [ -f "$env_file" ]; then
   export COHIVE_TELEGRAM_BOT_TOKEN
 fi
 
+dt_file="${COHIVE_DINGTALK_ENV:-$HOME/.config/cohive/dingtalk.env}"
+if [ -f "$dt_file" ]; then
+  # shellcheck disable=SC1090
+  source "$dt_file"
+  export COHIVE_DINGTALK_CLIENT_ID COHIVE_DINGTALK_CLIENT_SECRET COHIVE_DINGTALK_NOTICE_TEMPLATE COHIVE_DINGTALK_APPROVAL_TEMPLATE
+fi
+
 root="$(cd "$(dirname "$0")/.." && pwd)"
 exec "$root/bin/cohive-server" serve "$@"
