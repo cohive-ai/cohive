@@ -84,7 +84,7 @@ cohive init --workspace pay
 **4. 第一次打开项目时信任钩子**（会话内提醒要用）：
 
 - **Claude Code**：在这个文件夹第一次打开时选“信任此文件夹”（与启用 MCP 服务是同一步）。
-- **Codex**：同意信任项目后，在 Codex 里输入 `/hooks`，信任 cohive 的两条钩子（`SessionStart`、`UserPromptSubmit`）。**每台电脑、每个克隆目录各要信任一次**；换了服务地址或工作空间（重新执行 `cohive init` 改了这两项）要重新信任，只是重复执行 `cohive init` 不用。
+- **Codex**：在项目目录执行一次命令行版 `codex`，同意信任项目，并按提示选择信任 cohive 的两条钩子（`SessionStart`、`UserPromptSubmit`；也可在命令行版里输入 `/hooks` 查看、信任）。**桌面版没有 `/hooks`、不能信任钩子**，但会执行命令行版信任过的钩子，所以只用桌面版的人也要先用命令行版做这一步。**每台电脑、每个克隆目录各要信任一次**；换了服务地址或工作空间（重新执行 `cohive init` 改了这两项）要重新信任，只是重复执行 `cohive init` 不用。
 
 ## 会话内提醒
 
@@ -144,7 +144,7 @@ cohive init --workspace pay
 
 - 只改动自己管理的部分，原有配置保留；重复执行结果相同。
 - 这些文件**不含令牌**：编程工具通过本机命令 `cohive mcp-proxy --server … --workspace … --tool …` 连接协作服务，令牌由它从本机凭据文件读取。可以放心提交进仓库，团队共用。
-- 第一次在编程工具里打开项目时，会询问是否信任项目、是否启用 `cohive` 这个 MCP 服务，都选同意；Codex 还要在 `/hooks` 里信任 cohive 的两条钩子（见上文第 4 步）。
+- 第一次在编程工具里打开项目时，会询问是否信任项目、是否启用 `cohive` 这个 MCP 服务，都选同意；Codex 还要在命令行版 `codex` 里信任 cohive 的两条钩子（见上文第 4 步）。
 - `.claude/settings.json` 里的 `enabledMcpjsonServers` 会随仓库共享，审查合并请求时留意 `.mcp.json` 与它的改动。
 - `.mcp.json` 和 `.codex/config.toml` 里有协作服务地址与工作空间名，公开仓库要注意。
 
@@ -163,5 +163,5 @@ pbpaste | cohive login --server https://cohive.example.com --token-stdin
 - **编程工具里提示“Cohive 令牌无效或已吊销”**：如果你被移出了这个工作空间，请联系管理员；否则执行 `cohive login --force` 重新配对。重新配对算新增一台设备，需要管理员批准；成功后会自动吊销这台电脑之前的设备。
 - **提示“这台电脑是旧版配对”**：M5 时配对的电脑没有设备密钥，旧令牌照常能用，但新工作空间的自动签发和 `cohive web` 需要先执行 `cohive login --force` 重新配对（需要管理员批准）。
 - **电脑丢失**：在网页“个人中心 → 我的设备”吊销它（或请管理员在“管理 → 设备”里吊销）。
-- **会话里没有 Cohive 提醒**：执行 `cohive hook --check --server … --workspace … --tool …`（`cohive init` 结尾有完整命令）；Codex 先确认 `/hooks` 里信任了 cohive 的钩子。
+- **会话里没有 Cohive 提醒**：执行 `cohive hook --check --server … --workspace … --tool …`（`cohive init` 结尾有完整命令）；Codex 先确认在命令行版 `codex` 里信任过 cohive 的钩子（命令行版 `/hooks` 可查看）。
 - **连接 Telegram 时提示没有启用机器人**：服务没有设置 `COHIVE_TELEGRAM_BOT_TOKEN`。

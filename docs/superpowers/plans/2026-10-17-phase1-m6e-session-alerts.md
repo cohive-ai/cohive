@@ -40,7 +40,7 @@
 | 哈希算什么 | 算钩子条目（事件、命令、超时），不算被调用程序的内容 | 源码 `hook_hash`；实测改脚本后仍执行。推论：`cohive init` 重写同样的条目不需要重新信任；换服务地址、工作空间才需要 |
 | 链接工作树 | 在 git 链接工作树里，项目钩子取**主检出目录**的 `.codex`，不是工作树自己的 | 源码 `root_checkout_hooks_folder_for_dir`。影响：`cohive init` 写的配置要提交并出现在主检出目录才在工作树会话里生效 |
 | SessionStart 时机 | 在第一轮开始时才执行，不是打开界面就执行 | 源码 `run_pending_session_start_hooks` |
-| 桌面版 | 桌面版（ChatGPT.app 里的 Codex）自带同一核心（`codex app-server`），读同一个 `~/.codex`，资源包里有 `hooks/list`、`trusted_hash` 字样，推断执行钩子且有信任界面。**需 lee 实测** | 本机应用包检查 |
+| 桌面版 | 桌面版（ChatGPT.app 里的 Codex）自带同一核心（`codex app-server`），读同一个 `~/.codex`，资源包里有 `hooks/list`、`trusted_hash` 字样。**lee 2026-10-17 实测：执行项目钩子，但没有 `/hooks`、不能在桌面版信任，需在项目目录用命令行版 `codex` 选全部信任一次** | 本机应用包检查；lee 实测 |
 | MCP 服务端通知（resources/updated、list_changed、日志消息） | **不进上下文**，只写日志 | 源码 `rmcp-client/src/logging_client_handler.rs` |
 | `codex queue --thread … --message …` | 以**用户消息**身份进会话并触发一整轮回复；要求会话挂在共享守护进程上，本机桌面版不在其上 | 源码 `thread_queue_processor.rs`；实测只写入临时库未派发 |
 
@@ -64,11 +64,11 @@
 | 客户端 | 方式 | 能否用 | 证据 | 限制 |
 |---|---|---|---|---|
 | Claude Code 命令行 | 会话开始 / 提交提示词钩子 | **能** | 本机实测（`-p`） | 交互模式需先信任文件夹；退出码 2 会拦截提示词 |
-| Claude Code 桌面版 | 同上 | 文档说能，**需 lee 实测** | 文档 | 桌面版环境变量不一定完整，`cohive` 要能被找到（与现有 `mcp-proxy` 同一问题） |
+| Claude Code 桌面版 | 同上 | **能**（lee 2026-10-17 实测，需信任文件夹） | 暗号测试 | 桌面版环境变量不一定完整，`cohive` 要能被找到（与现有 `mcp-proxy` 同一问题） |
 | Claude Code 命令行 | 频道推送 | 能，但不采用 | 文档 | 每次启动要加危险参数；研究预览；组织策略 |
 | Claude Code 桌面版 | 频道推送 | 无入口 | 文档未提 | — |
 | Codex 命令行 | 钩子 | **能** | 本机实测（`codex exec`） | 每台电脑、每个克隆目录在 `/hooks` 信任一次；工作树读主检出目录 |
-| Codex 桌面版 | 钩子 | 推断能，**需 lee 实测** | 应用包检查 | 同上；信任界面在哪需实测 |
+| Codex 桌面版 | 钩子 | **能**（lee 2026-10-17 实测） | 暗号测试 | **桌面版没有 `/hooks`、不能信任钩子**，要在项目目录用命令行版 `codex` 信任一次 |
 | Codex 两版 | MCP 通知 / `codex queue` | 不采用 | 源码 | 通知不进上下文；queue 以用户身份触发回复，等于把别人的内容当用户指令 |
 | 两家 | 项目指令文件（CLAUDE.md / AGENTS.md） | 只能静态 | 文档 | 不能放动态内容 |
 
@@ -215,7 +215,7 @@ cohive hook --server <地址> --workspace <名称> --tool claude-code|codex
 
 | 文件 | 改动 | 与 M6-c 的关系 |
 |---|---|---|
-| `internal/db/migrations/0009_member_alerts.sql` | 新增表（编号见待拍板 5） | M6-c 占用 0008 |
+| `internal/db/migrations/0010_member_alerts.sql` | 新增表（编号见待拍板 5） | M6-c 占用 0008，M6-d 占用 0009（主脑 2026-10-17 分配） |
 | `internal/store/alert.go`（新） | 插入、按游标查询 | 新文件 |
 | `internal/core/alert.go`（新） | `queueAlerts`、`Alerts` 查询（含待办摘要） | 新文件 |
 | `internal/core/core.go` | `Act` 里加一行调用 | M6-c 未改 |
@@ -275,7 +275,7 @@ cohive hook --server <地址> --workspace <名称> --tool claude-code|codex
 | 2 | 游标存哪 | A 本机、按会话；B 服务端、按“人 + 工具”；C 服务端、按令牌 | **A**：B、C 下同一人的两个会话会互相“读掉”提醒；“已读”对人的意义由 Telegram 承担 |
 | 3 | 是否同时给人看一行（`systemMessage`） | A 给人看一行 + 给模型看；B 只给模型 | **A**：lee 关心“当前会话是否会及时提醒”，只给模型的话要等模型自己提；界面样式待 lee 实测 |
 | 4 | 群里不发的“我的单被接单、被关闭”要不要提醒 | A 要；B 不要，与群通知完全一致 | **A**：派活要求列了这两项；只在会话里出现一行，不打扰群 |
-| 5 | 迁移编号 | M6-c 已占 0008；本里程碑用 0009，若 M6-e 先合入则合入前改名为 0008 | 按此办（未合入的迁移可改名） |
+| 5 | 迁移编号 | M6-c 已占 0008；本里程碑用 0009，若 M6-e 先合入则合入前改名为 0008 | 按此办（未合入的迁移可改名）。**已改**：主脑分配 M6-d 用 0009、M6-e 用 0010（2026-10-17） |
 | 6 | 节流间隔 | 0（每次都查）/ 20 秒 / 60 秒 | **20 秒**：子任务回报也会触发钩子；一次查询是一个很轻的 HTTP 请求 |
 | 7 | 频道推送 | A 列为后续，等桌面版有入口或研究预览结束；B 现在做成 `cohive mcp-proxy` 的可选能力，只对命令行用户 | **A** |
 | 8 | 钩子默认写入还是加参数才写 | A 默认写，`--no-hooks` 关；B 默认不写，`--hooks` 开 | **A**：不写就等于没有这个功能；离线、超时都静默，风险低 |
