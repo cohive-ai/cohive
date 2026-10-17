@@ -19,7 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| OPS-1 | `ops/test-server-launchd`（基于 main） | ops-launchd / `local_6e6896ce-c7ab-40af-b136-43a848af5cd9` | — | 已派 | 服务端与隧道改 launchd 常驻（KeepAlive、开机启动）；新隧道在线后主脑停终端 c1 旧隧道；切换中断一两分钟；演练 kickstart 自动恢复；cohive-server.sh 与 launchd 不重复拉起 |
+| OPS-1 | `ops/test-server-launchd`（基于 main） | ops-launchd / `local_6e6896ce-c7ab-40af-b136-43a848af5cd9` | — | 实施中（隧道已切，服务端切换中） | 服务端与隧道改 launchd 常驻（KeepAlive、开机启动）；新隧道在线后主脑停终端 c1 旧隧道；切换中断一两分钟；演练 kickstart 自动恢复；cohive-server.sh 与 launchd 不重复拉起 |
 | OSS-1 | `release/open-source`（基于 main） | oss / `local_cf92e846-d561-43ef-9352-e4fc141f74f5` | — | 已派 | 先扫全部历史密钥（命中即停）；内部内容处理（公司需求、调研笔记、台账本机路径与群编号）；Apache-2.0；依赖许可证；Docker 与 compose 实测；安装简化；README 中英。验收后由主脑改仓库可见性（lee 已同意直接开源） |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
@@ -37,7 +37,7 @@
 - P3 第一阶段剩余范围（按试用反馈排序）：`CODEOWNERS` 路由（现在服务负责人只能用服务器命令行登记，网页上没有入口）、超时催办（届时引入 river）、代码占用声明 —— 来源 `docs/plan.md` 第 10 节
 
 ## 4. 环境与待清理
-- 测试服（2026-10-16 起）：main 构建的程序（`/Users/jiali/MyCode/cohive/bin/`，当前 `650d54e`）+ 长期测试库 `cohive_test`，由仓库脚本管理：`env -u COHIVE_DATABASE_URL scripts/cohive-server.sh start|stop|restart|status`（**必须清掉 COHIVE_DATABASE_URL**：环境变量优先于 server.env，2026-10-17 曾因此连到旧库 `cohive` 启动失败）（配置 `~/.local/share/cohive-server/server.env`，数据目录 `…/data`，日志 `…/logs`，详见 `docs/guides/test-server.md`）。监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（隧道跑在主脑会话的终端标签 c1；归档会话前先确认隧道不在它的终端里，见记忆 archive-kills-terminal-tabs）。
+- 测试服（2026-10-16 起）：main 构建的程序（`/Users/jiali/MyCode/cohive/bin/`，当前 `650d54e`）+ 长期测试库 `cohive_test`，由仓库脚本管理：`env -u COHIVE_DATABASE_URL scripts/cohive-server.sh start|stop|restart|status`（**必须清掉 COHIVE_DATABASE_URL**：环境变量优先于 server.env，2026-10-17 曾因此连到旧库 `cohive` 启动失败）（配置 `~/.local/share/cohive-server/server.env`，数据目录 `…/data`，日志 `…/logs`，详见 `docs/guides/test-server.md`）。监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（2026-10-17 起隧道由 launchd 服务 `com.anormlylee.cohive.tunnel` 常驻，日志 `~/.local/share/cohive-server/logs/tunnel.log`；主脑终端 c1 的旧隧道已停）。
 - 备份：`scripts/backup-db.sh` 手动可用，备份在 `~/.local/share/cohive-server/backups/`，保留 14 份；launchd 定时备份已安装（`~/Library/LaunchAgents/com.anormlylee.cohive.backup.plist`，每天 03:30，日志 `…/logs/backup.log`；撤销见 `docs/guides/test-server.md` 第 5 节），2026-10-16 已试跑成功。Docker Desktop 没开时备份会失败。迁移 M5b 前的备份在主脑临时目录 `…/scratchpad/backup/`。
 - 测试账号：admin（服务器管理员）、tester-a、tester-b（已停用）；密码文件在 `~/.local/share/cohive-server/data/`（权限 600，测试凭据）。工作空间：default、proj-b、proj-c。
 - 旧库：`cohive`（M4 数据，群编号 `-1004357698945`，停用不删）、`cohive_m5`（旧版第六号，停用）。
