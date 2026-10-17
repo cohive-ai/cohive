@@ -101,4 +101,3 @@ func eventMeta() map[string]any {
 	}
 	return map[string]any{"types": cats, "vias": vias}
 }
-
