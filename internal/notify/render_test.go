@@ -9,12 +9,15 @@ import (
 )
 
 var (
-	claude = store.Member{ID: 1, Name: "lee-claude", TelegramUsername: "lee_claude"}
-	codex  = store.Member{ID: 2, Name: "lee-codex"} // 没登记 Telegram 用户名
+	claude = store.Member{ID: 1, Name: "lee-claude", TelegramUsername: "lee_claude"} // 只有用户名的旧数据
+	codex  = store.Member{ID: 2, Name: "lee-codex"}                                   // 没连接 Telegram
+	linked = store.Member{ID: 3, Name: `a<b>&"c`, TelegramUsername: "old_name", TelegramUserID: ptr(int64(777))}
 )
 
+func ptr[T any](v T) *T { return &v }
+
 func members() map[int64]store.Member {
-	return map[int64]store.Member{1: claude, 2: codex}
+	return map[int64]store.Member{1: claude, 2: codex, 3: linked}
 }
 
 func sampleIssue() store.Issue {
@@ -89,6 +92,21 @@ func TestMentions(t *testing.T) {
 	text = render(t, workspace(true, true, ""), is, "escalated", claude.ID, "claude-code", claude.ID, codex.ID)
 	if !strings.Contains(text, "@lee_claude") || !strings.Contains(text, "lee-codex") || strings.Contains(text, "@lee-codex") {
 		t.Fatalf("没登记的成员只显示成员名、不加 @：\n%s", text)
+	}
+}
+
+// 连接了 Telegram 的成员按用户编号提到，不用可能为空或已改的用户名；链接文字严格转义。
+func TestMentionByUserID(t *testing.T) {
+	for _, event := range []string{"assigned", "declined", "verify", "reopened", "escalated"} {
+		text := render(t, workspace(true, true, ""), sampleIssue(), event, codex.ID, "codex", linked.ID, codex.ID)
+		want := `<a href="tg://user?id=777">a&lt;b&gt;&amp;&#34;c</a>`
+		if !strings.Contains(text, want) || strings.Contains(text, "@old_name") {
+			t.Fatalf("%s：应按用户编号提到、不用用户名，期望含 %s：\n%s", event, want, text)
+		}
+		// 去掉这一个链接后不应再有任何标签，说明链接文字没有把消息结构弄乱
+		if rest := strings.Replace(text, want, "", 1); strings.ContainsAny(rest, "<>") {
+			t.Fatalf("%s：链接之外出现了未转义的尖括号：\n%s", event, text)
+		}
 	}
 }
 

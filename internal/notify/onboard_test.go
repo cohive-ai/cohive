@@ -286,6 +286,32 @@ func TestAnnounceJoined(t *testing.T) {
 	}
 }
 
+// 加入通知：连接了 Telegram 的按用户编号提到（链接文字为转义后的登录名与显示名），只有用户名的退回 @用户名，都没有只写名字。
+func TestAnnounceJoinedMention(t *testing.T) {
+	ws := store.Workspace{ID: 3, Name: "payments", Notify: store.NotifyConfig{Channel: "telegram", Target: "-1001"}}
+	id := int64(4242)
+	for _, tc := range []struct {
+		name    string
+		m       store.Member
+		want    string
+		notWant string
+	}{
+		{"有编号", store.Member{Name: "ann", DisplayName: `<A&"n>`, TelegramUsername: "ann_tg", TelegramUserID: &id},
+			`<a href="tg://user?id=4242">ann（&lt;A&amp;&#34;n&gt;）</a> 已加入`, "@ann_tg"},
+		{"只有用户名", store.Member{Name: "ann", DisplayName: "Ann", TelegramUsername: "ann_tg"}, "@ann_tg（ann（Ann）） 已加入", "tg://"},
+		{"都没有", store.Member{Name: "ann", DisplayName: "Ann"}, "ann（Ann） 已加入", "@"},
+	} {
+		tc.m.WorkspaceID = 3
+		api := &fakeAPI{}
+		if err := newBot(&fakeCore{workspace: ws}, api).AnnounceJoined(context.Background(), tc.m); err != nil {
+			t.Fatal(err)
+		}
+		if len(api.texts) != 1 || !strings.Contains(api.texts[0], tc.want) || strings.Contains(api.texts[0], tc.notWant) {
+			t.Errorf("%s：期望含 %q、不含 %q，得到 %v", tc.name, tc.want, tc.notWant, api.texts)
+		}
+	}
+}
+
 // 机器人消息用显示名，并转义 HTML 特殊字符。
 func TestBotUsesEscapedDisplayName(t *testing.T) {
 	ctx := context.Background()
