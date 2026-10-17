@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type DeviceToken, type WorkspaceRef } from "./api";
-import { roleLabel, tokensByWorkspace, toolLabel } from "./format";
+import { roleLabel, tokensByWorkspace, toolLabel, workspaceLabel } from "./format";
 import { btn } from "./ui";
 import {
   canAdminWorkspace,
@@ -170,7 +170,7 @@ function WorkspaceSwitcher({
         {!known && current && <option value={current}>{current}（你不是成员）</option>}
         {workspaces.map((w) => (
           <option key={w.name} value={w.name}>
-            {w.name} · {roleLabel(w.role)}
+            {workspaceLabel(w)} · {roleLabel(w.role)}
           </option>
         ))}
       </select>

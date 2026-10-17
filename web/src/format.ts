@@ -43,6 +43,13 @@ export function toolsText(tools: string[] | string | null | undefined): string {
   return names.length ? names.join("、") : "未注明";
 }
 
+// 工作空间给人看的名字：显示名，没设时为路径
+export const workspaceName = (w: { name: string; display_name?: string }) => w.display_name || w.name;
+
+// 同时显示路径的写法：显示名与路径不同时写成“显示名（路径）”，避免两个显示名相同的工作空间分不清
+export const workspaceLabel = (w: { name: string; display_name?: string }) =>
+  w.display_name && w.display_name !== w.name ? `${w.display_name}（${w.name}）` : w.name;
+
 export const roleLabel = (role: string) => (role === "admin" ? "管理员" : "成员");
 
 export const inviteKindLabel = (kind: string) =>

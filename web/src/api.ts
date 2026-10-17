@@ -138,7 +138,8 @@ export type Role = "admin" | "member";
 
 // 账号所在的一个工作空间及他在里面的角色
 export interface WorkspaceRef {
-  name: string;
+  name: string; // 路径：出现在链接与项目配置里，不可改
+  display_name?: string; // 显示名，没设时等于路径
   role: Role | string;
 }
 
@@ -170,6 +171,7 @@ export interface LoginResult {
 
 export interface InviteInfo {
   workspace: string;
+  workspace_display?: string;
   kind: string;
   role?: string;
   valid: boolean;
@@ -186,7 +188,7 @@ export interface RegisterResult {
 
 export interface AcceptResult {
   status: "active" | "pending";
-  workspace: { name: string; role?: string };
+  workspace: { name: string; display_name?: string; role?: string };
 }
 
 // 工具列表：约定里没写明是数组还是逗号分隔的字符串，两种都接受
@@ -318,15 +320,34 @@ export interface CreatedInvite {
 
 export interface WorkspaceSettings {
   name: string;
-  public_url: string;
+  path: string;
+  display_name: string;
   telegram_chat: string;
   show_title: boolean;
   show_brief: boolean;
   bot_enabled: boolean;
+  // 对外地址是服务器级的：这里只读显示群消息里的链接写法；没设时为空
+  external_url_set: boolean;
+  issue_link_example: string;
+}
+
+export interface SaveWorkspaceSettings {
+  telegram_chat: string;
+  show_title: boolean;
+  show_brief: boolean;
+  display_name: string;
+}
+
+// 服务器级设置：对外地址
+export interface ServerSettings {
+  external_url: string;
+  locked: boolean; // 由环境变量 COHIVE_EXTERNAL_URL 锁定
+  suggested: string; // 本次访问用的地址，没设时用来预填
 }
 
 export interface ServerWorkspace {
   name: string;
+  display_name?: string;
   created_at: string;
   members: number;
   admins: string[] | null;
@@ -465,14 +486,13 @@ export const api = {
   createInvite: (ws: string, body: NewInvite) => post<CreatedInvite>(`${adm(ws)}/invites`, body),
   revokeInvite: (ws: string, id: number) => post(`${adm(ws)}/invites/${seg(id)}/revoke`),
   workspaceSettings: (ws: string) => request<WorkspaceSettings>(`${adm(ws)}/workspace`),
-  saveWorkspaceSettings: (ws: string, body: Omit<WorkspaceSettings, "name" | "bot_enabled">) =>
-    post(`${adm(ws)}/workspace`, body),
+  saveWorkspaceSettings: (ws: string, body: SaveWorkspaceSettings) => post(`${adm(ws)}/workspace`, body),
   workspaceEvents: (ws: string, f: EventFilter) =>
     request<AdminEventPage>(`${adm(ws)}/events${eventQuery({ ...f, workspace: undefined })}`),
 
   // 服务器管理
   serverWorkspaces: () => request<{ items: ServerWorkspace[] }>(`${srv}/workspaces`),
-  createWorkspace: (body: { name: string; admin?: string }) => post<{ name: string }>(`${srv}/workspaces`, body),
+  createWorkspace: (body: { name: string; display_name?: string; admin?: string }) => post<{ name: string }>(`${srv}/workspaces`, body),
   deleteWorkspace: (name: string) => del(`${srv}/workspaces/${seg(name)}`),
   serverAccounts: (q: string) =>
     request<{ items: ServerAccount[] }>(`${srv}/accounts${q ? `?q=${encodeURIComponent(q)}` : ""}`),
@@ -482,6 +502,8 @@ export const api = {
   serverUnlinkTelegram: (name: string) => del(`${srv}/accounts/${seg(name)}/telegram`),
   serverPendingDevices: () => request<{ items: PendingDevice[] }>(`${srv}/pending-devices`),
   serverDecideDevice: (id: number, approve: boolean) => post(`${srv}/device-auths/${seg(id)}`, { approve }),
+  serverSettings: () => request<ServerSettings>(`${srv}/settings`),
+  saveServerSettings: (external_url: string) => post<ServerSettings>(`${srv}/settings`, { external_url }),
   serverEvents: (f: EventFilter) => request<AdminEventPage>(`${srv}/events${eventQuery(f)}`),
 };
 

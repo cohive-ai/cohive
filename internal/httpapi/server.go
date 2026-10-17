@@ -26,6 +26,7 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		return a, true
 	}
 	const p = "/api/v1/server"
+	settingsRoutes(srv, svc)
 
 	srv("GET "+p+"/workspaces", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
 		list, err := svc.ServerWorkspaces(r.Context(), actor)
@@ -44,20 +45,21 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		items := make([]map[string]any, 0, len(list))
 		for _, ws := range list {
-			items = append(items, map[string]any{"name": ws.Name, "created_at": ws.CreatedAt, "members": ws.Members,
+			items = append(items, map[string]any{"name": ws.Name, "display_name": ws.Label(), "created_at": ws.CreatedAt, "members": ws.Members,
 				"admins": ws.Admins, "open_issues": ws.OpenIssues, "telegram_bound": ws.TelegramBound, "i_am_member": mine[ws.ID]})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	})
 	srv("POST "+p+"/workspaces", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
 		var in struct {
-			Name  string `json:"name"`
-			Admin string `json:"admin"`
+			Name        string `json:"name"`
+			DisplayName string `json:"display_name"`
+			Admin       string `json:"admin"`
 		}
 		if !decode(w, r, &in) {
 			return
 		}
-		ws, err := svc.CreateWorkspace(r.Context(), core.WebActor(*actor), in.Name, in.Admin)
+		ws, err := svc.CreateWorkspaceNamed(r.Context(), core.WebActor(*actor), in.Name, in.DisplayName, in.Admin)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -177,6 +179,41 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceDeviceDecided(ctx, d) })
 		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+// settingsRoutes 注册服务器级设置（对外地址）的接口。
+func settingsRoutes(srv func(string, func(http.ResponseWriter, *http.Request, *store.Account)), svc *core.Service) {
+	const p = "/api/v1/server/settings"
+	out := func(w http.ResponseWriter, r *http.Request, ext core.ExternalURL) {
+		// suggested 是本次访问用的地址：还没设时网页拿它预填，人确认后才保存
+		writeJSON(w, http.StatusOK, map[string]any{"external_url": ext.URL, "locked": ext.Locked, "suggested": origin(r)})
+	}
+	srv("GET "+p, func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
+		if err := requireServerAdminHTTP(r.Context(), svc, actor); err != nil {
+			writeError(w, err)
+			return
+		}
+		ext, err := svc.ExternalURL(r.Context())
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		out(w, r, ext)
+	})
+	srv("POST "+p, func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
+		var in struct {
+			ExternalURL string `json:"external_url"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		ext, err := svc.SetExternalURL(r.Context(), core.WebActor(*actor), in.ExternalURL)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		out(w, r, ext)
 	})
 }
 

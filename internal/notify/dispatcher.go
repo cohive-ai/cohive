@@ -34,6 +34,9 @@ type Dispatcher struct {
 	Pool    *pgxpool.Pool
 	Senders map[string]Sender // 按通道名
 	Logf    func(format string, args ...any)
+	// BaseURL 返回服务器级对外地址，用于拼问题单链接（服务端传入 core.Service 的，环境变量优先）；
+	// 为空时直接读数据库里的设置。
+	BaseURL func(ctx context.Context) string
 
 	downMsg string // 上一次记录的通道不可用原因，只在变化时打日志
 }
@@ -44,6 +47,17 @@ func (d *Dispatcher) logf(format string, args ...any) {
 		return
 	}
 	log.Printf(format, args...)
+}
+
+func (d *Dispatcher) baseURL(ctx context.Context) string {
+	if d.BaseURL != nil {
+		return d.BaseURL(ctx)
+	}
+	st, err := store.GetServerSettings(ctx, d.Pool, false)
+	if err != nil {
+		return ""
+	}
+	return st.ExternalURL
 }
 
 // Run 每隔 interval 投递一次，直到 ctx 结束。
@@ -134,7 +148,7 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 
 	sendCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	sendErr := sender.Send(sendCtx, ws.Notify.Target, Render(ws, is, n, members))
+	sendErr := sender.Send(sendCtx, ws.Notify.Target, Render(d.baseURL(ctx), ws, is, n, members))
 	if sendErr == nil {
 		if d.downMsg != "" {
 			d.logf("群通知已恢复投递")

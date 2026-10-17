@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Me } from "../api";
 import { DeviceTokens, Notice } from "../components";
-import { absoluteTime, roleLabel } from "../format";
+import { absoluteTime, roleLabel, workspaceLabel } from "../format";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
 import { installCommands, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
@@ -42,7 +42,7 @@ export function MePage() {
             {m.workspaces.map((w) => (
               <li key={w.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
                 <Link to="/w/$ws" params={{ ws: w.name }} className="font-medium text-ink hover:text-teal">
-                  {w.name}
+                  {workspaceLabel(w)}
                 </Link>
                 <span
                   className={`rounded px-1.5 py-px text-xs ${

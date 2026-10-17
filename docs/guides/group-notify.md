@@ -29,13 +29,16 @@ Cohive 的群通知是“群里敲门，客户端开门”：问题单轮到谁�
 ./bin/cohive-server workspace add --name payments --admin <首位管理员的登录名>
 ```
 
-服务启动后，在群里发 `/chatid`，机器人回复群编号。工作空间管理员在网页“管理 → 工作空间”里填入群编号、公网地址，选择群消息是否显示标题与简述，保存即可。也可以在服务器上用命令配置：
+服务启动后，在群里发 `/chatid`，机器人回复群编号。工作空间管理员在网页“管理 → 工作空间”里填入群编号，选择群消息是否显示标题与简述，保存即可。也可以在服务器上用命令配置：
 
 ```bash
-./bin/cohive-server workspace notify --workspace payments --telegram-chat -1001234567890 --public-url https://cohive.example.com
+./bin/cohive-server workspace notify --workspace payments --telegram-chat -1001234567890
 ```
 
-- `--public-url`：群消息里网页链接的地址（链接形如 `https://cohive.example.com/w/payments/issues/12`），没有公网地址可以不填。
+**群消息里的链接**用服务器级的“对外地址”拼成 `对外地址/w/路径/issues/编号`（例如 `https://cohive.example.com/w/payments/issues/12`）。对外地址整个服务器只设一个，由服务器管理员在“服务器管理 → 设置”里填写，或在服务器上执行 `./bin/cohive-server server set --external-url https://cohive.example.com`。也可以用环境变量 `COHIVE_EXTERNAL_URL` 锁定，锁定后网页和命令行都不能改。没设对外地址时，群消息不带链接，其余照常。工作空间设置页只读显示拼出来的链接。旧的 `workspace notify --public-url` 已废弃，使用时会报错并提示改用 `server set`。
+
+群消息与审批消息里的工作空间名用**显示名**（“管理 → 工作空间”里可随时改）；链接与项目配置里用**路径**（建工作空间时定的名字，不能改）。
+
 - `--show-title=false`、`--show-brief=false`：不在群里显示标题、群通知简述（默认都显示）。
 - `--off`：关闭这个工作空间的群通知。
 
@@ -80,13 +83,13 @@ Cohive 的群通知是“群里敲门，客户端开门”：问题单轮到谁�
 网络打通由团队自行选择方式，这里以 Cloudflare 隧道为例。要点只有两个：
 
 1. 把公网域名转发到协作服务，例如 `https://cohive.example.com` → `http://127.0.0.1:8787`。
-2. 启动协作服务时把这个域名加入白名单，否则 MCP 会以 403 拒绝（DNS 重绑定防护）：
+2. 把这个地址设为**对外地址**（“服务器管理 → 设置”，或 `cohive-server server set --external-url https://cohive.example.com`）。对外地址的主机名会自动加入 MCP 的主机名白名单，改了立即生效，不用重启；否则 MCP 会以 403 拒绝（DNS 重绑定防护）。
+
+   同一台服务器还要用别的域名访问时，再把它们写进 `COHIVE_ALLOWED_HOSTS`（逗号分隔，只写域名，不带 `https://` 或路径；写错时服务拒绝启动并提示）：
 
    ```bash
-   COHIVE_ALLOWED_HOSTS=cohive.example.com scripts/run-server.sh
+   COHIVE_ALLOWED_HOSTS=other.example.com scripts/run-server.sh
    ```
-
-   只写域名，不要带 `https://` 或路径，写错时服务会拒绝启动并提示。
 
 隧道令牌建议用 `--token-file` 从文件读取，不要写在启动参数里（启动参数对本机所有用户可见）：
 

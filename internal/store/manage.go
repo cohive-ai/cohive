@@ -155,8 +155,8 @@ func ListWorkspaceSummaries(ctx context.Context, q DBTX) ([]WorkspaceSummary, er
 	var out []WorkspaceSummary
 	for rows.Next() {
 		var s WorkspaceSummary
-		if err := rows.Scan(&s.ID, &s.Name, &s.Notify.Channel, &s.Notify.Target, &s.Notify.ShowTitle, &s.Notify.ShowBrief,
-			&s.PublicURL, &s.CreatedAt, &s.Members, &s.Admins, &s.OpenIssues); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.DisplayName, &s.Notify.Channel, &s.Notify.Target, &s.Notify.ShowTitle,
+			&s.Notify.ShowBrief, &s.CreatedAt, &s.Members, &s.Admins, &s.OpenIssues); err != nil {
 			return nil, err
 		}
 		s.TelegramBound = s.Notify.Channel == "telegram" && s.Notify.Target != ""

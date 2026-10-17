@@ -40,6 +40,8 @@ type cliCase struct {
 var cliCases = []cliCase{
 	{"workspace add", nil, []string{"workspace", "add", "--name", "ops", "--admin", "lee"}, core.ActWorkspaceCreate, "ops"},
 	{"workspace remove", [][]string{{"workspace", "add", "--name", "ops"}}, []string{"workspace", "remove", "--name", "ops"}, core.ActWorkspaceDelete, "ops"},
+	{"workspace set", nil, []string{"workspace", "set", "--name", "default", "--display", "默认组"}, core.ActWorkspaceDisplayName, "default"},
+	{"server set", nil, []string{"server", "set", "--external-url", "https://c.example.com"}, core.ActServerSettings, ""},
 	{"workspace notify", nil, []string{"workspace", "notify", "--workspace", "default", "--telegram-chat", "-1009"}, core.ActWorkspaceSettings, "default"},
 	{"account set", nil, []string{"account", "set", "--name", "ann", "--display", "Ann"}, core.ActAccountUpdate, ""},
 	{"account disable", nil, []string{"account", "disable", "--name", "ann"}, core.ActAccountDisable, ""},
@@ -66,6 +68,7 @@ var notAdminCommands = map[string]string{
 	"notify test":    "往群里发一条测试消息，不改变任何人的权限",
 	"notify retry":   "把发送失败的通知重新排队，不改变任何人的权限",
 	"audit list":     "只读：查看管理操作记录",
+	"server show":    "只读：查看对外地址",
 }
 
 // 服务器命令行里每条写命令都留记录，入口为服务器命令行、操作人为空。

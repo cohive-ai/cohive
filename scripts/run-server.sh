@@ -3,7 +3,7 @@
 # 因此之后在终端里启动的其他程序（包括 AI 编程工具）读不到它。
 #
 # 用法：scripts/run-server.sh [serve 的参数，例如 --addr 0.0.0.0:8787]
-# 需要的环境变量：COHIVE_DATABASE_URL；经隧道访问时另设 COHIVE_ALLOWED_HOSTS。
+# 需要的环境变量：COHIVE_DATABASE_URL；对外地址在网页“服务器管理 → 设置”里填，或用 COHIVE_EXTERNAL_URL 锁定。
 set -euo pipefail
 
 env_file="$HOME/.config/cohive/telegram.env"

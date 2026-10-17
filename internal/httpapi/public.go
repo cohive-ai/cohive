@@ -151,7 +151,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeError(w, err)
 			return
 		}
-		out := map[string]any{"workspace": info.Workspace, "kind": info.Kind, "role": info.Role, "valid": info.Valid}
+		out := map[string]any{"workspace": info.Workspace, "workspace_display": info.WorkspaceLabel, "kind": info.Kind, "role": info.Role, "valid": info.Valid}
 		if viewer != nil {
 			out["signed_in_as"], out["already_member"] = viewer.Name, info.AlreadyMember
 		}
@@ -192,7 +192,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		m := *res.Member
 		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceJoined(ctx, m) })
 		writeJSON(w, http.StatusOK, map[string]any{"status": "active", "account": accountJSON(*res.Account, true),
-			"workspace": map[string]string{"name": res.Workspace.Name, "role": m.Role}})
+			"workspace": map[string]string{"name": res.Workspace.Name, "display_name": res.Workspace.Label(), "role": m.Role}})
 	})
 
 	handlePublic(mux, "POST /api/v1/device/start", func(w http.ResponseWriter, r *http.Request) {

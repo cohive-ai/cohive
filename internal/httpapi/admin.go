@@ -286,21 +286,33 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"name": ws.Name, "public_url": ws.PublicURL, "telegram_chat": ws.Notify.Target,
-			"show_title": ws.Notify.ShowTitle, "show_brief": ws.Notify.ShowBrief, "bot_enabled": botName(opts) != ""})
+		ext, err := svc.ExternalURL(r.Context())
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		// 群消息里问题单链接的样子：对外地址是服务器级的，这里只读显示；没设时为空，页面提示去服务器管理设置
+		example := ""
+		if ext.URL != "" {
+			example = core.WorkspaceLink(ext.URL, ws.Name) + "/issues/编号"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"name": ws.Name, "path": ws.Name, "display_name": ws.Label(),
+			"telegram_chat": ws.Notify.Target, "show_title": ws.Notify.ShowTitle, "show_brief": ws.Notify.ShowBrief,
+			"bot_enabled": botName(opts) != "", "external_url_set": ext.URL != "", "issue_link_example": example})
 	})
 	adm("POST "+p+"/workspace", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
+		// 旧页面还会带 public_url：对外地址已改为服务器级，忽略它
 		var in struct {
-			PublicURL    string `json:"public_url"`
-			TelegramChat string `json:"telegram_chat"`
-			ShowTitle    bool   `json:"show_title"`
-			ShowBrief    bool   `json:"show_brief"`
+			TelegramChat string  `json:"telegram_chat"`
+			ShowTitle    bool    `json:"show_title"`
+			ShowBrief    bool    `json:"show_brief"`
+			DisplayName  *string `json:"display_name"`
 		}
 		if !decode(w, r, &in) {
 			return
 		}
-		if err := svc.UpdateWorkspace(r.Context(), core.WebActor(*actor), ws.ID, core.WorkspaceSettings{PublicURL: in.PublicURL,
-			TelegramChat: in.TelegramChat, ShowTitle: in.ShowTitle, ShowBrief: in.ShowBrief}); err != nil {
+		if err := svc.UpdateWorkspace(r.Context(), core.WebActor(*actor), ws.ID, core.WorkspaceSettings{
+			TelegramChat: in.TelegramChat, ShowTitle: in.ShowTitle, ShowBrief: in.ShowBrief, DisplayName: in.DisplayName}); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -319,7 +331,7 @@ func pendingDevicesJSON(ctx context.Context, svc *core.Service, devs []store.Dev
 				return nil, err
 			}
 			for _, m := range ms {
-				wss = append(wss, m.Workspace)
+				wss = append(wss, m.Label)
 			}
 		}
 		if wss == nil {

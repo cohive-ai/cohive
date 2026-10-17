@@ -2,7 +2,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, type IssueEvent } from "../api";
 import { Notice, StatusTag, ToolMark } from "../components";
-import { absoluteTime, actionLabel, relativeTime, severityLabel, statusLabel, toolLabel } from "../format";
+import { absoluteTime, actionLabel, relativeTime, severityLabel, statusLabel, toolLabel, workspaceLabel } from "../format";
 import { WorkspaceLoadError } from "./WorkspaceShell";
 
 export function IssueDetailPage() {
@@ -34,7 +34,7 @@ export function IssueDetailPage() {
               <span key={w.name}>
                 {i > 0 && "、"}
                 <Link to="/w/$ws/issues/$id" params={{ ws: w.name, id }} className="text-teal hover:underline">
-                  {w.name}
+                  {workspaceLabel(w)}
                 </Link>
               </span>
             ))}

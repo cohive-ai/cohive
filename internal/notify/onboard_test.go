@@ -211,7 +211,7 @@ func TestDeviceAnnouncedToAllGroups(t *testing.T) {
 	c := &fakeCore{
 		byID:        map[int64]store.Workspace{3: pay, 4: ops, 5: quiet},
 		groups:      map[int64]store.Workspace{-1001: pay, -1002: ops},
-		memberships: []store.Membership{{WorkspaceID: 3, Workspace: "payments"}, {WorkspaceID: 4, Workspace: "ops"}, {WorkspaceID: 5, Workspace: "quiet"}},
+		memberships: []store.Membership{{WorkspaceID: 3, Workspace: "payments", Label: "payments"}, {WorkspaceID: 4, Workspace: "ops", Label: "ops"}, {WorkspaceID: 5, Workspace: "quiet", Label: "quiet"}},
 		actor:       store.Account{ID: 9, Name: "boss"},
 	}
 	api := &fakeAPI{}
@@ -283,5 +283,18 @@ func TestAnnounceJoined(t *testing.T) {
 	}
 	if len(api.texts) != 1 || !strings.Contains(api.texts[0], "@ann_tg") || !strings.Contains(api.texts[0], "payments") {
 		t.Fatalf("应在群里 @ 新成员：%v", api.texts)
+	}
+}
+
+// 机器人消息用显示名，并转义 HTML 特殊字符。
+func TestBotUsesEscapedDisplayName(t *testing.T) {
+	ctx := context.Background()
+	ws := store.Workspace{ID: 3, Name: "payments", DisplayName: "<b>支付&组</b>", Notify: store.NotifyConfig{Channel: "telegram", Target: "-1001"}}
+	api := &fakeAPI{}
+	if err := newBot(&fakeCore{workspace: ws}, api).AnnounceSignup(ctx, store.Signup{ID: 5, WorkspaceID: 3, Name: "ann"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.buttons) != 1 || !strings.Contains(api.buttons[0], "&lt;b&gt;支付&amp;组&lt;/b&gt;") || strings.Contains(api.buttons[0], "payments") {
+		t.Fatalf("应写转义后的显示名：%v", api.buttons)
 	}
 }

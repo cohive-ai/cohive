@@ -34,6 +34,10 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
+	envURL, err := envExternalURL()
+	if err != nil {
+		return err
+	}
 	pool, err := openDB(ctx)
 	if err != nil {
 		return err
@@ -46,7 +50,17 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	svc := &core.Service{Pool: pool, DataDir: dataDir()}
+	svc := &core.Service{Pool: pool, DataDir: dataDir(), EnvExternalURL: envURL}
+	if err := svc.LoadExternalURL(ctx); err != nil {
+		return fmt.Errorf("读取对外地址：%w", err)
+	}
+	if ext, _ := svc.ExternalURL(ctx); ext.URL == "" {
+		fmt.Fprintln(out, "  对外地址：未设置（群消息里不带链接）；请服务器管理员在网页“服务器管理 → 设置”里填写")
+	} else if ext.Locked {
+		fmt.Fprintf(out, "  对外地址：%s（由环境变量 COHIVE_EXTERNAL_URL 锁定）\n", ext.URL)
+	} else {
+		fmt.Fprintf(out, "  对外地址：%s\n", ext.URL)
+	}
 	// 还没有任何管理员时生成初始管理员，密码只写进数据目录下的文件，不进日志
 	if path, err := svc.EnsureInitialAdmin(ctx); err != nil {
 		return fmt.Errorf("生成初始管理员：%w", err)
@@ -65,7 +79,8 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	opts := server.Options{AllowedHosts: hosts, CLI: dist}
 	// 群通知与机器人：设置了机器人令牌才启用；没设置时待发记录会保留，设置后重启即可补发
 	if tg := telegramFromEnv(); tg != nil {
-		d := &notify.Dispatcher{Pool: pool, Senders: map[string]notify.Sender{"telegram": tg}}
+		d := &notify.Dispatcher{Pool: pool, Senders: map[string]notify.Sender{"telegram": tg},
+			BaseURL: func(ctx context.Context) string { ext, _ := svc.ExternalURL(ctx); return ext.URL }}
 		go d.Run(ctx, 2*time.Second)
 		bot := &notify.Bot{TG: tg, Core: svc}
 		go bot.Run(ctx)
@@ -131,4 +146,17 @@ func displayAddr(addr string) string {
 		return "localhost" + addr
 	}
 	return addr
+}
+
+// envExternalURL 读取 COHIVE_EXTERNAL_URL：设了就锁定对外地址，网页与命令行不能改；格式不对时不启动。
+func envExternalURL() (string, error) {
+	raw := strings.TrimSpace(os.Getenv("COHIVE_EXTERNAL_URL"))
+	if raw == "" {
+		return "", nil
+	}
+	v, err := core.NormalizeExternalURL(raw)
+	if err != nil {
+		return "", fmt.Errorf("COHIVE_EXTERNAL_URL：%w", err)
+	}
+	return v, nil
 }

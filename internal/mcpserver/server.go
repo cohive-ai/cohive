@@ -28,7 +28,8 @@ func Protected(svc *core.Service, allowedHosts ...string) http.Handler {
 	server := NewServer(svc)
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server },
 		&mcp.StreamableHTTPOptions{Stateless: true, DisableLocalhostProtection: true})
-	return hostGuard(allowedHosts, authn.Middleware(svc.Pool)(h))
+	// 对外地址的主机名随服务器设置变化，每次请求读 svc 的内存缓存
+	return hostGuard(allowedHosts, svc.ExternalHost, authn.Middleware(svc.Pool)(h))
 }
 
 // Handler 返回只挂载了 /mcp 与 /healthz 的处理器，供测试使用。

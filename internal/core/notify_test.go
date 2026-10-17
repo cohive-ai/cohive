@@ -12,7 +12,7 @@ import (
 func enableNotify(t *testing.T, e env) {
 	t.Helper()
 	if err := store.SetWorkspaceNotify(context.Background(), e.svc.Pool, e.a.WorkspaceID,
-		store.NotifyConfig{Channel: "telegram", Target: "-100", ShowTitle: true, ShowBrief: true}, ""); err != nil {
+		store.NotifyConfig{Channel: "telegram", Target: "-100", ShowTitle: true, ShowBrief: true}); err != nil {
 		t.Fatal(err)
 	}
 }

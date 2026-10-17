@@ -35,7 +35,7 @@ export function RegisterPage() {
       ) : d.signed_in_as ? (
         <JoinAsSignedIn code={code} invite={d} signedInAs={d.signed_in_as} onSwitched={() => invite.refetch()} />
       ) : (
-        <RegisterForm code={code} workspace={d.workspace} kind={d.kind} role={d.role} />
+        <RegisterForm code={code} workspace={d.workspace_display || d.workspace} kind={d.kind} role={d.role} />
       )}
     </AuthShell>
   );
@@ -122,11 +122,11 @@ function JoinAsSignedIn({
     return (
       <div className="space-y-4 text-sm">
         <Callout tone="teal">
-          你（<span className="font-mono">{signedInAs}</span>）已经是工作空间 <span className="font-medium">{invite.workspace}</span>{" "}
+          你（<span className="font-mono">{signedInAs}</span>）已经是工作空间 <span className="font-medium">{invite.workspace_display || invite.workspace}</span>{" "}
           的成员，不需要再用这个邀请。
         </Callout>
         <Link to="/w/$ws" params={{ ws: invite.workspace }} className="inline-block text-teal hover:underline">
-          进入 {invite.workspace}
+          进入 {invite.workspace_display || invite.workspace}
         </Link>
       </div>
     );
@@ -136,7 +136,7 @@ function JoinAsSignedIn({
     return (
       <div className="space-y-4 text-sm">
         <Callout tone="teal">
-          已提交加入申请，等待工作空间 <span className="font-medium">{invite.workspace}</span> 的管理员批准。批准后它会出现在顶栏的工作空间列表里。
+          已提交加入申请，等待工作空间 <span className="font-medium">{invite.workspace_display || invite.workspace}</span> 的管理员批准。批准后它会出现在顶栏的工作空间列表里。
         </Callout>
         <Link to="/" className="inline-block text-teal hover:underline">
           回到首页
@@ -147,7 +147,7 @@ function JoinAsSignedIn({
 
   return (
     <div className="space-y-4">
-      <InviteSummary workspace={invite.workspace} kind={invite.kind} role={invite.role} />
+      <InviteSummary workspace={invite.workspace_display || invite.workspace} kind={invite.kind} role={invite.role} />
       <p className="text-sm">
         你已登录为 <span className="font-mono font-medium">{signedInAs}</span>。接受邀请后，这个账号会成为该工作空间的成员，不会新建账号。
       </p>
@@ -172,7 +172,7 @@ function JoinAsSignedIn({
         <>
           <ErrorText>{error}</ErrorText>
           <button type="button" onClick={accept} disabled={busy} className={`${btn.primary} w-full`}>
-            {busy ? "正在加入…" : `以 ${signedInAs} 身份加入 ${invite.workspace}`}
+            {busy ? "正在加入…" : `以 ${signedInAs} 身份加入 ${invite.workspace_display || invite.workspace}`}
           </button>
         </>
       )}

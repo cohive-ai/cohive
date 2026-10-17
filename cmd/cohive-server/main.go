@@ -16,13 +16,19 @@ const usage = `用法：cohive-server <命令>
   migrate                                         执行数据库迁移
   serve [--addr :8787]                            启动协作服务（含看板与群通知投递）
 
-工作空间（一个项目一个群，对应一个工作空间）：
-  workspace add --name <名称> [--admin <登录名>]   创建工作空间并指定首位管理员
-  workspace remove --name <名称>                  删除工作空间（只限没有任何问题单的）
+服务器设置：
+  server show                                     查看对外地址
+  server set --external-url <地址>                设置对外地址（群消息链接与 MCP 主机名用它），例如 https://cohive.example.com；
+                                                  传空字符串清除；设了 COHIVE_EXTERNAL_URL 时以环境变量为准，不能改
+
+工作空间（一个项目一个群，对应一个工作空间；路径不可改，显示名可改）：
+  workspace add --name <路径> [--display <显示名>] [--admin <登录名>]
+                                                  创建工作空间并指定首位管理员
+  workspace set --name <路径> --display <显示名>   修改显示名（传空字符串恢复为与路径相同）
+  workspace remove --name <路径>                  删除工作空间（只限没有任何问题单的）
   workspace list                                  列出工作空间与群通知配置
-  workspace notify --workspace <名称> --telegram-chat <群聊编号（群里发 /chatid 获取）>
-      [--show-title=false] [--show-brief=false] [--public-url <看板地址>]
-                                                  配置群通知；--off 关闭；一个群只能绑一个工作空间
+  workspace notify --workspace <路径> --telegram-chat <群聊编号（群里发 /chatid 获取）>
+      [--show-title=false] [--show-brief=false]   配置群通知；--off 关闭；一个群只能绑一个工作空间
   notify test --workspace <名称>                   往工作空间的群里发一条测试消息
   notify retry --workspace <名称>                  把发送失败的通知重新排队
 
@@ -55,7 +61,8 @@ const usage = `用法：cohive-server <命令>
 环境变量：
   COHIVE_DATABASE_URL          数据库地址（必填）
   COHIVE_TELEGRAM_BOT_TOKEN    Telegram 机器人令牌（使用群通知时必填）
-  COHIVE_ALLOWED_HOSTS         经隧道等方式访问 MCP 时的公网域名，逗号分隔
+  COHIVE_EXTERNAL_URL          对外地址（可选）；设了就锁定，网页与命令行不能改
+  COHIVE_ALLOWED_HOSTS         除对外地址外，经隧道等方式访问 MCP 时还允许的域名，逗号分隔
   COHIVE_DATA_DIR              数据目录（缺省为 ./data），首次启动时初始管理员密码写在这里
 `
 
@@ -93,6 +100,8 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		return adminCmd(ctx, out, args[1:])
 	case "audit":
 		return auditCmd(ctx, out, args[1:])
+	case "server":
+		return serverCmd(ctx, out, args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(out, usage)
 		return nil

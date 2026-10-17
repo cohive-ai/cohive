@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,9 +19,10 @@ import (
 func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub string, args []string) error {
 	switch sub {
 	case "add":
-		var name, adminName string
+		var name, display, adminName string
 		if err := parse("workspace add", args, func(fs *flag.FlagSet) {
-			fs.StringVar(&name, "name", "", "工作空间名，通常对应一个项目（一个群）；建后不能改")
+			fs.StringVar(&name, "name", "", "工作空间路径，出现在链接与项目配置里，通常对应一个项目（一个群）；建后不能改")
+			fs.StringVar(&display, "display", "", "显示名（可选，可随时改；缺省与路径相同）")
 			fs.StringVar(&adminName, "admin", "", "首位管理员的登录名（可选）")
 		}); err != nil {
 			return err
@@ -30,11 +30,40 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 		if err := required("name", name); err != nil {
 			return err
 		}
-		w, err := (&core.Service{Pool: pool}).CreateWorkspace(ctx, core.ServerCLI(), name, adminName)
+		w, err := (&core.Service{Pool: pool}).CreateWorkspaceNamed(ctx, core.ServerCLI(), name, display, adminName)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "已创建工作空间 %s（编号 %d）\n", w.Name, w.ID)
+		fmt.Fprintf(out, "已创建工作空间 %s（显示名 %s，编号 %d）\n", w.Name, w.Label(), w.ID)
+		return nil
+	case "set":
+		var name, display string
+		set := false
+		fs := flag.NewFlagSet("workspace set", flag.ContinueOnError)
+		fs.StringVar(&name, "name", "", "工作空间路径")
+		fs.StringVar(&display, "display", "", "显示名；传空字符串恢复为与路径相同")
+		if err := fs.Parse(args); err != nil {
+			return err
+		}
+		fs.Visit(func(f *flag.Flag) { set = set || f.Name == "display" })
+		if err := required("name", name); err != nil {
+			return err
+		}
+		if !set {
+			return fmt.Errorf("没有要修改的项：用 --display（路径不能改）")
+		}
+		wsID, err := resolveWorkspace(ctx, pool, name)
+		if err != nil {
+			return err
+		}
+		if err := (&core.Service{Pool: pool}).SetWorkspaceDisplayName(ctx, core.ServerCLI(), wsID, display); err != nil {
+			return err
+		}
+		w, err := store.GetWorkspace(ctx, pool, wsID)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "工作空间 %s 的显示名为 %s\n", w.Name, w.Label())
 		return nil
 	case "remove":
 		var name string
@@ -62,7 +91,7 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 			return err
 		}
 		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "编号\t名称\t群通知\t待发/失败\t公网地址")
+		fmt.Fprintln(tw, "编号\t路径\t显示名\t群通知\t待发/失败")
 		for _, w := range list {
 			pending, failed, err := store.CountNotifications(ctx, pool, w.ID)
 			if err != nil {
@@ -73,7 +102,7 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 				notify = fmt.Sprintf("%s %s（标题 %s，简述 %s）", w.Notify.Channel, w.Notify.Target,
 					onOff(w.Notify.ShowTitle), onOff(w.Notify.ShowBrief))
 			}
-			fmt.Fprintf(tw, "%d\t%s\t%s\t%d/%d\t%s\n", w.ID, w.Name, notify, pending, failed, w.PublicURL)
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%d/%d\n", w.ID, w.Name, w.Label(), notify, pending, failed)
 		}
 		return tw.Flush()
 	case "notify":
@@ -98,7 +127,7 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 		fs.StringVar(&chat, "telegram-chat", "", "Telegram 群聊编号（群里发 /chatid 获取）")
 		fs.BoolVar(&showTitle, "show-title", true, "群消息里显示标题")
 		fs.BoolVar(&showBrief, "show-brief", true, "群消息里显示群通知简述")
-		fs.StringVar(&publicURL, "public-url", "", "看板的外部地址，用于群消息里的链接")
+		fs.StringVar(&publicURL, "public-url", "", "已废弃：对外地址改为服务器级，用 server set --external-url")
 		fs.BoolVar(&off, "off", false, "关闭群通知")
 	}); err != nil {
 		return err
@@ -117,14 +146,11 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 	} else {
 		chat = ""
 	}
-	publicURL = strings.TrimRight(publicURL, "/")
 	if publicURL != "" {
-		if u, err := url.Parse(publicURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("--public-url 应为 http 或 https 地址")
-		}
+		return fmt.Errorf("--public-url 已废弃：对外地址改为服务器级，只设一个，请用 cohive-server server set --external-url %s", publicURL)
 	}
 	// 经业务层写入：一个群只能绑一个工作空间
-	if err := (&core.Service{Pool: pool}).UpdateWorkspace(ctx, core.ServerCLI(), wsID, core.WorkspaceSettings{PublicURL: publicURL,
+	if err := (&core.Service{Pool: pool}).UpdateWorkspace(ctx, core.ServerCLI(), wsID, core.WorkspaceSettings{
 		TelegramChat: chat, ShowTitle: showTitle, ShowBrief: showBrief}); err != nil {
 		return err
 	}

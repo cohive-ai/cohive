@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
@@ -64,20 +65,23 @@ func (s *Service) SetRole(ctx context.Context, act Actor, wsID, memberID int64, 
 	})
 }
 
-// WorkspaceSettings 是管理页可修改的工作空间设置。
+// WorkspaceSettings 是管理页可修改的工作空间设置。对外地址已改为服务器级（SetExternalURL）。
 type WorkspaceSettings struct {
-	PublicURL    string
 	TelegramChat string
 	ShowTitle    bool
 	ShowBrief    bool
+	DisplayName  *string // 为空时不改显示名；指向空串表示恢复为路径
 }
 
 // UpdateWorkspace 由管理员修改工作空间设置。群编号为空表示关闭群通知；一个群只能绑一个工作空间。
 func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in WorkspaceSettings) error {
 	actor := act.Account
-	pub := strings.TrimRight(strings.TrimSpace(in.PublicURL), "/")
-	if pub != "" && !strings.HasPrefix(pub, "https://") && !strings.HasPrefix(pub, "http://") {
-		return inputErr("公网地址应以 https:// 或 http:// 开头")
+	var display string
+	if in.DisplayName != nil {
+		var err error
+		if display, err = cleanWorkspaceDisplayName(*in.DisplayName); err != nil {
+			return err
+		}
 	}
 	chat := strings.TrimSpace(in.TelegramChat)
 	if chat != "" {
@@ -104,7 +108,7 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 		if err != nil {
 			return err
 		}
-		err = store.SetWorkspaceNotify(ctx, tx, wsID, cfg, pub)
+		err = store.SetWorkspaceNotify(ctx, tx, wsID, cfg)
 		if isUniqueViolation(err) {
 			return stateErr("这个群已经绑定了别的工作空间：一个群只能对应一个工作空间")
 		}
@@ -117,15 +121,72 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 				changes[k] = map[string]any{"from": from, "to": to}
 			}
 		}
-		diff("public_url", old.PublicURL, pub)
 		diff("telegram_chat", old.Notify.Target, chat)
 		diff("show_title", old.Notify.ShowTitle, in.ShowTitle)
 		diff("show_brief", old.Notify.ShowBrief, in.ShowBrief)
-		if len(changes) == 0 {
+		if len(changes) > 0 {
+			if err := record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(wsID), Action: ActWorkspaceSettings,
+				TargetKind: "workspace", TargetID: idp(wsID), TargetName: old.Name, Detail: changes}); err != nil {
+				return err
+			}
+		}
+		if in.DisplayName == nil {
 			return nil
 		}
-		return record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(wsID), Action: ActWorkspaceSettings,
-			TargetKind: "workspace", TargetID: idp(wsID), TargetName: old.Name, Detail: changes})
+		return setDisplayName(ctx, tx, act, old, display)
+	})
+}
+
+// MaxWorkspaceDisplayName 是工作空间显示名的最大字符数。
+const MaxWorkspaceDisplayName = 40
+
+// cleanWorkspaceDisplayName 去掉首尾空白后校验：最多 40 个字符，不含控制字符；空串表示恢复为路径。
+func cleanWorkspaceDisplayName(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if len([]rune(s)) > MaxWorkspaceDisplayName {
+		return "", inputErr("显示名最多 %d 个字符", MaxWorkspaceDisplayName)
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			return "", inputErr("显示名不能含换行、制表符等控制字符")
+		}
+	}
+	return s, nil
+}
+
+// setDisplayName 在事务里改显示名并写记录；值没变（含“与路径相同”的两种写法）不写。
+func setDisplayName(ctx context.Context, tx pgx.Tx, act Actor, ws store.Workspace, display string) error {
+	if display == ws.Name {
+		display = "" // 与路径相同就存空，以后路径不变、显示名跟着路径
+	}
+	if display == ws.DisplayName {
+		return nil
+	}
+	if err := store.SetWorkspaceDisplayName(ctx, tx, ws.ID, display); err != nil {
+		return err
+	}
+	to := ws
+	to.DisplayName = display
+	return record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(ws.ID), WorkspaceName: ws.Name, Action: ActWorkspaceDisplayName,
+		TargetKind: "workspace", TargetID: idp(ws.ID), TargetName: ws.Name,
+		Detail: map[string]any{"display_name": map[string]any{"from": ws.Label(), "to": to.Label()}}})
+}
+
+// SetWorkspaceDisplayName 由管理员修改工作空间显示名（空串恢复为路径）。路径不可改。
+func (s *Service) SetWorkspaceDisplayName(ctx context.Context, act Actor, wsID int64, display string) error {
+	display, err := cleanWorkspaceDisplayName(display)
+	if err != nil {
+		return err
+	}
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := canAdmin(ctx, tx, act.Account, wsID); err != nil {
+			return err
+		}
+		ws, err := store.LockWorkspace(ctx, tx, wsID)
+		if err != nil {
+			return err
+		}
+		return setDisplayName(ctx, tx, act, ws, display)
 	})
 }
 
@@ -722,13 +783,25 @@ func (s *Service) ServerWorkspaces(ctx context.Context, actor *store.Account) ([
 
 // CreateWorkspace 由服务器管理员建工作空间，并指定首位管理员（登录名，空则为操作者自己）。
 func (s *Service) CreateWorkspace(ctx context.Context, act Actor, name, adminName string) (store.Workspace, error) {
+	return s.CreateWorkspaceNamed(ctx, act, name, "", adminName)
+}
+
+// CreateWorkspaceNamed 同 CreateWorkspace，并一并设置显示名（空则与路径相同）。
+func (s *Service) CreateWorkspaceNamed(ctx context.Context, act Actor, name, display, adminName string) (store.Workspace, error) {
 	actor := act.Account
 	name = strings.TrimSpace(name)
 	if err := checkMemberName(name); err != nil {
-		return store.Workspace{}, inputErr("工作空间名 %q 不合法：小写字母、数字、下划线、横线，1 到 32 个字符", name)
+		return store.Workspace{}, inputErr("工作空间路径 %q 不合法：小写字母、数字、下划线、横线，1 到 32 个字符", name)
+	}
+	display, err := cleanWorkspaceDisplayName(display)
+	if err != nil {
+		return store.Workspace{}, err
+	}
+	if display == name {
+		display = ""
 	}
 	var ws store.Workspace
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
 		if err := requireServerAdmin(ctx, tx, actor); err != nil {
 			return err
 		}
@@ -747,6 +820,13 @@ func (s *Service) CreateWorkspace(ctx context.Context, act Actor, name, adminNam
 		}
 		ev := store.AdminEvent{WorkspaceID: idp(ws.ID), WorkspaceName: ws.Name, Action: ActWorkspaceCreate,
 			TargetKind: "workspace", TargetID: idp(ws.ID), TargetName: ws.Name, Detail: map[string]any{}}
+		if display != "" {
+			if err := store.SetWorkspaceDisplayName(ctx, tx, ws.ID, display); err != nil {
+				return err
+			}
+			ws.DisplayName = display
+			ev.Detail["display_name"] = display
+		}
 		var admin store.Account
 		switch {
 		case strings.TrimSpace(adminName) != "":

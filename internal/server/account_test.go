@@ -292,7 +292,7 @@ func TestWebAccountFlow(t *testing.T) {
 	if code, out := adminB.do("GET", "/api/v1/w/default/admin/devices", nil, ""); code != 200 || len(out["items"].([]any)) != 2 {
 		t.Fatalf("设备列表：%d %v", code, out)
 	}
-	if code, _ := adminB.do("POST", "/api/v1/w/default/admin/workspace", map[string]any{"public_url": "https://cohive.example.com", "telegram_chat": "-1001", "show_title": true}, ""); code != 204 {
+	if code, _ := adminB.do("POST", "/api/v1/w/default/admin/workspace", map[string]any{"telegram_chat": "-1001", "show_title": true}, ""); code != 204 {
 		t.Fatalf("保存工作空间：%d", code)
 	}
 	if code, out := adminB.do("GET", "/api/v1/w/default/admin/workspace", nil, ""); code != 200 || out["telegram_chat"] != "-1001" || out["bot_enabled"] != true {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import type { Me } from "./api";
@@ -138,4 +138,73 @@ it("设备授权页的“可用于”只出现一次", async () => {
   open("/device/da_x");
   expect(await screen.findByText("pay、ops")).toBeTruthy();
   expect(document.body.textContent!.match(/可用于/g)?.length).toBe(1);
+});
+
+function stubAdmin(me: Me, settings: Record<string, unknown>) {
+  const posts: unknown[] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    const json = (status: number, body: unknown) =>
+      new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+    if (url === "/api/v1/me") return json(200, me);
+    if (url === "/api/v1/w/ops/admin/workspace") {
+      if (init?.method === "POST") {
+        posts.push(JSON.parse(String(init.body)));
+        return new Response(null, { status: 204 });
+      }
+      return json(200, settings);
+    }
+    return json(404, { error: "没有这个接口" });
+  });
+  return posts;
+}
+
+const opsSettings = {
+  name: "ops",
+  path: "ops",
+  display_name: "ops",
+  telegram_chat: "-100",
+  show_title: true,
+  show_brief: true,
+  bot_enabled: true,
+  external_url_set: false,
+  issue_link_example: "",
+};
+
+it("工作空间设置页：没有公网地址输入框；没设对外地址时提示，服务器管理员可直接去设置", async () => {
+  stubAdmin({ ...baseMe, account: { ...baseMe.account, server_admin: true } }, opsSettings);
+  open("/w/ops/admin?tab=workspace");
+  expect(await screen.findByText(/服务器还没有设置对外地址/)).toBeTruthy();
+  expect(screen.getByRole("link", { name: /去“服务器管理 → 设置”填写/ })).toBeTruthy();
+  expect(screen.queryByLabelText("公网地址")).toBeNull();
+});
+
+it("工作空间设置页：设了对外地址时只读显示链接；保存时带显示名", async () => {
+  const posts = stubAdmin(
+    { ...baseMe, workspaces: [{ name: "ops", display_name: "<b>运维</b>", role: "admin" }] },
+    { ...opsSettings, display_name: "<b>运维</b>", external_url_set: true, issue_link_example: "https://c.example.com/w/ops/issues/编号" },
+  );
+  open("/w/ops/admin?tab=workspace");
+  expect(await screen.findByText("https://c.example.com/w/ops/issues/编号")).toBeTruthy();
+  expect(screen.queryByText(/服务器还没有设置对外地址/)).toBeNull();
+  // 标题与切换器用显示名（与路径不同时带路径），按纯文本显示
+  expect(screen.getByText("管理 · <b>运维</b>（ops）")).toBeTruthy();
+  expect(document.querySelector("h1 b")).toBeNull();
+  const input = screen.getByLabelText("显示名") as HTMLInputElement;
+  expect(input.value).toBe("<b>运维</b>");
+  fireEvent.change(input, { target: { value: " 运维组 " } });
+  fireEvent.click(screen.getByText("保存"));
+  await waitFor(() => expect(posts).toEqual([{ telegram_chat: "-100", show_title: true, show_brief: true, display_name: "运维组" }]));
+});
+
+it("顶栏切换器：显示名与路径不同时写成“显示名（路径）”", async () => {
+  stubApi({
+    ...baseMe,
+    workspaces: [
+      { name: "pay", display_name: "支付组", role: "member" },
+      { name: "ops", role: "admin" },
+    ],
+  });
+  open("/w/pay/issues");
+  expect(await screen.findByRole("option", { name: /支付组（pay）/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /^ops · / })).toBeTruthy();
 });

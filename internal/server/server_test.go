@@ -256,7 +256,137 @@ func TestMCPHostAllowlist(t *testing.T) {
 	}
 }
 
+// 对外地址的主机名自动并入 MCP 白名单，改了立即生效、不用重启；换掉后旧主机名不再放行。
+func TestMCPHostFollowsExternalURL(t *testing.T) {
+	ctx := context.Background()
+	pool := testutil.NewSchemaPool(t)
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	svc := &core.Service{Pool: pool}
+	if err := svc.LoadExternalURL(ctx); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(server.New(svc, builtWeb, server.Options{}))
+	defer srv.Close()
+	post := func(host string) int {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/mcp", strings.NewReader(`{}`))
+		req.Host = host
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := post("c.example.com"); code != http.StatusForbidden {
+		t.Fatalf("没设对外地址时应 403：%d", code)
+	}
+	if _, err := svc.SetExternalURL(ctx, core.ServerCLI(), "https://c.example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if code := post("C.example.com:443"); code != http.StatusUnauthorized {
+		t.Fatalf("设了之后应放行（未带令牌 401）：%d", code)
+	}
+	if _, err := svc.SetExternalURL(ctx, core.ServerCLI(), "https://d.example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if code := post("c.example.com"); code != http.StatusForbidden {
+		t.Fatalf("换掉后旧主机名应 403：%d", code)
+	}
+	if code := post("d.example.com"); code != http.StatusUnauthorized {
+		t.Fatalf("新主机名应放行：%d", code)
+	}
+}
+
+// 服务器设置接口：没设时给出当前访问地址供预填；保存后返回规范化的值；锁定时 409；工作空间管理页只读显示链接。
+func TestServerSettingsOverHTTP(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, builtWeb)
+	if err := store.SetServerAdmin(ctx, f.svc.Pool, f.b.AccountID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMemberRole(ctx, f.svc.Pool, f.b.MemberID, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	setPassword(t, f, f.b.AccountID, "root-password-1")
+	b := loginAs(t, f, "lee-codex", "root-password-1")
+	code, out := b.do("GET", "/api/v1/server/settings", nil, "")
+	if code != 200 || out["external_url"] != "" || out["locked"] != false || out["suggested"] != f.url {
+		t.Fatalf("初始设置：%d %v", code, out)
+	}
+	_, ws := b.do("GET", "/api/v1/w/default/admin/workspace", nil, "")
+	if ws["external_url_set"] != false || ws["issue_link_example"] != "" || ws["public_url"] != nil || ws["path"] != "default" {
+		t.Fatalf("没设对外地址时工作空间页：%v", ws)
+	}
+	if code, _ := b.do("POST", "/api/v1/server/settings", map[string]any{"external_url": "https://c.example.com/x"}, ""); code != 400 {
+		t.Fatalf("带路径应 400：%d", code)
+	}
+	code, out = b.do("POST", "/api/v1/server/settings", map[string]any{"external_url": "HTTPS://C.example.com/"}, "")
+	if code != 200 || out["external_url"] != "https://c.example.com" {
+		t.Fatalf("保存：%d %v", code, out)
+	}
+	_, ws = b.do("GET", "/api/v1/w/default/admin/workspace", nil, "")
+	if ws["external_url_set"] != true || ws["issue_link_example"] != "https://c.example.com/w/default/issues/编号" {
+		t.Fatalf("设了之后工作空间页：%v", ws)
+	}
+	f.svc.EnvExternalURL = "https://env.example.com"
+	code, out = b.do("GET", "/api/v1/server/settings", nil, "")
+	if code != 200 || out["external_url"] != "https://env.example.com" || out["locked"] != true {
+		t.Fatalf("锁定时读取：%d %v", code, out)
+	}
+	if code, _ := b.do("POST", "/api/v1/server/settings", map[string]any{"external_url": "https://x.example.com"}, ""); code != 409 {
+		t.Fatalf("锁定时保存应 409：%d", code)
+	}
+}
+
 func jsonNumber(n int64) string {
 	b, _ := json.Marshal(n)
 	return string(b)
+}
+
+// 工作空间显示名：管理页可改；/me、服务器工作空间列表、邀请信息都带显示名，链接仍用路径。
+func TestWorkspaceDisplayNameOverHTTP(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, builtWeb)
+	if err := store.SetServerAdmin(ctx, f.svc.Pool, f.b.AccountID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMemberRole(ctx, f.svc.Pool, f.b.MemberID, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	setPassword(t, f, f.b.AccountID, "root-password-1")
+	b := loginAs(t, f, "lee-codex", "root-password-1")
+	if code, _ := b.do("POST", "/api/v1/w/default/admin/workspace", map[string]any{"display_name": "a\nb"}, ""); code != 400 {
+		t.Fatalf("控制字符应 400：%d", code)
+	}
+	if code, _ := b.do("POST", "/api/v1/w/default/admin/workspace", map[string]any{"display_name": "默认组"}, ""); code != 204 {
+		t.Fatalf("保存显示名：%d", code)
+	}
+	_, ws := b.do("GET", "/api/v1/w/default/admin/workspace", nil, "")
+	if ws["display_name"] != "默认组" || ws["path"] != "default" {
+		t.Fatalf("工作空间设置：%v", ws)
+	}
+	_, me := b.do("GET", "/api/v1/me", nil, "")
+	if w0 := me["workspaces"].([]any)[0].(map[string]any); w0["name"] != "default" || w0["display_name"] != "默认组" {
+		t.Fatalf("/me：%v", me["workspaces"])
+	}
+	_, list := b.do("GET", "/api/v1/server/workspaces", nil, "")
+	if w0 := list["items"].([]any)[0].(map[string]any); w0["name"] != "default" || w0["display_name"] != "默认组" {
+		t.Fatalf("服务器工作空间列表：%v", list)
+	}
+	_, inv := b.do("POST", "/api/v1/w/default/admin/invites", map[string]any{"kind": "personal"}, "")
+	_, info := newBrowser(t, f.url).do("GET", "/api/v1/invites/"+inv["code"].(string), nil, "")
+	if info["workspace"] != "default" || info["workspace_display"] != "默认组" {
+		t.Fatalf("邀请信息：%v", info)
+	}
+	// 不带 display_name 的保存不动显示名
+	if code, _ := b.do("POST", "/api/v1/w/default/admin/workspace", map[string]any{"show_title": true}, ""); code != 204 {
+		t.Fatal("保存设置失败")
+	}
+	if _, ws := b.do("GET", "/api/v1/w/default/admin/workspace", nil, ""); ws["display_name"] != "默认组" {
+		t.Fatalf("不带显示名时不应改动：%v", ws)
+	}
 }

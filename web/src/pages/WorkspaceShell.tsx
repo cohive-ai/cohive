@@ -3,6 +3,7 @@ import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { Notice } from "../components";
+import { workspaceLabel } from "../format";
 import { canAdminWorkspace, rememberWorkspace } from "../workspace";
 
 // 当前页面所在的工作空间名（来自地址 /w/{工作空间}/...）
@@ -48,7 +49,7 @@ export function WorkspaceLoadError({ error, what }: { error: Error; what: string
               <span key={w.name}>
                 {i > 0 && "、"}
                 <Link to="/w/$ws" params={{ ws: w.name }} className="text-teal hover:underline">
-                  {w.name}
+                  {workspaceLabel(w)}
                 </Link>
               </span>
             ))}

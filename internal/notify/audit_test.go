@@ -33,7 +33,7 @@ func TestGroupButtonsRecord(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := store.SetWorkspaceNotify(ctx, pool, ws.ID, store.NotifyConfig{Channel: "telegram", Target: "-1001"}, ""); err != nil {
+		if err := store.SetWorkspaceNotify(ctx, pool, ws.ID, store.NotifyConfig{Channel: "telegram", Target: "-1001"}); err != nil {
 			t.Fatal(err)
 		}
 		lee, err := store.CreateAccount(ctx, pool, "lee", "")

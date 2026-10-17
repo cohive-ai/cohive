@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ServerAccount, type ServerWorkspace } from "../api";
+import { api, type ServerAccount, type ServerSettings, type ServerWorkspace } from "../api";
 import { NeedPasswordLogin, Notice } from "../components";
-import { absoluteTime, memberNamePattern, roleLabel } from "../format";
-import { btn, ConfirmButton, ErrorText, errMsg, Field, inputClass, Section } from "../ui";
+import { absoluteTime, memberNamePattern, roleLabel, workspaceName } from "../format";
+import { btn, Callout, ConfirmButton, ErrorText, errMsg, Field, inputClass, Section, SuccessText } from "../ui";
 import { adminNeedsPasswordLogin } from "../rules";
 import { PendingDeviceRow } from "./Admin";
 import { EventLog } from "./EventLog";
@@ -13,6 +13,7 @@ export const serverTabs = [
   { id: "workspaces", label: "工作空间" },
   { id: "accounts", label: "账号" },
   { id: "devices", label: "待批设备" },
+  { id: "settings", label: "设置" },
   { id: "events", label: "记录" },
 ] as const;
 
@@ -62,6 +63,7 @@ export function ServerPage() {
       {tab === "workspaces" && <WorkspacesTab self={me.data.account.name} />}
       {tab === "accounts" && <AccountsTab self={me.data.account.name} />}
       {tab === "devices" && <DevicesTab />}
+      {tab === "settings" && <SettingsTab />}
       {tab === "events" && <EventLog scope={{ server: true }} />}
     </div>
   );
@@ -107,7 +109,8 @@ function WorkspaceRow({ w, onDeleted }: { w: ServerWorkspace; onDeleted: () => P
     <li className={rowClass}>
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-x-2">
-          <span className="font-mono font-medium">{w.name}</span>
+          <span className="font-medium">{workspaceName(w)}</span>
+          {workspaceName(w) !== w.name && <span className="font-mono text-xs text-muted">{w.name}</span>}
           {w.i_am_member && <span className={`${tag} bg-teal-soft text-teal`}>你是成员</span>}
           <span className={`${tag} ${w.telegram_bound ? "bg-sunken text-muted" : "bg-amber-soft text-amber"}`}>
             {w.telegram_bound ? "已绑定群" : "未绑定群"}
@@ -153,6 +156,7 @@ function NewWorkspaceForm({ self }: { self: string }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [name, setName] = useState("");
+  const [display, setDisplay] = useState("");
   const [admin, setAdmin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -169,7 +173,11 @@ function NewWorkspaceForm({ self }: { self: string }) {
     setBusy(true);
     setError("");
     try {
-      const res = await api.createWorkspace(adminName ? { name: trimmed, admin: adminName } : { name: trimmed });
+      const res = await api.createWorkspace({
+        name: trimmed,
+        ...(display.trim() ? { display_name: display.trim() } : {}),
+        ...(adminName ? { admin: adminName } : {}),
+      });
       await qc.invalidateQueries({ queryKey: ["server"] });
       await qc.invalidateQueries({ queryKey: ["me"] });
       // 下一步：绑群、加人
@@ -182,10 +190,13 @@ function NewWorkspaceForm({ self }: { self: string }) {
   };
 
   return (
-    <Section title="新建工作空间" description="一个项目组一个工作空间。名字建好后不能修改，会出现在链接和项目配置里。">
+    <Section
+      title="新建工作空间"
+      description="一个项目组一个工作空间。路径建好后不能修改，会出现在链接和项目配置里；显示名可以随时改。"
+    >
       <form onSubmit={submit} className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="名字" htmlFor="ws-name" hint={nameError ? undefined : "规则同登录名，例如 payments。"}>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="路径" htmlFor="ws-name" hint={nameError ? undefined : "规则同登录名，例如 payments。"}>
             <input
               id="ws-name"
               autoCapitalize="none"
@@ -197,6 +208,15 @@ function NewWorkspaceForm({ self }: { self: string }) {
               className={`${inputClass} font-mono`}
             />
             {nameError && <p className="mt-1 text-xs text-danger">{nameError}</p>}
+          </Field>
+          <Field label="显示名（可选）" htmlFor="ws-display" hint="给人看的名字，例如“支付组”；留空则显示路径。">
+            <input
+              id="ws-display"
+              maxLength={40}
+              value={display}
+              onChange={(e) => setDisplay(e.target.value)}
+              className={inputClass}
+            />
           </Field>
           <Field
             label="首位管理员（可选）"
@@ -391,5 +411,89 @@ function DevicesTab() {
         </ul>
       )}
     </div>
+  );
+}
+
+// 服务器设置：对外地址（参照 GitLab 的 external_url）。群消息里的链接与编程工具经隧道访问 MCP 时的主机名都用它。
+function SettingsTab() {
+  const q = useQuery({ queryKey: ["server", "settings"], queryFn: api.serverSettings });
+  if (q.isPending) return <Notice>正在读取…</Notice>;
+  if (q.isError) return <Notice tone="danger">读取失败：{q.error.message}</Notice>;
+  return <ExternalURLForm initial={q.data} />;
+}
+
+export function ExternalURLForm({ initial }: { initial: ServerSettings }) {
+  const qc = useQueryClient();
+  // 还没设时用当前访问地址预填，但明确告诉人这还没保存
+  const [saved, setSaved] = useState(initial.external_url);
+  const unset = !saved;
+  const [value, setValue] = useState(initial.external_url || initial.suggested);
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState("");
+  const [busy, setBusy] = useState(false);
+  const trimmed = value.trim().replace(/\/+$/, "");
+  const shapeOk = trimmed === "" || /^https?:\/\/[^\s/?#@]+$/i.test(trimmed);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shapeOk) return;
+    setBusy(true);
+    setError("");
+    setOk("");
+    try {
+      const res = await api.saveServerSettings(trimmed);
+      setValue(res.external_url);
+      setSaved(res.external_url);
+      setOk(res.external_url ? "已保存，立即生效。" : "已清除：群消息里不再带链接。");
+      await qc.invalidateQueries({ queryKey: ["server", "settings"] });
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Section
+      title="对外地址"
+      description="同事和编程工具访问协作服务用的地址，整个服务器只设一个。群消息里的问题单链接用它拼成“对外地址/w/路径/issues/编号”；编程工具经隧道访问时，它的主机名自动加入允许名单。邀请、授权链接仍按你当时打开网页用的地址生成。"
+    >
+      {initial.locked ? (
+        <div className="space-y-2 text-sm">
+          <p className="break-all font-mono">{initial.external_url}</p>
+          <Callout>由环境变量 COHIVE_EXTERNAL_URL 锁定，网页上不能修改。要改请在服务器上改环境变量后重启协作服务。</Callout>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          {unset && (
+            <Callout>
+              尚未设置：群消息里现在不带链接。下面预填的是你当前访问用的地址，请确认它是同事能打开的地址（不是 localhost）后点“保存”。
+            </Callout>
+          )}
+          <Field
+            label="对外地址"
+            htmlFor="external-url"
+            hint={shapeOk ? "只写协议、主机名和端口，不带路径，例如 https://cohive.example.com。留空并保存则清除。" : undefined}
+          >
+            <input
+              id="external-url"
+              type="url"
+              inputMode="url"
+              autoCapitalize="none"
+              spellCheck={false}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              className={`${inputClass} font-mono`}
+            />
+            {!shapeOk && <p className="mt-1 text-xs text-danger">请填 http:// 或 https:// 加主机名（可带端口），不带路径。</p>}
+          </Field>
+          <ErrorText>{error}</ErrorText>
+          <SuccessText>{ok}</SuccessText>
+          <button type="submit" disabled={busy || !shapeOk} className={btn.primary}>
+            {busy ? "正在保存…" : "保存"}
+          </button>
+        </form>
+      )}
+    </Section>
   );
 }

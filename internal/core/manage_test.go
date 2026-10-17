@@ -42,7 +42,7 @@ func newHandover(t *testing.T) handoverFixture {
 	ctx := context.Background()
 	p := newPeople(t)
 	svc := p.e.svc
-	if err := store.SetWorkspaceNotify(ctx, svc.Pool, p.pay, store.NotifyConfig{Channel: "telegram", Target: "-1001"}, ""); err != nil {
+	if err := store.SetWorkspaceNotify(ctx, svc.Pool, p.pay, store.NotifyConfig{Channel: "telegram", Target: "-1001"}); err != nil {
 		t.Fatal(err)
 	}
 	bob, err := store.CreateMember(ctx, svc.Pool, p.pay, "bob", "")
