@@ -19,13 +19,17 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
+| OSS-2 | `docs/oss-followups`（基于 main） | oss / `local_cf92e846-d561-43ef-9352-e4fc141f74f5` | — | 已派 | 回归测试：禁止脚本里 `$名字` 紧跟非 ASCII 字符（改回必须变红），并在 UTF-8 语言环境实际执行；test-server.md 改为通用单机运行（去本机路径、测试服域名、内部群） |
 | T-1/T-2 | `fix/stability-deadlock-clock`（基于 main） | stab / `local_226e3435-549f-4168-ae8b-c653702d68ac` | — | 实施中 | 改派与接单的加锁顺序统一、40P01/40001 转为“请重试”；派发器统一用数据库时间；两个用例各 -count=50 全过；修复前能复现。验收：全量、探针、主脑自行 -count 重复跑 |
-| OSS-1 | `release/open-source`（基于 main） | oss / `local_cf92e846-d561-43ef-9352-e4fc141f74f5` | — | 已派 | 先扫全部历史密钥（命中即停）；内部内容处理（公司需求、调研笔记、台账本机路径与群编号）；Apache-2.0；依赖许可证；Docker 与 compose 实测；安装简化；README 中英。验收后由主脑改仓库可见性（lee 已同意直接开源） |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
+| OS-1 | 提交历史是否原样公开（历史里有：公司内部 PRD 书名与“公司”字样、本机路径、旧测试群编号、测试服域名；PRD 正文从未进仓库；无真实密钥） | a 原样公开；b 改写历史；c 新建仓库，以当前内容为单个初始提交公开 | a（保留开发过程，便于博客引用），前提是 lee 对“公司 PRD 书名出现在历史里”没有顾虑；有顾虑选 c | 公开 |
+| OS-2 | 仓库是否转到 `cohive-ai` 组织再公开 | 转 / 不转 | 转（go.mod 模块路径与 README 克隆地址已按 cohive-ai 写） | 公开 |
+| OS-3 | 许可证正式定为 Apache-2.0（LICENSE、NOTICE 已加，署名 anormlylee） | 确认 / 改 | 确认 | 公开 |
+| OS-4 | 预构建多架构镜像推到 ghcr 是否作为公开前必需 | 必需 / 公开后第一个小任务 | 公开后第一个小任务 | 无 |
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
@@ -37,10 +41,10 @@
 - P3 第一阶段剩余范围（按试用反馈排序）：`CODEOWNERS` 路由（现在服务负责人只能用服务器命令行登记，网页上没有入口）、超时催办（届时引入 river）、代码占用声明 —— 来源 `docs/plan.md` 第 10 节
 
 ## 4. 环境与待清理
-- 测试服（2026-10-16 起）：main 构建的程序（`/Users/jiali/MyCode/cohive/bin/`，当前 `650d54e`）+ 长期测试库 `cohive_test`，由 launchd 服务 `com.anormlylee.cohive.server` 常驻（KeepAlive；登录后自动启动，环境用 env -i 清空、以 server.env 为准），管理用 `scripts/cohive-server.sh start|stop|restart|status`（restart 即 kickstart -k）（配置 `~/.local/share/cohive-server/server.env`，数据目录 `…/data`，日志 `…/logs`，详见 `docs/guides/test-server.md`）。监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（2026-10-17 起隧道由 launchd 服务 `com.anormlylee.cohive.tunnel` 常驻，日志 `~/.local/share/cohive-server/logs/tunnel.log`；主脑终端 c1 的旧隧道已停）。
+- 测试服（2026-10-16 起）：main 构建的程序（`<仓库根>/bin/`，当前 `650d54e`）+ 长期测试库 `cohive_test`，由 launchd 服务 `com.anormlylee.cohive.server` 常驻（KeepAlive；登录后自动启动，环境用 env -i 清空、以 server.env 为准），管理用 `scripts/cohive-server.sh start|stop|restart|status`（restart 即 kickstart -k）（配置 `~/.local/share/cohive-server/server.env`，数据目录 `…/data`，日志 `…/logs`，详见 `docs/guides/test-server.md`）。监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（2026-10-17 起隧道由 launchd 服务 `com.anormlylee.cohive.tunnel` 常驻，日志 `~/.local/share/cohive-server/logs/tunnel.log`；主脑终端 c1 的旧隧道已停）。
 - 备份：`scripts/backup-db.sh` 手动可用，备份在 `~/.local/share/cohive-server/backups/`，保留 14 份；launchd 定时备份已安装（`~/Library/LaunchAgents/com.anormlylee.cohive.backup.plist`，每天 03:30，日志 `…/logs/backup.log`；撤销见 `docs/guides/test-server.md` 第 5 节），2026-10-16 已试跑成功。Docker Desktop 没开时备份会失败。迁移 M5b 前的备份在主脑临时目录 `…/scratchpad/backup/`。
 - 测试账号：admin（服务器管理员）、tester-a、tester-b（已停用）；密码文件在 `~/.local/share/cohive-server/data/`（权限 600，测试凭据）。工作空间：default、proj-b、proj-c。
-- 旧库：`cohive`（M4 数据，群编号 `-1004357698945`，停用不删）、`cohive_m5`（旧版第六号，停用）。
+- 旧库：`cohive`（M4 数据，群编号 `<旧测试群编号>`，停用不删）、`cohive_m5`（旧版第六号，停用）。
 - 待清理：主脑临时目录里的旧启动脚本 `test-restart.sh` 与 `test-data/` 已不再使用。
 - 机器人：同一个机器人令牌同时只能有一个程序收消息，测试服与本机调试不要同时跑。
 - 已归档：M5 实施会话、doc-1、m5b、m6-a。、m6c（M6-c、M6-d 均已合入）、m6e（M6-e 至 M6-e3 均已合入）、im6（IM-6 已合入）、ops-launchd（OPS-1 已合入）。待归档会话：无。
