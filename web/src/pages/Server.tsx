@@ -7,11 +7,13 @@ import { absoluteTime, memberNamePattern, roleLabel } from "../format";
 import { btn, ConfirmButton, ErrorText, errMsg, Field, inputClass, Section } from "../ui";
 import { adminNeedsPasswordLogin } from "../rules";
 import { PendingDeviceRow } from "./Admin";
+import { EventLog } from "./EventLog";
 
 export const serverTabs = [
   { id: "workspaces", label: "工作空间" },
   { id: "accounts", label: "账号" },
   { id: "devices", label: "待批设备" },
+  { id: "events", label: "记录" },
 ] as const;
 
 export type ServerTab = (typeof serverTabs)[number]["id"];
@@ -20,7 +22,7 @@ const listClass = "divide-y divide-line rounded-lg border border-line bg-surface
 const rowClass = "flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-3 text-sm";
 const tag = "rounded px-1.5 py-px text-xs";
 
-// 服务器管理：工作空间、账号、待批设备。只有服务器管理员能用，且要求账号密码登录。
+// 服务器管理：工作空间、账号、待批设备、管理操作记录。只有服务器管理员能用，且要求账号密码登录。
 export function ServerPage() {
   const { tab = "workspaces" } = useSearch({ from: "/layout/server" });
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
@@ -60,6 +62,7 @@ export function ServerPage() {
       {tab === "workspaces" && <WorkspacesTab self={me.data.account.name} />}
       {tab === "accounts" && <AccountsTab self={me.data.account.name} />}
       {tab === "devices" && <DevicesTab />}
+      {tab === "events" && <EventLog scope={{ server: true }} />}
     </div>
   );
 }

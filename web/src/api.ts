@@ -345,6 +345,54 @@ export interface ServerAccount {
   workspaces: { name: string; role: string; status: string }[] | null;
 }
 
+// 管理操作记录
+export interface AdminEvent {
+  id: number;
+  at: string;
+  via: string;
+  via_label: string;
+  actor: string;
+  workspace: string;
+  action: string;
+  action_label: string;
+  category: string;
+  target_kind: string;
+  target: string;
+  text: string; // 服务端写好的人话
+  detail: { label: string; value: string }[] | null;
+}
+
+export interface Option {
+  id: string;
+  label: string;
+}
+
+export interface AdminEventPage {
+  items: AdminEvent[];
+  next_before: number | null;
+  types: Option[];
+  vias: Option[];
+}
+
+export interface EventFilter {
+  type?: string;
+  actor?: string;
+  via?: string;
+  workspace?: string; // 只用于服务器管理页
+  before?: number;
+}
+
+function eventQuery(f: EventFilter): string {
+  const qs = new URLSearchParams();
+  if (f.type) qs.set("type", f.type);
+  if (f.actor?.trim()) qs.set("actor", f.actor.trim());
+  if (f.via) qs.set("via", f.via);
+  if (f.workspace?.trim()) qs.set("workspace", f.workspace.trim());
+  if (f.before) qs.set("before", String(f.before));
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
+
 // 工作空间内接口的前缀
 const w = (ws: string) => `/api/v1/w/${seg(ws)}`;
 const adm = (ws: string) => `${w(ws)}/admin`;
@@ -419,6 +467,8 @@ export const api = {
   workspaceSettings: (ws: string) => request<WorkspaceSettings>(`${adm(ws)}/workspace`),
   saveWorkspaceSettings: (ws: string, body: Omit<WorkspaceSettings, "name" | "bot_enabled">) =>
     post(`${adm(ws)}/workspace`, body),
+  workspaceEvents: (ws: string, f: EventFilter) =>
+    request<AdminEventPage>(`${adm(ws)}/events${eventQuery({ ...f, workspace: undefined })}`),
 
   // 服务器管理
   serverWorkspaces: () => request<{ items: ServerWorkspace[] }>(`${srv}/workspaces`),
@@ -432,6 +482,7 @@ export const api = {
   serverUnlinkTelegram: (name: string) => del(`${srv}/accounts/${seg(name)}/telegram`),
   serverPendingDevices: () => request<{ items: PendingDevice[] }>(`${srv}/pending-devices`),
   serverDecideDevice: (id: number, approve: boolean) => post(`${srv}/device-auths/${seg(id)}`, { approve }),
+  serverEvents: (f: EventFilter) => request<AdminEventPage>(`${srv}/events${eventQuery(f)}`),
 };
 
 // 接口要求账号密码登录的网页会话（当前是 cohive web 免密会话）
