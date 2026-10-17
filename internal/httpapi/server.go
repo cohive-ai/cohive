@@ -52,13 +52,14 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 	srv("POST "+p+"/workspaces", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
 		var in struct {
-			Name  string `json:"name"`
-			Admin string `json:"admin"`
+			Name        string `json:"name"`
+			DisplayName string `json:"display_name"`
+			Admin       string `json:"admin"`
 		}
 		if !decode(w, r, &in) {
 			return
 		}
-		ws, err := svc.CreateWorkspace(r.Context(), core.WebActor(*actor), in.Name, in.Admin)
+		ws, err := svc.CreateWorkspaceNamed(r.Context(), core.WebActor(*actor), in.Name, in.DisplayName, in.Admin)
 		if err != nil {
 			writeError(w, err)
 			return

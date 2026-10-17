@@ -1,5 +1,14 @@
 import { expect, it } from "vitest";
-import { memberNamePattern, safeRedirect, tokensByWorkspace } from "./format";
+import { memberNamePattern, safeRedirect, tokensByWorkspace, workspaceLabel, workspaceName } from "./format";
+
+it("工作空间名：显示名优先；与路径不同时一并写出路径", () => {
+  expect(workspaceName({ name: "pay", display_name: "支付组" })).toBe("支付组");
+  expect(workspaceName({ name: "pay", display_name: "" })).toBe("pay");
+  expect(workspaceName({ name: "pay" })).toBe("pay");
+  expect(workspaceLabel({ name: "pay", display_name: "支付组" })).toBe("支付组（pay）");
+  expect(workspaceLabel({ name: "pay", display_name: "pay" })).toBe("pay");
+  expect(workspaceLabel({ name: "pay" })).toBe("pay");
+});
 
 // 与服务端规则一致：小写字母、数字、下划线、横线，1 到 32 位，首字符为字母或数字。
 it("登录名规则与服务端一致", () => {

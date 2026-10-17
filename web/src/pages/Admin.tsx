@@ -21,6 +21,7 @@ import {
   roleLabel,
   signupKindLabel,
   toolsText,
+  workspaceLabel,
   workspaceListText,
 } from "../format";
 import {
@@ -81,11 +82,13 @@ export function AdminPage() {
     );
   }
   const member = me.data.workspaces.some((w) => w.name === ws);
+  const ref = me.data.workspaces.find((w) => w.name === ws);
+  const wsTitle = ref ? workspaceLabel(ref) : ws;
   const self = me.data.account.name;
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="mb-3 text-lg font-semibold">管理 · {ws}</h1>
+      <h1 className="mb-3 text-lg font-semibold">管理 · {wsTitle}</h1>
       {!member && <JoinSelf ws={ws} self={self} />}
       <nav aria-label="管理分类" className="mb-5 flex flex-wrap gap-1 border-b border-line">
         {adminTabs.map((t) => (
@@ -107,7 +110,7 @@ export function AdminPage() {
       {tab === "members" && <MembersTab ws={ws} self={self} />}
       {tab === "devices" && <DevicesTab ws={ws} />}
       {tab === "invites" && <InvitesTab ws={ws} />}
-      {tab === "workspace" && <WorkspaceTab ws={ws} />}
+      {tab === "workspace" && <WorkspaceTab ws={ws} serverAdmin={me.data.account.server_admin} />}
       {tab === "events" && <EventLog scope={{ ws }} />}
     </div>
   );
@@ -1050,7 +1053,7 @@ function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: Created
   );
 }
 
-function WorkspaceTab({ ws }: { ws: string }) {
+function WorkspaceTab({ ws, serverAdmin }: { ws: string; serverAdmin: boolean }) {
   const q = useQuery({ queryKey: ["admin", ws, "workspace"], queryFn: () => api.workspaceSettings(ws) });
   if (q.isPending) return <Notice>正在读取…</Notice>;
   if (q.isError) return <Notice tone="danger">读取失败：{q.error.message}</Notice>;
@@ -1061,40 +1064,46 @@ function WorkspaceTab({ ws }: { ws: string }) {
           下一步：把 Telegram 机器人拉进项目群，在群里发 /chatid，把得到的群编号填到下面并保存；然后到“成员”里添加已有账号，或到“邀请”里生成邀请链接。
         </Callout>
       )}
-      <WorkspaceForm key={ws} ws={ws} initial={q.data} />
+      <WorkspaceForm key={ws} ws={ws} initial={q.data} serverAdmin={serverAdmin} />
     </div>
   );
 }
 
-function WorkspaceForm({ ws, initial }: { ws: string; initial: WorkspaceSettings }) {
+export function WorkspaceForm({
+  ws,
+  initial,
+  serverAdmin,
+}: {
+  ws: string;
+  initial: WorkspaceSettings;
+  serverAdmin: boolean;
+}) {
   const qc = useQueryClient();
-  const [publicUrl, setPublicUrl] = useState(initial.public_url ?? "");
+  const [display, setDisplay] = useState(initial.display_name === initial.path ? "" : initial.display_name ?? "");
   const [chat, setChat] = useState(initial.telegram_chat == null ? "" : String(initial.telegram_chat));
   const [showTitle, setShowTitle] = useState(initial.show_title);
   const [showBrief, setShowBrief] = useState(initial.show_brief);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const trimmedUrl = publicUrl.trim().replace(/\/+$/, "");
-  const urlOk = trimmedUrl === "" || /^https?:\/\/[^\s/]+/.test(trimmedUrl);
+  const displayOk = [...display.trim()].length <= 40;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!urlOk) return;
+    if (!displayOk) return;
     setBusy(true);
     setError("");
     setOk("");
     try {
       await api.saveWorkspaceSettings(ws, {
-        public_url: trimmedUrl,
         telegram_chat: chat.trim(),
         show_title: showTitle,
         show_brief: showBrief,
+        display_name: display.trim(),
       });
-      setPublicUrl(trimmedUrl);
       setOk("已保存。");
       await qc.invalidateQueries({ queryKey: ["admin", ws, "workspace"] });
+      await qc.invalidateQueries({ queryKey: ["me"] });
     } catch (err) {
       setError(errMsg(err));
     } finally {
@@ -1103,26 +1112,50 @@ function WorkspaceForm({ ws, initial }: { ws: string; initial: WorkspaceSettings
   };
 
   return (
-    <Section title={`工作空间：${initial.name}`}>
+    <Section title={`工作空间：${initial.display_name || initial.path}`}>
       <form onSubmit={submit} className="space-y-4">
         <Field
-          label="公网地址"
-          htmlFor="public-url"
-          hint={urlOk ? "同事和群消息里的链接都用这个地址，例如 https://cohive.example.com。留空则不在群消息里放链接。" : undefined}
+          label="显示名"
+          htmlFor="display-name"
+          hint={
+            displayOk ? (
+              <>
+                给人看的名字，可随时改。留空则显示路径 <span className="font-mono">{initial.path}</span>
+                。路径出现在链接与项目配置里，不能修改。
+              </>
+            ) : undefined
+          }
         >
           <input
-            id="public-url"
-            type="url"
-            inputMode="url"
-            autoCapitalize="none"
-            spellCheck={false}
-            value={publicUrl}
-            onChange={(e) => setPublicUrl(e.target.value)}
-            placeholder={window.location.origin}
+            id="display-name"
+            value={display}
+            onChange={(e) => setDisplay(e.target.value)}
+            placeholder={`留空则显示 ${initial.path}`}
             className={inputClass}
           />
-          {!urlOk && <p className="mt-1 text-xs text-danger">请填以 http:// 或 https:// 开头的地址。</p>}
+          {!displayOk && <p className="mt-1 text-xs text-danger">显示名最多 40 个字符。</p>}
         </Field>
+        <div className="text-sm">
+          <p className="mb-1">群消息里的问题单链接</p>
+          {initial.external_url_set ? (
+            <p className="break-all font-mono text-xs text-muted">{initial.issue_link_example}</p>
+          ) : (
+            <Callout>
+              服务器还没有设置对外地址，群消息里暂时不带链接。
+              {serverAdmin ? (
+                <>
+                  {" "}
+                  <Link to="/server" search={{ tab: "settings" }} className="text-teal hover:underline">
+                    去“服务器管理 → 设置”填写
+                  </Link>
+                </>
+              ) : (
+                "请服务器管理员在“服务器管理 → 设置”里填写。"
+              )}
+            </Callout>
+          )}
+          <p className="mt-1 text-xs text-muted">对外地址是整个服务器共用的，由服务器管理员设置。</p>
+        </div>
         {!initial.bot_enabled && (
           <Callout>
             协作服务没有启用 Telegram 机器人，下面的群设置暂时不会生效。请在服务器上配置机器人后重启协作服务。
@@ -1166,7 +1199,7 @@ function WorkspaceForm({ ws, initial }: { ws: string; initial: WorkspaceSettings
         </fieldset>
         <ErrorText>{error}</ErrorText>
         <SuccessText>{ok}</SuccessText>
-        <button type="submit" disabled={busy || !urlOk} className={btn.primary}>
+        <button type="submit" disabled={busy || !displayOk} className={btn.primary}>
           {busy ? "正在保存…" : "保存"}
         </button>
       </form>
