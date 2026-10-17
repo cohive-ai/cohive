@@ -153,3 +153,128 @@ func TestBotPostByMessage(t *testing.T) {
 		t.Fatalf("通讯工具不同不应匹配：%v", err)
 	}
 }
+
+// 同一账号、同一群号同时有 Telegram 与钉钉两种记录：凡按通讯工具过滤的读写都互不影响。
+// 钉钉群号、用户编号与 Telegram 的同值时最容易串（主脑探针 P1、P2）。
+func TestTwoProvidersCoexist(t *testing.T) {
+	pool, ws := setup(t)
+	ctx := context.Background()
+	other, err := store.CreateWorkspace(ctx, pool, "other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ann := mustMember(t, pool, ws, "ann")
+	bob := mustMember(t, pool, ws, "bob")
+
+	// 账号：ann 两种都连；bob 只连钉钉，且钉钉编号与 ann 的 Telegram 编号同值
+	tg := int64(555)
+	if err := store.SetAccountTelegram(ctx, pool, ann.AccountID, &tg, "anntg"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []store.ChatIdentity{
+		{AccountID: ann.AccountID, Provider: store.ProviderDingTalk, UserID: "ann-dt", DisplayName: "安"},
+		{AccountID: bob.AccountID, Provider: store.ProviderDingTalk, UserID: "555", Handle: "bob-handle"},
+	} {
+		if err := store.UpsertChatIdentity(ctx, pool, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c, err := store.ChatIdentityOf(ctx, pool, ann.AccountID, store.ProviderDingTalk); err != nil || c.UserID != "ann-dt" {
+		t.Fatalf("按通讯工具读连接：%+v %v", c, err)
+	}
+	if a, err := store.AccountByChatIdentity(ctx, pool, store.ProviderDingTalk, "", "555"); err != nil || a.ID != bob.AccountID {
+		t.Fatalf("钉钉编号 555 是 bob：%+v %v", a, err)
+	}
+	if a, err := store.AccountByChatIdentity(ctx, pool, store.ProviderTelegram, "", "555"); err != nil || a.ID != ann.AccountID {
+		t.Fatalf("Telegram 编号 555 是 ann：%+v %v", a, err)
+	}
+	// 账号、成员上的 Telegram 字段只来自 Telegram 连接
+	if m, _ := store.MemberByID(ctx, pool, bob.ID); m.TelegramUserID != nil || m.TelegramUsername != "" {
+		t.Fatalf("bob 没连 Telegram，不应读出钉钉的编号或名字：%+v", m)
+	}
+	if a, _ := store.AccountByID(ctx, pool, bob.AccountID); a.TelegramUserID != nil || a.TelegramUsername != "" {
+		t.Fatalf("账号上的 Telegram 字段也一样：%+v", a)
+	}
+	// 断开 ann 的 Telegram 不影响她的钉钉连接（P2）
+	if err := store.SetAccountTelegram(ctx, pool, ann.AccountID, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ChatIdentityOf(ctx, pool, ann.AccountID, store.ProviderDingTalk); err != nil {
+		t.Fatalf("断开 Telegram 不应连带断开钉钉：%v", err)
+	}
+	if err := store.DeleteChatIdentity(ctx, pool, ann.AccountID, store.ProviderTelegram); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ChatIdentityOf(ctx, pool, ann.AccountID, store.ProviderDingTalk); err != nil {
+		t.Fatalf("按通讯工具删除不应删到钉钉：%v", err)
+	}
+	// 重连 Telegram 时只改 Telegram 那一行
+	if err := store.SetAccountTelegramUsername(ctx, pool, ann.AccountID, "anntg2"); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := store.ChatIdentityOf(ctx, pool, ann.AccountID, store.ProviderDingTalk); c.Handle != "" || c.DisplayName != "安" {
+		t.Fatalf("改 Telegram 用户名不应改到钉钉连接：%+v", c)
+	}
+
+	// 群：ws 绑 Telegram 群 "123"，other 绑钉钉群 "123"（同值）
+	if err := store.SetWorkspaceNotify(ctx, pool, ws, store.NotifyConfig{Channel: store.ProviderTelegram, Target: "123"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetWorkspaceChat(ctx, pool, store.WorkspaceChat{WorkspaceID: other.ID, Provider: store.ProviderDingTalk, ChatID: "123"}); err != nil {
+		t.Fatalf("不同通讯工具的同号群不冲突：%v", err)
+	}
+	if c, err := store.WorkspaceChatOf(ctx, pool, store.ProviderDingTalk, "", "123"); err != nil || c.WorkspaceID != other.ID {
+		t.Fatalf("钉钉群 123 反查到 other（P1）：%+v %v", c, err)
+	}
+	if c, err := store.WorkspaceChatOf(ctx, pool, store.ProviderTelegram, "", "123"); err != nil || c.WorkspaceID != ws {
+		t.Fatalf("Telegram 群 123 反查到 ws（P1）：%+v %v", c, err)
+	}
+	if w, err := store.WorkspaceByNotifyTarget(ctx, pool, store.ProviderTelegram, "123"); err != nil || w.ID != ws {
+		t.Fatalf("按 Telegram 群找工作空间：%+v %v", w, err)
+	}
+	// Telegram 群升级改号只改 Telegram 的群
+	if err := store.SetWorkspaceNotifyTarget(ctx, pool, other.ID, "-999"); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := store.WorkspaceChats(ctx, pool, other.ID); len(c) != 1 || c[0].ChatID != "123" {
+		t.Fatalf("other 只有钉钉群，Telegram 改号不应改到它：%+v", c)
+	}
+
+	// 同一工作空间两种群并存（表结构允许，第一期业务层只允许一个）：按通讯工具解绑只解那一个
+	if err := store.SetWorkspaceChat(ctx, pool, store.WorkspaceChat{WorkspaceID: ws, Provider: store.ProviderDingTalk, ChatID: "cid-ws"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateWorkspaceChatID(ctx, pool, ws, store.ProviderTelegram, "456"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetWorkspaceChat(ctx, pool, store.WorkspaceChat{WorkspaceID: ws, Provider: store.ProviderDingTalk, ChatID: "cid-ws2"}); err != nil {
+		t.Fatal(err)
+	}
+	chats, _ := store.WorkspaceChats(ctx, pool, ws)
+	got := map[string]string{}
+	for _, c := range chats {
+		got[c.Provider] = c.ChatID
+	}
+	if len(chats) != 2 || got[store.ProviderTelegram] != "456" || got[store.ProviderDingTalk] != "cid-ws2" {
+		t.Fatalf("改一种通讯工具的群号不应改到另一种：%+v", chats)
+	}
+	if err := store.DeleteWorkspaceChats(ctx, pool, ws, store.ProviderDingTalk); err != nil {
+		t.Fatal(err)
+	}
+	if chats, _ := store.WorkspaceChats(ctx, pool, ws); len(chats) != 1 || chats[0].Provider != store.ProviderTelegram {
+		t.Fatalf("只解绑钉钉群：%+v", chats)
+	}
+	// 保存 Telegram 群配置时解除别的通讯工具的群，但不动别的工作空间
+	if err := store.SetWorkspaceChat(ctx, pool, store.WorkspaceChat{WorkspaceID: ws, Provider: store.ProviderDingTalk, ChatID: "cid-ws3"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetWorkspaceNotify(ctx, pool, ws, store.NotifyConfig{Channel: store.ProviderTelegram, Target: "456"}); err != nil {
+		t.Fatal(err)
+	}
+	if chats, _ := store.WorkspaceChats(ctx, pool, ws); len(chats) != 1 || chats[0].Provider != store.ProviderTelegram || chats[0].ChatID != "456" {
+		t.Fatalf("保存 Telegram 群后只剩这一个：%+v", chats)
+	}
+	if c, _ := store.WorkspaceChats(ctx, pool, other.ID); len(c) != 1 {
+		t.Fatalf("不动别的工作空间：%+v", c)
+	}
+}
