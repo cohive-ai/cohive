@@ -125,10 +125,10 @@ func TestBotPostByMessage(t *testing.T) {
 	if err := store.InsertBotPost(ctx, pool, p); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := store.BotPostByMessage(ctx, pool, store.ProviderDingTalk, "cohive-su-5-x"); err != nil || got != p {
+	if got, err := store.BotPostByMessage(ctx, pool, store.ProviderDingTalk, "", "cohive-su-5-x"); err != nil || got != p {
 		t.Fatalf("按卡片编号找审批消息：%+v %v", got, err)
 	}
-	if _, err := store.BotPostByMessage(ctx, pool, store.ProviderTelegram, "cohive-su-5-x"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := store.BotPostByMessage(ctx, pool, store.ProviderTelegram, "", "cohive-su-5-x"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("通讯工具不同不应匹配：%v", err)
 	}
 }

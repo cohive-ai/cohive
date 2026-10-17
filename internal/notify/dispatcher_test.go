@@ -25,7 +25,13 @@ type fakeSender struct {
 	calls int
 }
 
-func (f *fakeSender) Send(_ context.Context, target, text string) error {
+func (f *fakeSender) Format() notify.Formatter { return notify.TelegramFormat{} }
+
+func (f *fakeSender) Send(ctx context.Context, target string, m notify.Rendered) error {
+	return f.send(ctx, target, m.Text)
+}
+
+func (f *fakeSender) send(_ context.Context, target, text string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
@@ -145,6 +151,33 @@ func TestDispatchMentionsByTelegramUserID(t *testing.T) {
 	if len(e.sender.sent) != 1 || !strings.Contains(e.sender.sent[0], `新单交给 <a href="tg://user?id=5551">lee-codex</a>`) ||
 		strings.Contains(e.sender.sent[0], "@old_codex") {
 		t.Fatalf("应按用户编号提到负责人：%v", e.sender.sent)
+	}
+}
+
+// 工作空间绑的是另一种通讯工具的群：经那个通道发出，用它的格式，按负责人在那个通讯工具上的连接 @。
+func TestDispatchUsesWorkspaceChannel(t *testing.T) {
+	e := newDispatchEnv(t)
+	ctx := context.Background()
+	ws, _ := store.DefaultWorkspace(ctx, e.pool)
+	if err := store.SetWorkspaceNotify(ctx, e.pool, ws, store.NotifyConfig{Channel: store.ProviderDingTalk, Target: "cid-1", ShowTitle: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertChatIdentity(ctx, e.pool, store.ChatIdentity{AccountID: e.b.AccountID, Provider: store.ProviderDingTalk,
+		Tenant: "corp", UserID: "u-codex"}); err != nil {
+		t.Fatal(err)
+	}
+	dt := &fakeChannel{provider: store.ProviderDingTalk}
+	e.d.Senders[store.ProviderDingTalk] = dt
+	e.submitOne(t)
+	if n, err := e.d.RunOnce(ctx); err != nil || n != 1 {
+		t.Fatalf("应处理 1 条，得到 %d %v", n, err)
+	}
+	if len(e.sender.sent) != 0 || len(dt.sent) != 1 {
+		t.Fatalf("应经钉钉通道发出：tg %v / dt %+v", e.sender.sent, dt.sent)
+	}
+	m := dt.sent[0]
+	if !strings.Contains(m.Text, "[@u-codex]lee-codex") || len(m.Mentions) != 1 || m.Mentions[0].Tenant != "corp" || strings.Contains(m.Text, "SECRET") {
+		t.Fatalf("应按钉钉连接 @ 负责人、不带正文：%+v", m)
 	}
 }
 

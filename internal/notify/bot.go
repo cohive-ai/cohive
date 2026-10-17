@@ -8,6 +8,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -59,29 +60,30 @@ type chatAPI interface {
 	AnswerCallback(ctx context.Context, callbackID, text string) error
 }
 
-// Core 是机器人用到的业务操作，由 core.Service 实现。
-type Core interface {
-	CompleteTelegramLink(ctx context.Context, startParam string, tgUserID int64, username string) (core.LinkResult, error)
-	DecideSignup(ctx context.Context, act core.Actor, wsID, id int64, approve bool) (core.SignupDecision, error)
-	DecideDeviceAuth(ctx context.Context, act core.Actor, wsID, id int64, approve bool) (core.DeviceDecision, error)
-	Workspace(ctx context.Context, id int64) (store.Workspace, error)
-	WorkspaceByGroup(ctx context.Context, chatID int64) (store.Workspace, error)
-	AccountByTelegram(ctx context.Context, tgUserID int64) (store.Account, error)
-	Memberships(ctx context.Context, accountID int64) ([]store.Membership, error)
-	RecordBotPost(ctx context.Context, p store.BotPost) error
-	BotPosts(ctx context.Context, kind string, refID int64) ([]store.BotPost, error)
-	RecordDenied(ctx context.Context, act core.Actor, d core.DeniedAttempt) error
-}
-
 // Bot 用长轮询接收机器人消息：/chatid、/whoami、连接 Telegram（/start ln_xxx）与群里的审批按钮。
+// 它也是 Telegram 的通知通道（实现 Channel）。与通讯工具无关的审批逻辑在 Hub 里。
 type Bot struct {
 	TG   *Telegram
 	Core Core    // 为空时只处理 /chatid、/whoami
 	API  chatAPI // 为空时使用 TG
 	Name string  // 机器人用户名；为空时启动时向 Telegram 查询
 	Logf func(format string, args ...any)
+	// Hub 是同时服务多种通讯工具的审批逻辑；为空时按 Core 建一个只含本通道的。
+	Hub *Hub
 
 	fetched atomic.Pointer[string] // 向 Telegram 查到的用户名
+	hubOnce sync.Once
+	ownHub  *Hub
+}
+
+func (b *Bot) hub() *Hub {
+	if b.Hub != nil {
+		return b.Hub
+	}
+	b.hubOnce.Do(func() {
+		b.ownHub = &Hub{Core: b.Core, Channels: map[string]Channel{store.ProviderTelegram: b}, Logf: b.Logf}
+	})
+	return b.ownHub
 }
 
 // Username 返回机器人用户名；还不知道时返回空。可在其他协程调用。
@@ -213,48 +215,23 @@ func (b *Bot) whoamiExtra(ctx context.Context, u Update) string {
 	if cmd != "/whoami" || u.Message.From == nil {
 		return ""
 	}
-	acc, err := b.Core.AccountByTelegram(ctx, u.Message.From.ID)
-	if err != nil {
+	chat := ""
+	if u.Message.Chat.Type != "private" {
+		chat = int64String(u.Message.Chat.ID)
+	}
+	acc, wsLabel, role, ok := b.hub().Whoami(ctx, tgUser(u.Message.From), chat)
+	if !ok {
 		return ""
 	}
-	text := fmt.Sprintf("\n\n已连接的 Cohive 账号：%s", html.EscapeString(acc.Name))
-	if u.Message.Chat.Type == "private" {
+	text := fmt.Sprintf("\n\n已连接的 Cohive 账号：%s", html.EscapeString(acc))
+	if wsLabel == "" {
 		return text
 	}
-	ws, err := b.Core.WorkspaceByGroup(ctx, u.Message.Chat.ID)
-	if err != nil {
-		return text
-	}
-	role := "不是成员"
-	if ms, err := b.Core.Memberships(ctx, acc.ID); err == nil {
-		for _, m := range ms {
-			if m.WorkspaceID == ws.ID {
-				role = roleLabel(m.Role)
-			}
-		}
-	}
-	return text + fmt.Sprintf("\n在本群对应的工作空间 %s 里：%s", html.EscapeString(ws.Label()), role)
+	return text + fmt.Sprintf("\n在本群对应的工作空间 %s 里：%s", html.EscapeString(wsLabel), role)
 }
 
-func roleLabel(role string) string {
-	if role == store.RoleAdmin {
-		return "管理员"
-	}
-	return "成员"
-}
-
-// mentionName 是审批消息里展示的登录名与显示名。
-func mentionName(name, display string) string {
-	s := html.EscapeString(name)
-	if display != "" && display != name {
-		s += "（" + html.EscapeString(display) + "）"
-	}
-	return s
-}
-
-// mention 是群里 @ 某人，规则见 tgMention；链接文字是登录名与显示名。
-func mention(m store.Member) string {
-	return tgMention(m.TelegramUserID, m.TelegramUsername, mentionName(m.Name, m.DisplayName), true)
+func tgUser(u *TGUser) ChatUser {
+	return ChatUser{Provider: store.ProviderTelegram, UserID: int64String(u.ID), Handle: u.Username, Name: u.FirstName}
 }
 
 func approvalButtons(kind string, wsID, id int64) [][]Button {
@@ -262,134 +239,73 @@ func approvalButtons(kind string, wsID, id int64) [][]Button {
 	return [][]Button{{{Text: "批准", Data: key + ":y"}, {Text: "拒绝", Data: key + ":n"}}}
 }
 
-// groupOf 返回工作空间配置的 Telegram 群；没有配置时返回 0。
-func (b *Bot) groupOf(ctx context.Context, wsID int64) (store.Workspace, int64, error) {
-	ws, err := b.Core.Workspace(ctx, wsID)
+// ---- Telegram 通知通道 ----
+
+func (b *Bot) Provider() string  { return store.ProviderTelegram }
+func (b *Bot) Format() Formatter { return TelegramFormat{} }
+
+func tgChat(chat string) (int64, error) {
+	id, err := strconv.ParseInt(chat, 10, 64)
 	if err != nil {
-		return ws, 0, err
+		return 0, &PermanentError{Msg: fmt.Sprintf("Telegram 群编号应为数字：%q", chat)}
 	}
-	if ws.Notify.Channel != "telegram" || ws.Notify.Target == "" {
-		return ws, 0, nil
-	}
-	chat, err := strconv.ParseInt(ws.Notify.Target, 10, 64)
-	return ws, chat, err
+	return id, nil
 }
 
-// post 发一条审批消息并记下，处理后据此把各群里的消息都改成结果。
-func (b *Bot) post(ctx context.Context, kind string, wsID, chat, refID int64, text string) error {
-	msgID, err := b.api().SendButtons(ctx, chat, text, approvalButtons(kind, wsID, refID))
+// Send 往群里发一条 HTML 消息。
+func (b *Bot) Send(ctx context.Context, chat string, m Rendered) error {
+	id, err := tgChat(chat)
 	if err != nil {
 		return err
 	}
-	return b.Core.RecordBotPost(ctx, store.BotPost{Kind: kind, RefID: refID, WorkspaceID: wsID,
-		Provider: store.ProviderTelegram, ChatID: strconv.FormatInt(chat, 10), MessageID: strconv.FormatInt(msgID, 10)})
+	return b.api().SendText(ctx, id, m.Text)
 }
 
-func signupText(s store.Signup, wsName string) string {
-	if s.Existing {
-		return fmt.Sprintf("%s（已有账号）申请加入工作空间 %s。", mentionName(s.Name, s.DisplayName), html.EscapeString(wsName))
+// SendApproval 发一条带“批准 / 拒绝”按钮的消息，返回消息编号。
+func (b *Bot) SendApproval(ctx context.Context, chat string, m Rendered, a Approval) (string, error) {
+	id, err := tgChat(chat)
+	if err != nil {
+		return "", err
 	}
-	return fmt.Sprintf("新成员 %s 申请加入工作空间 %s。", mentionName(s.Name, s.DisplayName), html.EscapeString(wsName))
+	msg, err := b.api().SendButtons(ctx, id, m.Text, approvalButtons(a.Kind, a.WorkspaceID, a.RefID))
+	if err != nil {
+		return "", err
+	}
+	return int64String(msg), nil
 }
 
-func deviceText(a store.DeviceAuth, workspaces []string) string {
-	return fmt.Sprintf("%s 申请添加新设备 %s（工具：%s）。\n批准后这台电脑可用于他所在的全部工作空间：%s。",
-		mentionName(a.AccountName, a.DisplayName), html.EscapeString(a.DeviceName), html.EscapeString(strings.Join(a.Tools, "、")),
-		html.EscapeString(strings.Join(workspaces, "、")))
+// FinishApproval 把审批消息改成结果、去掉按钮。
+func (b *Bot) FinishApproval(ctx context.Context, chat, msgRef string, m Rendered) error {
+	id, err := tgChat(chat)
+	if err != nil {
+		return err
+	}
+	msg, err := strconv.ParseInt(msgRef, 10, 64)
+	if err != nil {
+		return &PermanentError{Msg: fmt.Sprintf("Telegram 消息编号应为数字：%q", msgRef)}
+	}
+	return b.api().EditMessage(ctx, id, msg, m.Text, nil)
 }
 
-// AnnounceSignup 在申请所属工作空间的群里发注册或加入申请的审批消息（没配置群时不发）。
+// AnnounceSignup 等五个方法实现 httpapi.Announcer，交给 Hub（只配了 Telegram 时使用）。
 func (b *Bot) AnnounceSignup(ctx context.Context, s store.Signup) error {
-	ws, chat, err := b.groupOf(ctx, s.WorkspaceID)
-	if err != nil || chat == 0 {
-		return err
-	}
-	text := signupText(s, ws.Label()) + "\n请管理员审批（也可以在网页“管理 → 待审”里处理）："
-	return b.post(ctx, "su", ws.ID, chat, s.ID, text)
+	return b.hub().AnnounceSignup(ctx, s)
 }
-
-// AnnounceDevice 在申请人在册所在、配置了群的每个工作空间群里发设备审批消息。
 func (b *Bot) AnnounceDevice(ctx context.Context, a store.DeviceAuth) error {
-	if a.AccountID == nil {
-		return nil
-	}
-	ms, err := b.Core.Memberships(ctx, *a.AccountID)
-	if err != nil {
-		return err
-	}
-	var names []string
-	for _, m := range ms {
-		names = append(names, m.Label)
-	}
-	text := deviceText(a, names) + "\n请任一工作空间的管理员审批（也可以在网页“管理 → 待审”里处理）："
-	var firstErr error
-	for _, m := range ms {
-		_, chat, err := b.groupOf(ctx, m.WorkspaceID)
-		if err == nil && chat != 0 {
-			err = b.post(ctx, "da", m.WorkspaceID, chat, a.ID, text)
-		}
-		if err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-	return firstErr
+	return b.hub().AnnounceDevice(ctx, a)
 }
-
-// finish 把某条申请在各群里的审批消息都改成结果、去掉按钮。
-func (b *Bot) finish(ctx context.Context, kind string, refID int64, text string) error {
-	posts, err := b.Core.BotPosts(ctx, kind, refID)
-	if err != nil {
-		return err
-	}
-	var firstErr error
-	for _, p := range posts {
-		if p.Provider != store.ProviderTelegram {
-			continue
-		}
-		chat, err1 := strconv.ParseInt(p.ChatID, 10, 64)
-		msg, err2 := strconv.ParseInt(p.MessageID, 10, 64)
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		if err := b.api().EditMessage(ctx, chat, msg, text, nil); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-	return firstErr
-}
-
-func signupResult(d core.SignupDecision, approve bool) string {
-	return signupText(d.Signup, d.Workspace.Label()) + fmt.Sprintf("\n%s（审批人 %s）", verdict(approve), html.EscapeString(d.Decider))
-}
-
-func deviceResult(d core.DeviceDecision) string {
-	return deviceText(d.Auth, d.Workspaces) + fmt.Sprintf("\n%s（审批人 %s）", verdict(d.Auth.Status == store.AuthApproved),
-		html.EscapeString(d.Decider))
-}
-
-// AnnounceSignupDecided 在网页上处理申请后，把群里的审批消息改成结果。
 func (b *Bot) AnnounceSignupDecided(ctx context.Context, d core.SignupDecision) error {
-	return b.finish(ctx, "su", d.Signup.ID, signupResult(d, d.Signup.Status == store.SignupApproved))
+	return b.hub().AnnounceSignupDecided(ctx, d)
 }
-
-// AnnounceDeviceDecided 在网页上处理设备申请后，把各群里的审批消息改成结果。
 func (b *Bot) AnnounceDeviceDecided(ctx context.Context, d core.DeviceDecision) error {
-	return b.finish(ctx, "da", d.Auth.ID, deviceResult(d))
+	return b.hub().AnnounceDeviceDecided(ctx, d)
 }
-
-// AnnounceJoined 在工作空间群里说一声“X 已加入”，并 @ 他（已连接 Telegram 时）。
 func (b *Bot) AnnounceJoined(ctx context.Context, m store.Member) error {
-	ws, chat, err := b.groupOf(ctx, m.WorkspaceID)
-	if err != nil || chat == 0 {
-		return err
-	}
-	return b.api().SendText(ctx, chat, fmt.Sprintf("%s 已加入工作空间 %s。", mention(m),
-		html.EscapeString(ws.Label())))
+	return b.hub().AnnounceJoined(ctx, m)
 }
 
 // handleCallback 处理审批按钮：su（注册与加入申请）、da（添加设备），数据形如 su:工作空间:编号:y。
-// 工作空间由按钮所在的群反查（一个群只绑一个工作空间），不信按钮数据；点击者按他连接的 Telegram 账号
-// 找到 Cohive 账号，业务层校验他是否能管理这个工作空间（设备申请还要求申请人在本工作空间在册）。
+// 审批逻辑见 Hub.Click；这里只解析按钮数据、回应点击、改被点的那条消息。
 func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
 	answer := func(text string) {
 		if err := b.api().AnswerCallback(ctx, cb.ID, text); err != nil {
@@ -408,93 +324,17 @@ func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
 		answer("")
 		return
 	}
-	ws, err := b.Core.WorkspaceByGroup(ctx, cb.Message.Chat.ID)
-	if errors.Is(err, store.ErrNotFound) || (err == nil && ws.ID != wsID) {
-		answer("这条审批消息与本群绑定的工作空间不符，请在网页上处理")
-		return
-	}
-	if err != nil {
-		b.logf("识别审批群失败：%v", err)
-		answer("处理失败，请稍后再试")
-		return
-	}
-	actor, err := b.Core.AccountByTelegram(ctx, cb.From.ID)
-	if errors.Is(err, store.ErrNotFound) || (err == nil && actor.Disabled()) {
-		answer("你的 Telegram 账号还没有连接到 Cohive，或没有审批权限")
-		return
-	}
-	if err != nil {
-		b.logf("识别审批人失败：%v", err)
-		answer("处理失败，请稍后再试")
-		return
-	}
-	approve := parts[3] == "y"
-	var text string
-	switch parts[0] {
-	case "su":
-		d, err := b.Core.DecideSignup(ctx, core.BotActor(actor), ws.ID, id, approve)
-		if err != nil {
-			b.denied(ctx, actor, ws, "注册或加入申请的审批按钮", err)
-			b.failCallback(err, answer)
-			return
-		}
-		text = signupResult(d, approve)
-		if d.Member != nil {
-			defer func() {
-				if err := b.AnnounceJoined(ctx, *d.Member); err != nil {
-					b.logf("发送新成员加入消息失败：%v", err)
-				}
-			}()
-		}
-	case "da":
-		d, err := b.Core.DecideDeviceAuth(ctx, core.BotActor(actor), ws.ID, id, approve)
-		if err != nil {
-			b.denied(ctx, actor, ws, "新设备的审批按钮", err)
-			b.failCallback(err, answer)
-			return
-		}
-		text = deviceResult(d)
-	}
-	answer(verdict(approve))
-	if err := b.finish(ctx, parts[0], id, text); err != nil {
-		b.logf("更新审批消息失败：%v", err)
-	}
-	posts, _ := b.Core.BotPosts(ctx, parts[0], id)
-	if len(posts) == 0 { // 没有登记过（例如升级前发的消息）：至少改掉被点的这条
-		if err := b.api().EditMessage(ctx, cb.Message.Chat.ID, cb.Message.MessageID, text, nil); err != nil {
+	chat, msg := int64String(cb.Message.Chat.ID), int64String(cb.Message.MessageID)
+	res := b.hub().Click(ctx, Click{Provider: store.ProviderTelegram, ChatID: chat, MsgRef: msg, From: tgUser(&cb.From),
+		Approval: Approval{Kind: parts[0], WorkspaceID: wsID, RefID: id}, Approve: parts[3] == "y"})
+	answer(res.Toast)
+	if res.Result != nil {
+		if err := b.FinishApproval(ctx, chat, msg, *res.Result); err != nil {
 			b.logf("更新审批消息失败：%v", err)
 		}
 	}
-}
-
-func verdict(approve bool) string {
-	if approve {
-		return "已批准"
-	}
-	return "已拒绝"
-}
-
-// denied 记下已连接 Telegram 的账号在群里点审批按钮却没有权限（与网页上被拒的管理请求同样记录）。
-func (b *Bot) denied(ctx context.Context, actor store.Account, ws store.Workspace, button string, err error) {
-	if !errors.Is(err, core.ErrNotAdmin) && !errors.Is(err, core.ErrNotManager) {
-		return
-	}
-	d := core.DeniedAttempt{Workspace: ws.Name, Route: button, Reason: core.DenyNoPermission, Credential: core.CredTelegram}
-	if err := b.Core.RecordDenied(ctx, core.BotActor(actor), d); err != nil {
-		b.logf("记录被拒的审批失败：%v", err)
-	}
-}
-
-func (b *Bot) failCallback(err error, answer func(string)) {
-	switch {
-	case errors.Is(err, core.ErrNotAdmin), errors.Is(err, core.ErrNotManager), errors.Is(err, core.ErrDecided),
-		errors.Is(err, store.ErrAccountDisabled):
-		answer(err.Error())
-	case errors.Is(err, store.ErrNotFound):
-		answer("这条申请不存在")
-	default:
-		b.logf("处理审批失败：%v", err)
-		answer("处理失败，请稍后再试")
+	if res.After != nil {
+		res.After(ctx)
 	}
 }
 

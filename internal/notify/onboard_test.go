@@ -2,6 +2,7 @@ package notify_test
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func (f *fakeAPI) SendButtons(_ context.Context, chat int64, text string, b [][]
 	f.chats = append(f.chats, chat)
 	f.buttons = append(f.buttons, text)
 	f.btnData = append(f.btnData, b...)
-	return 1, nil
+	return 77, nil // 与 callbackIn 里被点的消息编号一致
 }
 func (f *fakeAPI) EditMessage(_ context.Context, _, _ int64, text string, b [][]notify.Button) error {
 	f.edits = append(f.edits, text)
@@ -92,18 +93,37 @@ func (f *fakeCore) Workspace(_ context.Context, id int64) (store.Workspace, erro
 	}
 	return f.workspace, nil
 }
-func (f *fakeCore) WorkspaceByGroup(_ context.Context, chat int64) (store.Workspace, error) {
+func (f *fakeCore) WorkspaceByChat(_ context.Context, provider, _, chatID string) (store.Workspace, error) {
+	if provider != store.ProviderTelegram {
+		return store.Workspace{}, store.ErrNotFound
+	}
 	if f.groups == nil {
 		return f.workspace, nil
 	}
+	chat, _ := strconv.ParseInt(chatID, 10, 64)
 	if w, ok := f.groups[chat]; ok {
 		return w, nil
 	}
 	return store.Workspace{}, store.ErrNotFound
 }
-func (f *fakeCore) AccountByTelegram(_ context.Context, uid int64) (store.Account, error) {
+func (f *fakeCore) AccountByChat(_ context.Context, provider, _, userID string) (store.Account, error) {
+	uid, _ := strconv.ParseInt(userID, 10, 64)
 	f.calls = append(f.calls, "who", uid)
+	if provider != store.ProviderTelegram {
+		return store.Account{}, store.ErrNotFound
+	}
 	return f.actor, f.actorErr
+}
+func (f *fakeCore) ChatIdentities(context.Context, []int64) (map[int64][]store.ChatIdentity, error) {
+	return nil, nil
+}
+func (f *fakeCore) BotPostByMessage(_ context.Context, provider, chat, msg string) (store.BotPost, error) {
+	for _, p := range f.posts {
+		if p.Provider == provider && p.MessageID == msg && (chat == "" || p.ChatID == chat) {
+			return p, nil
+		}
+	}
+	return store.BotPost{}, store.ErrNotFound
 }
 func (f *fakeCore) Memberships(context.Context, int64) ([]store.Membership, error) {
 	return f.memberships, nil

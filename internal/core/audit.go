@@ -21,6 +21,7 @@ import (
 const (
 	ViaWeb       = "web"
 	ViaTelegram  = "telegram"
+	ViaDingTalk  = "dingtalk"
 	ViaServerCLI = "server_cli"
 	ViaMemberCLI = "member_cli"
 	ViaAgent     = "agent" // 编程工具令牌：只会出现在被拒的管理请求里
@@ -32,6 +33,7 @@ const (
 var ViaLabels = map[string]string{
 	ViaWeb:       "网页",
 	ViaTelegram:  "群按钮",
+	ViaDingTalk:  "钉钉群",
 	ViaServerCLI: "服务器命令行",
 	ViaMemberCLI: "成员本机命令行",
 	ViaAgent:     "编程工具令牌",
@@ -48,8 +50,16 @@ type Actor struct {
 // WebActor 是网页上的操作人。
 func WebActor(a store.Account) Actor { return Actor{Account: &a, Via: ViaWeb} }
 
-// BotActor 是在群里点审批按钮的人。
+// BotActor 是在 Telegram 群里点审批按钮的人。
 func BotActor(a store.Account) Actor { return Actor{Account: &a, Via: ViaTelegram} }
+
+// ChatActor 是在某种通讯工具的群里操作（点审批按钮、绑定群）的人。
+func ChatActor(a store.Account, provider string) Actor {
+	if provider == store.ProviderDingTalk {
+		return Actor{Account: &a, Via: ViaDingTalk}
+	}
+	return BotActor(a)
+}
 
 // MemberCLIActor 是用设备密钥在本机命令行操作的人。
 func MemberCLIActor(a store.Account) Actor { return Actor{Account: &a, Via: ViaMemberCLI} }
@@ -286,7 +296,7 @@ var actions = map[string]actionInfo{
 	}},
 	ActAccessDenied: {"被拒的管理请求", CatDenied, func(e store.AdminEvent) string {
 		what := "调用管理接口 " + e.TargetName
-		if e.Via == ViaTelegram {
+		if e.Via == ViaTelegram || e.Via == ViaDingTalk {
 			what = "点了" + e.TargetName
 		}
 		return what + "，被拒绝：" + deniedReasons[str(e, "reason")]
@@ -311,11 +321,20 @@ const (
 	CredToken     = "token"      // 编程工具令牌
 	CredDevice    = "device"     // 设备密钥
 	CredTelegram  = "telegram"   // 群按钮
+	CredDingTalk  = "dingtalk"   // 钉钉群按钮
 )
+
+// ChatCredential 是在某种通讯工具的群里点按钮时用的凭据。
+func ChatCredential(provider string) string {
+	if provider == store.ProviderDingTalk {
+		return CredDingTalk
+	}
+	return CredTelegram
+}
 
 var credentialNames = map[string]string{
 	CredPassword: "账号密码登录的网页", CredDeviceWeb: "cohive web 免密网页", CredToken: "编程工具令牌",
-	CredDevice: "设备密钥", CredTelegram: "Telegram 群按钮",
+	CredDevice: "设备密钥", CredTelegram: "Telegram 群按钮", CredDingTalk: "钉钉群按钮",
 }
 
 // DeniedAttempt 是一次被拒的管理请求。Route 是接口模板（不含路径里的邀请码、授权参数等实际值）。
@@ -376,7 +395,7 @@ func CategoryActions(cat string) []string {
 // record 写一条管理操作记录。只接受事务；入口或动作不在取值表里时报错，让整个操作回滚。
 func record(ctx context.Context, tx pgx.Tx, act Actor, e store.AdminEvent) error {
 	switch act.Via {
-	case ViaWeb, ViaTelegram, ViaServerCLI, ViaMemberCLI, ViaSystem:
+	case ViaWeb, ViaTelegram, ViaDingTalk, ViaServerCLI, ViaMemberCLI, ViaSystem:
 	case ViaAgent:
 		if e.Action != ActAccessDenied {
 			return fmt.Errorf("编程工具令牌不能做管理操作（%s）", e.Action)
@@ -427,6 +446,8 @@ func EventText(e store.AdminEvent) string {
 		return who + " 在网页上" + verb
 	case ViaTelegram:
 		return who + " 在群里" + verb
+	case ViaDingTalk:
+		return who + " 在钉钉群里" + verb
 	case ViaMemberCLI:
 		return who + " 在本机命令行" + verb
 	case ViaAgent:

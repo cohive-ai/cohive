@@ -565,10 +565,11 @@ func ListBotPosts(ctx context.Context, q DBTX, kind string, refID int64) ([]BotP
 	return collectBotPosts(ctx, q, `SELECT `+botPostColumns+` FROM bot_posts WHERE kind = $1 AND ref_id = $2 ORDER BY id`, kind, refID)
 }
 
-// BotPostByMessage 按消息编号找审批消息（钉钉卡片回调只带 outTrackId）。
-func BotPostByMessage(ctx context.Context, q DBTX, provider, messageID string) (BotPost, error) {
+// BotPostByMessage 按消息编号找审批消息。Telegram 的消息编号只在群内唯一，要带上群编号；
+// 钉钉卡片的 outTrackId 全局唯一（卡片回调只带它），chatID 传空。
+func BotPostByMessage(ctx context.Context, q DBTX, provider, chatID, messageID string) (BotPost, error) {
 	ps, err := collectBotPosts(ctx, q, `SELECT `+botPostColumns+` FROM bot_posts
-		WHERE provider = $1 AND message_id = $2 ORDER BY id LIMIT 1`, provider, messageID)
+		WHERE provider = $1 AND message_id = $2 AND ($3 = '' OR chat_id = $3) ORDER BY id LIMIT 1`, provider, messageID, chatID)
 	if err != nil {
 		return BotPost{}, err
 	}

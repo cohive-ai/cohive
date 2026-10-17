@@ -215,7 +215,26 @@ func (s *Service) AccountByTelegram(ctx context.Context, tgUserID int64) (store.
 
 // WorkspaceByGroup 返回绑定了该 Telegram 群的工作空间。
 func (s *Service) WorkspaceByGroup(ctx context.Context, chatID int64) (store.Workspace, error) {
-	return store.WorkspaceByNotifyTarget(ctx, s.Pool, "telegram", strconv.FormatInt(chatID, 10))
+	return s.WorkspaceByChat(ctx, store.ProviderTelegram, "", strconv.FormatInt(chatID, 10))
+}
+
+// WorkspaceByChat 返回绑定了该群的工作空间（一个群只绑一个工作空间）。
+func (s *Service) WorkspaceByChat(ctx context.Context, provider, tenant, chatID string) (store.Workspace, error) {
+	c, err := store.WorkspaceChatOf(ctx, s.Pool, provider, tenant, chatID)
+	if err != nil {
+		return store.Workspace{}, err
+	}
+	return store.GetWorkspace(ctx, s.Pool, c.WorkspaceID)
+}
+
+// AccountByChat 返回连接到该通讯账号的 Cohive 账号（机器人识别点按钮的人）。
+func (s *Service) AccountByChat(ctx context.Context, provider, tenant, userID string) (store.Account, error) {
+	return store.AccountByChatIdentity(ctx, s.Pool, provider, tenant, userID)
+}
+
+// ChatIdentities 返回一批账号在各通讯工具上的连接（群消息里按编号 @ 人用）。
+func (s *Service) ChatIdentities(ctx context.Context, accountIDs []int64) (map[int64][]store.ChatIdentity, error) {
+	return store.ChatIdentitiesOf(ctx, s.Pool, accountIDs)
 }
 
 // ---- 成员 ----
@@ -893,6 +912,11 @@ func (s *Service) DeleteWorkspace(ctx context.Context, act Actor, name string) e
 // RecordBotPost 记下机器人发的审批消息。
 func (s *Service) RecordBotPost(ctx context.Context, p store.BotPost) error {
 	return store.InsertBotPost(ctx, s.Pool, p)
+}
+
+// BotPostByMessage 按通讯工具与消息编号找审批消息（群里点按钮时反查是哪条申请）。
+func (s *Service) BotPostByMessage(ctx context.Context, provider, chatID, msgRef string) (store.BotPost, error) {
+	return store.BotPostByMessage(ctx, s.Pool, provider, chatID, msgRef)
 }
 
 // BotPosts 列出某条申请的审批消息。
