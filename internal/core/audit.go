@@ -96,7 +96,14 @@ const (
 	ActTokenRevoke       = "token.revoke"
 	ActServiceOwner      = "service.owner"
 	ActAccessDenied      = "access.denied"
+
+	// 预留给 M6-d（对外地址改为服务器级、工作空间拆路径与显示名），业务还没实现
+	ActServerSettings       = "server.settings"
+	ActWorkspaceDisplayName = "workspace.display_name"
 )
+
+// ReservedActions 是已登记、但还没有业务入口的动作。实现业务时从这里删掉，并补上用例。
+var ReservedActions = map[string]bool{ActServerSettings: true, ActWorkspaceDisplayName: true}
 
 // 动作类别（查看时按类别筛选）。
 const (
@@ -109,6 +116,7 @@ const (
 	CatWorkspace    = "workspace"
 	CatTokenService = "token_service"
 	CatDenied       = "denied"
+	CatServer       = "server"
 )
 
 // Category 是一个动作类别。
@@ -120,7 +128,8 @@ type Category struct {
 // Categories 按显示顺序列出动作类别。
 var Categories = []Category{
 	{CatApproval, "审批"}, {CatRole, "角色"}, {CatInvite, "邀请"}, {CatDevice, "设备"}, {CatMember, "成员"},
-	{CatAccount, "账号"}, {CatWorkspace, "工作空间"}, {CatTokenService, "令牌与服务"}, {CatDenied, "被拒的请求"},
+	{CatAccount, "账号"}, {CatWorkspace, "工作空间"}, {CatTokenService, "令牌与服务"}, {CatServer, "服务器设置"},
+	{CatDenied, "被拒的请求"},
 }
 
 type actionInfo struct {
@@ -257,6 +266,24 @@ var actions = map[string]actionInfo{
 			return fmt.Sprintf("把服务 %s 的负责人从 %s 改为 %s", e.TargetName, from, str(e, "to"))
 		}
 		return fmt.Sprintf("登记了服务 %s，负责人 %s", e.TargetName, str(e, "to"))
+	}},
+	ActServerSettings: {"修改服务器设置", CatServer, func(e store.AdminEvent) string {
+		var fields []string
+		for _, k := range []string{"external_url"} {
+			if _, ok := e.Detail[k]; ok {
+				fields = append(fields, detailLabels[k])
+			}
+		}
+		if len(fields) == 0 {
+			return "修改了服务器设置"
+		}
+		return "修改了服务器设置：" + strings.Join(fields, "、")
+	}},
+	ActWorkspaceDisplayName: {"修改工作空间显示名", CatWorkspace, func(e store.AdminEvent) string {
+		if m, ok := e.Detail["display_name"].(map[string]any); ok {
+			return fmt.Sprintf("把工作空间 %s 的显示名从“%v”改为“%v”", e.TargetName, m["from"], m["to"])
+		}
+		return "修改了工作空间 " + e.TargetName + " 的显示名"
 	}},
 	ActAccessDenied: {"被拒的管理请求", CatDenied, func(e store.AdminEvent) string {
 		what := "调用管理接口 " + e.TargetName
@@ -435,7 +462,7 @@ var detailLabels = map[string]string{
 	"admin": "首位管理员", "public_url": "公网地址", "telegram_chat": "Telegram 群", "show_title": "群消息显示标题",
 	"show_brief": "群消息显示简述", "member": "成员", "tool": "工具", "as": "命令行记作", "invite_id": "邀请编号",
 	"initial_admin": "初始管理员", "backfilled": "上线前补记", "time_approx": "时间为近似值",
-	"credential": "凭据",
+	"credential": "凭据", "external_url": "对外地址",
 }
 
 // EventDetail 把附加信息转成中文名与文本值，按键名排序。

@@ -51,7 +51,7 @@ var allowedWhileMustChange = map[string]bool{
 // authMiddleware 有 Authorization 头时按令牌或设备密钥鉴权，否则认会话 Cookie。
 // 每类凭据能调哪些接口由 handle 注册时声明，在 allowed 里统一判定。
 func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
-	deps := auditDeps{svc: svc, limiter: &keyedLimiter{max: 30, window: 10 * time.Minute}}
+	deps := auditDeps{svc: svc, limiter: &keyedLimiter{max: 1, window: time.Minute}}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(context.WithValue(r.Context(), auditKey{}, deps))
 		if h := r.Header.Get("Authorization"); h != "" {
@@ -226,13 +226,10 @@ type auditDeps struct {
 type auditKey struct{}
 
 // recordDenied 记下已认证的身份调管理接口被拒。记录失败只写日志，不影响给调用方的响应；
-// 同一账号 10 分钟内最多记 30 条，防止陷入循环的智能体把记录刷满。
+// 同一身份（账号 + 凭据种类）同一接口一分钟内只记一条，防止陷入循环的智能体把记录刷满。
 func recordDenied(r *http.Request, c Caller, pattern, reason string) {
 	deps, ok := r.Context().Value(auditKey{}).(auditDeps)
 	if !ok || c.Account.ID == 0 {
-		return
-	}
-	if !deps.limiter.allow(strconv.FormatInt(c.Account.ID, 10)) {
 		return
 	}
 	act, cred := core.WebActor(c.Account), core.CredPassword
@@ -243,6 +240,9 @@ func recordDenied(r *http.Request, c Caller, pattern, reason string) {
 		act, cred = core.MemberCLIActor(c.Account), core.CredDevice
 	case c.SessionVia == store.SessionViaDevice:
 		cred = core.CredDeviceWeb
+	}
+	if !deps.limiter.allow(strconv.FormatInt(c.Account.ID, 10) + "|" + cred + "|" + pattern) {
+		return
 	}
 	d := core.DeniedAttempt{Workspace: r.PathValue("ws"), Route: pattern, Reason: reason, Credential: cred}
 	if err := deps.svc.RecordDenied(r.Context(), act, d); err != nil {

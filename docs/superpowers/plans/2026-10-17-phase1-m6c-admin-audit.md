@@ -321,4 +321,6 @@ func ServerCLI() Actor
 - 接口层 `handle()` 对只认密码会话的接口（工作空间管理、服务器管理、授权设备、接受邀请、查看记录）：编程工具令牌、设备密钥、`cohive web` 免密会话被挡，或密码会话但业务层返回 403，另起事务记 `access.denied`（类别“被拒的请求”）。附加信息 `reason`（`need_password_login` / `no_permission`）、`credential`（`password` / `device_web` / `token` / `device` / `telegram`）；对象是接口模板，不记路径里的实际值（邀请码、授权参数）。
 - 新入口 `agent`（编程工具令牌），只允许出现在 `access.denied` 上（迁移 0008 尚未合入，直接改了它的入口取值）。
 - 群里已连接 Telegram、但没有审批权限的人点按钮也记（`via = telegram`）。
-- 不记：未认证的请求、访问自己不在的工作空间（404）。同一账号 10 分钟内最多记 30 条（每个服务进程内存计数）。
+- 不记：未认证的请求、访问自己不在的工作空间（404）。同一身份（账号 + 凭据种类）同一接口一分钟内只记一条（按主脑批复；每个服务进程内存计数）。
+
+**为 M6-d 预留的动作**（主脑预告）：`server.settings`（修改服务器设置，类别“服务器设置”，附加信息 `external_url` 的 `{from, to}`）、`workspace.display_name`（修改工作空间显示名，附加信息 `display_name` 的 `{from, to}`）。只登记了中文名、类别与人话，没有业务入口；列在 `core.ReservedActions` 里，实现业务时从中删掉并补用例（测试会提醒）。

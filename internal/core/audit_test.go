@@ -400,8 +400,11 @@ func TestEveryAdminMethodRecords(t *testing.T) {
 	}
 	// 动作表里的每个动作都有用例（初始管理员另有用例）
 	for _, a := range core.Actions() {
-		if !seen[a] && a != core.ActAccountCreate {
+		if !seen[a] && a != core.ActAccountCreate && !core.ReservedActions[a] {
 			t.Errorf("动作 %s 没有用例", a)
+		}
+		if seen[a] && core.ReservedActions[a] {
+			t.Errorf("动作 %s 已有业务用例，从 ReservedActions 里删掉", a)
 		}
 	}
 }
@@ -711,6 +714,17 @@ func TestEventTextCoversEveryAction(t *testing.T) {
 	e = store.AdminEvent{Action: core.ActAccessDenied, Via: core.ViaAgent, ActorName: "lee", TargetName: "POST /api/v1/w/{ws}/admin/invites",
 		Detail: map[string]any{"reason": core.DenyNeedPassword}}
 	if got := core.EventText(e); got != "lee 用编程工具令牌调用管理接口 POST /api/v1/w/{ws}/admin/invites，被拒绝：管理操作只认账号密码登录的网页" {
+		t.Errorf("人话：%q", got)
+	}
+	// 预留给 M6-d 的两个动作
+	e = store.AdminEvent{Action: core.ActWorkspaceDisplayName, Via: core.ViaWeb, ActorName: "lee", TargetName: "pay",
+		Detail: map[string]any{"display_name": map[string]any{"from": "支付", "to": "支付组"}}}
+	if got := core.EventText(e); got != "lee 在网页上把工作空间 pay 的显示名从“支付”改为“支付组”" {
+		t.Errorf("人话：%q", got)
+	}
+	e = store.AdminEvent{Action: core.ActServerSettings, Via: core.ViaWeb, ActorName: "lee",
+		Detail: map[string]any{"external_url": map[string]any{"from": "", "to": "https://c.example"}}}
+	if got := core.EventText(e); got != "lee 在网页上修改了服务器设置：对外地址" {
 		t.Errorf("人话：%q", got)
 	}
 	e = store.AdminEvent{Action: core.ActResetPassword, Via: core.ViaServerCLI, TargetName: "tester-a"}

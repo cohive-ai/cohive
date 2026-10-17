@@ -327,7 +327,7 @@ func TestNoUnlistedWriteEndpoint(t *testing.T) {
 }
 
 // 已认证的身份调管理接口被拒要记（台账 D7 的威胁模型）：编程工具令牌、设备密钥、cohive web 免密会话被挡，
-// 密码会话但没有权限；记接口模板，不记路径里的实际值；未认证的不记；同一账号限频。
+// 密码会话但没有权限；记接口模板，不记路径里的实际值；未认证的不记；同一身份同一接口一分钟内只记一条。
 func TestDeniedAdminRequestsRecorded(t *testing.T) {
 	ctx := context.Background()
 	w := newAuditWeb(t)
@@ -400,21 +400,16 @@ func TestDeniedAdminRequestsRecorded(t *testing.T) {
 	w.admin.do("GET", "/api/v1/w/default/admin/members", nil, "")
 	none("管理员读成员列表")
 
-	// 限频：同一账号 10 分钟内最多 30 条
-	for i := 0; i < 40; i++ {
+	// 限频：同一身份同一接口一分钟内只记一条；换接口或换凭据照记
+	_, before = lastEvent(t, f.svc)
+	for i := 0; i < 5; i++ {
 		tok.do("GET", "/api/v1/w/default/admin/members", nil, f.tokenA)
 	}
-	es, err := store.ListAdminEvents(ctx, f.svc.Pool, store.AdminEventFilter{Actions: []string{core.ActAccessDenied}, Limit: 200})
-	if err != nil {
-		t.Fatal(err)
-	}
-	n := 0
-	for _, e := range es {
-		if e.ActorName == "lee-claude" {
-			n++
-		}
-	}
-	if n != 30 {
-		t.Fatalf("lee-claude 的被拒记录应封顶 30 条，得到 %d", n)
-	}
+	expect("同一接口第一次", core.ViaAgent, core.CredToken, core.DenyNeedPassword, "GET /api/v1/w/{ws}/admin/members", "default", "lee-claude")
+	tok.do("GET", "/api/v1/w/default/admin/members", nil, f.tokenA)
+	none("同一身份同一接口一分钟内的重复")
+	tok.do("GET", "/api/v1/w/default/admin/devices", nil, f.tokenA)
+	expect("换接口", core.ViaAgent, core.CredToken, core.DenyNeedPassword, "GET /api/v1/w/{ws}/admin/devices", "default", "lee-claude")
+	w.member.do("GET", "/api/v1/w/default/admin/members", nil, "")
+	expect("同一账号换凭据", core.ViaWeb, core.CredPassword, core.DenyNoPermission, "GET /api/v1/w/{ws}/admin/members", "default", "lee-claude")
 }
