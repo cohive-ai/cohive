@@ -17,7 +17,7 @@ import (
 
 // 会话钩子的时限：编程工具每次提交提示词都要等它，离线或服务挂起时不能拖慢会话。
 var (
-	hookDeadline    = 2 * time.Second        // 整个钩子
+	hookDeadline    = 2 * time.Second         // 整个钩子
 	hookHTTPTimeout = 1500 * time.Millisecond // 其中的网络请求
 	hookThrottle    = 20 * time.Second        // 同一会话两次联网的最短间隔
 	hookStateMaxAge = 7 * 24 * time.Hour
