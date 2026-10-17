@@ -2,7 +2,7 @@
 
 - 版本：V0.5（2026-10-16）
 - 状态：定位、主要选型与登录、账号口径已确认，待确认项见第 13 节
-- 依据：《ACP 多开发者 AI Agent 协作平台 PRD V0.1》、[开源组件选型调研报告](../reports/Cohive%20开源组件选型调研.md)
+- 依据：[开源组件选型调研报告](research/2026-10-14-component-selection.md)
 
 ## 修订记录
 
@@ -248,7 +248,7 @@ DRAFT → OPEN → ACCEPTED → FIXING → READY_FOR_VERIFICATION → CLOSED
 | 命令行 | Go 单文件程序，需提供预编译版本 | 跨平台，同事不必装 Go、不必读私有仓库 |
 | 看板 | React + Vite，TanStack Router、TanStack Query、shadcn/ui、Tailwind；打包后嵌入 Go 程序 | 见 8.1 |
 | 官网与博客 | Next.js（或 Astro） | 需要搜索引擎收录和服务端渲染 |
-| 代码平台 | 适配器模式；第一阶段不接，第二阶段联动合并请求、流水线与议题镜像 | 小团队以 GitHub 为主，公司场景用 GitLab |
+| 代码平台 | 适配器模式；第一阶段不接，第二阶段联动合并请求、流水线与议题镜像 | 小团队以 GitHub 为主，自建 GitLab 的团队也不少 |
 | 接口变更检测 | oasdiff、buf（Go，Apache-2.0） | 可编进同一个可执行文件 |
 | 审计与动态 | Postgres 只追加的事件表；写入前用 gitleaks 规则扫描密钥 | 智能体粘贴的日志里可能带密钥；规模小，不需要外部观测平台 |
 | 可观测性 | 第一阶段不接外部系统；后期可选提供 OpenTelemetry 配置样例 | 小团队用不上 |
@@ -264,7 +264,7 @@ DRAFT → OPEN → ACCEPTED → FIXING → READY_FOR_VERIFICATION → CLOSED
 
 | 选项 | 原因 |
 |---|---|
-| 自动执行相关（ACP 执行驱动、沙箱、DBOS 等持久化执行引擎、执行用 API 密钥） | 定位决定不做自动执行 |
+| 自动执行相关（用智能体客户端协议 ACP 驱动智能体、沙箱、DBOS 等持久化执行引擎、执行用 API 密钥） | 定位决定不做自动执行 |
 | 服务端调用大模型做汇总 | 初筛交给双方各自的智能体；避免模型密钥、费用和数据外发 |
 | 基于 Multica 派生 | 许可证不允许以开源项目发布派生版本；定位不同（它以自动执行为核心） |
 | 依赖 MCP Agent Mail | 许可证含针对 Anthropic、OpenAI 的附加条款；只借鉴设计 |
@@ -343,5 +343,4 @@ docs/                方案与设计文档
 ## 13. 待确认事项
 
 1. **开源许可证与时间**：建议从第一天就按开源标准选择依赖，许可证倾向 Apache-2.0（带专利授权）；公开时间待定。
-2. **与公司内部 ACP 需求的关系与命名**：内部需求文档名“ACP”与 Agent Client Protocol 重名，建议对内对外统一用 Cohive。
-3. **公司 GitLab 的版本与授权档位**：仅在公司场景需要第二阶段 GitLab 联动时才相关。
+2. **对接 GitLab 时的版本与授权档位**：仅在第二阶段做 GitLab 联动时才相关。

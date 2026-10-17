@@ -1,8 +1,10 @@
 # Cohive 选型：自建协作语义，其余各层借力
 
-> 信息日期：2026-10-14。依据为 `research_notes/Cohive 开源组件选型调研/` 下 7 篇笔记（智能体间协作先行方案、任务与问题单系统、记忆与共享知识、编排与持久化执行、智能体接入与执行隔离、可观测性与审计、Multica 与 Agent Canvas 深查），以及方案 `docs/plan-v0.1.md`。星数、许可证、最近推送时间都是当天用 GitHub 接口实查的结果。文中所有许可证判断都只是工程视角的阅读，**不是法律意见**；标有「需法务确认」的条目，正式决策前必须请法务过目。
+> 这是方案早期（V0.1）的选型调研，部分前提已被后续决定取代（例如不做自动执行、不做本机后台进程），现行方案以 [docs/plan.md](../plan.md) 为准。
+>
+> 信息日期：2026-10-14。依据为 7 篇调研笔记（智能体间协作先行方案、任务与问题单系统、记忆与共享知识、编排与持久化执行、智能体接入与执行隔离、可观测性与审计、Multica 与 Agent Canvas 深查；原稿可在提交 `def43c0` 中查看），以及当时的方案 V0.1。星数、许可证、最近推送时间都是当天用 GitHub 接口实查的结果。文中所有许可证判断都只是工程视角的阅读，**不是法律意见**；标有「需法务确认」的条目，正式决策前必须请法务过目。
 
-没有任何现成项目覆盖 Cohive 的定位。最接近的 Multica 已经做好了“看板 + 问题单 + 本机守护进程 + 自建 GitLab 联动 + 后台无界面执行”，但它**不对外提供 MCP 服务**，官方文档原话是“智能体没有收件箱”。它也没有确定性的归属路由、接口变更广播、代码占用，没有复现脚本驱动的验证闭环。OpenHands Agent Canvas 是单人或小团队用的执行控制台，开源版没有成员模型，也没有问题单模型。所以 Cohive 真正必须自建的只有一层：**交互会话之间的协作语义**，包括远程 MCP、按“人 + 工具”签发的令牌、收件箱与推送、归属路由、建议性代码占用、验证闭环、超时与轮次升级、审计。这一层恰好是 Multica 架构里最缺的。其余各层尽量借用现成的：队列用 river，第三阶段的长链路用 DBOS Go，智能体驱动用 ACP（Go 端用 coder/acp-go-sdk），隔离用工作树加工具自带沙箱，归属与契约用 Backstage 描述格式加 oasdiff、buf，团队知识放 git 里的 Markdown，观测用 OpenTelemetry 并且只作可选外接。路线上分两种目标：公司内部可以在 Multica **旁边叠加**一层（不派生改它的代码）；开源目标必须**独立自建**，Multica 和 Agent Canvas 只做可选适配器。两种目标共用同一套核心代码。plan-v0.1 的大方向（Go + Postgres + river、远程 MCP、本机小助手、自动执行放到第三阶段）都得到了调研支持，但有十余处需要修正。最紧迫的四处：Codex 现在也有会话钩子；自动执行必须用 API 密钥；“升级”应当和状态正交，不该是一个状态；内部 PRD 的名字“ACP”和 Cohive 第三阶段要用的智能体客户端协议撞名。动手前最值得先做两件事：查清公司 GitLab 的版本与授权档位；花半天自托管试用一次 Multica。
+没有任何现成项目覆盖 Cohive 的定位。最接近的 Multica 已经做好了“看板 + 问题单 + 本机守护进程 + 自建 GitLab 联动 + 后台无界面执行”，但它**不对外提供 MCP 服务**，官方文档原话是“智能体没有收件箱”。它也没有确定性的归属路由、接口变更广播、代码占用，没有复现脚本驱动的验证闭环。OpenHands Agent Canvas 是单人或小团队用的执行控制台，开源版没有成员模型，也没有问题单模型。所以 Cohive 真正必须自建的只有一层：**交互会话之间的协作语义**，包括远程 MCP、按“人 + 工具”签发的令牌、收件箱与推送、归属路由、建议性代码占用、验证闭环、超时与轮次升级、审计。这一层恰好是 Multica 架构里最缺的。其余各层尽量借用现成的：队列用 river，第三阶段的长链路用 DBOS Go，智能体驱动用 ACP（Go 端用 coder/acp-go-sdk），隔离用工作树加工具自带沙箱，归属与契约用 Backstage 描述格式加 oasdiff、buf，团队知识放 git 里的 Markdown，观测用 OpenTelemetry 并且只作可选外接。路线上分两种目标：单一组织内部自用可以在 Multica **旁边叠加**一层（不派生改它的代码）；开源目标必须**独立自建**，Multica 和 Agent Canvas 只做可选适配器。两种目标共用同一套核心代码。plan-v0.1 的大方向（Go + Postgres + river、远程 MCP、本机小助手、自动执行放到第三阶段）都得到了调研支持，但有十余处需要修正。最紧迫的四处：Codex 现在也有会话钩子；自动执行必须用 API 密钥；“升级”应当和状态正交，不该是一个状态；对外命名只用 Cohive，避免与智能体客户端协议（ACP）混淆。动手前最值得先做两件事：查清要对接的 GitLab 的版本与授权档位；花半天自托管试用一次 Multica。
 
 ## 一页结论：十一个组成部分里只有协作语义必须从零写
 
@@ -12,24 +14,24 @@
 |---|---|---|---|---|
 | 智能体间消息与收件箱 | **自建**：协作服务直接提供远程 MCP；本机小助手维持 WebSocket 长连接，配一张未确认消息表，断线重连后补发；会话内待办提示用两家工具的钩子注入 | 现有项目要么只能在本机用（claude-peers、Concord、Claude Code 跨会话消息），要么没有成员模型（MCP Agent Mail）；Multica 不对外提供 MCP | 自有 | 一 |
 | 代码占用 | **自建建议性租约**：带过期时间，分独占与共享，冲突立即报告，可选提交前钩子拦截，占用原因填问题单号 | 设计直接借鉴 MCP Agent Mail 和 Concord，代码量很小；跨机器、跨人的版本没人做过 | 自有 | 一末（原方案为二） |
-| 问题单与任务 | **自建 Postgres 薄状态机作为真源**；GitLab/GitHub 议题只做镜像，用官方 Go 客户端写入；公司内部可选接 Multica 适配器 | 问题单跨仓库、跨人，本身就是产品；通用项目管理系统意味着多部署一套系统，而且多为 AGPL；免费版 GitLab 无法表达互斥状态 | 自有；Multica License（仅内部可选） | 一 |
+| 问题单与任务 | **自建 Postgres 薄状态机作为真源**；GitLab/GitHub 议题只做镜像，用官方 Go 客户端写入；组织内部自用时可选接 Multica 适配器 | 问题单跨仓库、跨人，本身就是产品；通用项目管理系统意味着多部署一套系统，而且多为 AGPL；免费版 GitLab 无法表达互斥状态 | 自有；Multica License（仅内部可选） | 一 |
 | 归属与接口契约 | 服务登记文件采用 Backstage `catalog-info.yaml` 的子集，**不部署 Backstage**；用 `oasdiff`、`buf breaking` 检测破坏性变更 | 事实标准格式；两个检测工具都用 Go 写，可以编进同一个可执行文件 | Apache-2.0 | 一（归属）／二（广播） |
 | 记忆与共享知识 | 团队约定写成 git 里的 Markdown 决策记录，经合并请求由人审批后合入；指令文件里只放索引，内容通过 MCP 只读查询；graphify 作为可选证据；**不引入任何记忆系统** | 主流记忆系统都是 Python 加大模型抽取，团队功能都在付费墙后面；人工审批能封堵“借数据下指令”这条路 | graphify 为 Apache-2.0 | 三（第一阶段只做归属表） |
 | 编排与持久化执行 | 第一阶段用 river 加自写状态机；第三阶段的自动执行链路用 **DBOS Go**；不用 Temporal，也不用任何智能体编排框架 | 两者都是库形态，能编进同一个可执行文件，只依赖已有的 Postgres | river 为 MPL-2.0，DBOS Go 为 MIT | 一／三 |
 | 智能体接入 | 第一阶段：远程 MCP + 指令文件 + 两家工具的钩子；第三阶段：通过 **ACP** 驱动智能体（coder/acp-go-sdk 拉起 claude-agent-acp、codex-acp），降级路径为 `claude --bare -p` 和 `codex exec --json` | ACP 注册表已收录 40 多个智能体，自带标准的权限请求，可以直接映射成人工审批 | Apache-2.0 | 一／三 |
-| 执行隔离 | 本机：工作树加工具自带沙箱；服务器：复用公司 GitLab Runner；可选 E2B 自托管、Kubernetes agent-sandbox、OpenHands Agent Canvas 作为执行后端 | 起步零新增依赖，后端可以插拔替换 | Apache-2.0／MIT | 三 |
+| 执行隔离 | 本机：工作树加工具自带沙箱；服务器：复用团队已有的 GitLab Runner；可选 E2B 自托管、Kubernetes agent-sandbox、OpenHands Agent Canvas 作为执行后端 | 起步零新增依赖，后端可以插拔替换 | Apache-2.0／MIT | 三 |
 | 可观测性 | Postgres 里存业务事件和“会话 ↔ 问题单”关联表；可选实现一个精简的 OpenTelemetry 日志接收接口；后期加团队级 OTel Collector 做脱敏，Grafana、Langfuse 只作外接 | 两家智能体的原生遥测以指标和日志为主，大模型专用观测平台接不顺，而且大多依赖 ClickHouse | Collector 为 Apache-2.0 | 一（关联表）／二 |
 | 审计 | Postgres 追加写表，按工作空间做哈希链，应用账号只授予插入和查询权限；写入前用 gitleaks 规则扫描密钥 | Go 生态没有成熟的审计库，自己写代码量很小 | gitleaks 为 MIT | 一 |
-| 看板 | 维持 7.1 节：自建 React + Vite；公司内部如果试用 Multica 满意，可以先借用它的界面 | Multica 前端是 Next.js 16，并受品牌条款约束 | 自有 | 一 |
+| 看板 | 维持 7.1 节：自建 React + Vite；组织内部自用时如果试用 Multica 满意，可以先借用它的界面 | Multica 前端是 Next.js 16，并受品牌条款约束 | 自有 | 一 |
 
 **“基于 / 叠加 / 自建”路线结论**
 
 | 目标 | 基于 Multica 派生改代码 | 在 Multica / Agent Canvas 之上叠加 | 独立自建 |
 |---|---|---|---|
-| 公司内部（GitLab 私有化） | **不推荐**：上游仍是 0.x，迁移文件已编到 369 号以上，许可证 9 个月改了 6 次，派生后合并上游的成本极高 | **可行，以试用结果为前提**：Cohive 自建协作语义核心，问题单状态的真源仍在 Cohive；Multica 只当看板和第三阶段后台执行的可选适配器 | 同样可行，也是叠加方案的底座 |
+| 组织内部自用（自建 GitLab） | **不推荐**：上游仍是 0.x，迁移文件已编到 369 号以上，许可证 9 个月改了 6 次，派生后合并上游的成本极高 | **可行，以试用结果为前提**：Cohive 自建协作语义核心，问题单状态的真源仍在 Cohive；Multica 只当看板和第三阶段后台执行的可选适配器 | 同样可行，也是叠加方案的底座 |
 | Cohive 开源 | **否决**：派生物不能成为 OSI 认可的开源项目，下游运营者各自都要买商业许可 | 只作可选适配器：Multica 是问题单与看板后端之一，Agent Canvas 是执行后端之一 | **推荐** |
 
-两种目标落到同一个架构上：协作语义核心独立可用，问题单存储与执行后端都做成适配器接口（与方案“代码平台用适配器”同一思路），公司内部部署时再打开 Multica 适配器。
+两种目标落到同一个架构上：协作语义核心独立可用，问题单存储与执行后端都做成适配器接口（与方案“代码平台用适配器”同一思路），组织内部自用时再打开 Multica 适配器。
 
 ## Multica 补齐了底座，唯独缺 Cohive 第一阶段要的东西
 
@@ -85,9 +87,9 @@ OpenHands 已经转型为 Agent Canvas，自述是“面向编程智能体与自
 
 ## 许可证把候选项切成两张清单
 
-同一个组件，公司内部用和被开源的 Cohive 依赖，结论可能完全相反。下表把差异摊开，“需法务确认”一列标出不能只靠工程判断的条目。
+同一个组件，组织内部自用和被开源的 Cohive 依赖，结论可能完全相反。下表把差异摊开，“需法务确认”一列标出不能只靠工程判断的条目。
 
-| 组件 | 许可证 | 公司内部使用 | 开源 Cohive 依赖或随附 | 需法务确认 |
+| 组件 | 许可证 | 组织内部自用 | 开源 Cohive 依赖或随附 | 需法务确认 |
 |---|---|---|---|---|
 | Multica | Multica License（Apache-2.0 加附加条件） | 单一组织内部免费，包括多个工作空间 ([LICENSE](https://github.com/multica-ai/multica/blob/main/LICENSE)) | 不可派生；只能作为可分离的可选集成，并在文档中注明“基于 Multica” | **是**：“单一组织”是否包含关联公司、子公司；外包或合作方登录、经接口驱动实例是否算“托管服务”（官方常见问题称算，[源文案](https://github.com/multica-ai/multica/blob/main/apps/web/features/landing/i18n/en.ts)）；出品方可单方修改许可证，历史上已改 6 次 ([提交历史](https://github.com/multica-ai/multica/commits/main/LICENSE)) |
 | MCP Agent Mail | MIT 加针对 OpenAI/Anthropic 的附加条款 | 大概率允许 | 不依赖，只借设计 | **是**：附加条款对“使用 Claude Code、Codex 的普通公司”是否适用 |
@@ -99,7 +101,7 @@ OpenHands 已经转型为 Agent Canvas，自述是“面向编程智能体与自
 | Restate／Inngest | BSL 1.1／SSPL | 可以 | 不适合作必需依赖 | 是（如果坚持要用） |
 | Plane、Vikunja、Grafana、Daytona、coder | AGPL-3.0 | 作为独立服务通过网络调用没有问题 | 不嵌入、不修改、不随附 | 是（如果要打进同一镜像） |
 | Phoenix | Elastic License 2.0 | 内部可以 | 不可作为依赖 | 否 |
-| GitNexus | PolyForm Noncommercial | **公司商用不允许** | 不可 | 否，结论明确 |
+| GitNexus | PolyForm Noncommercial | **商用不允许** | 不可 | 否，结论明确 |
 | Serena | GPL-3.0（应用部分）([LICENSE](https://github.com/oraios/serena/blob/main/LICENSE)) | 本机独立进程可以 | 不可链接或打包 | 否 |
 | Task Master | MIT 加 Commons Clause ([LICENSE](https://github.com/eyaltoledano/claude-task-master/blob/main/LICENSE)) | 可以，但项目已近 6 个月无推送 | 排除 | 否 |
 | graphify、Backstage 格式、buf、oasdiff、E2B、agent-sandbox、sandbox-runtime、OTel Collector | Apache-2.0 | 可以 | 可以 | 否 |
@@ -124,21 +126,20 @@ OpenHands 已经转型为 Agent Canvas，自述是“面向编程智能体与自
 | 第 7 节代码平台行 | 先接 GitLab | 补充前置检查：版本是否 ≥ 19.5（官方 MCP 服务正式可用）、授权档位（免费版没有作用域标签、状态、自定义字段）；议题只做镜像 | [GitLab MCP 文档](https://docs.gitlab.com/user/model_context_protocol/mcp_server/)、[GitLab 标签文档](https://docs.gitlab.com/user/project/labels/) |
 | 第 7.2 节频道 | 研究预览、要求 claude.ai 登录 | 补充两条限制：只接受白名单插件或组织允许的插件；Team / Enterprise 组织需要 Owner 开启 | [Channels 文档](https://code.claude.com/docs/en/channels) |
 | 第 7.2 节不纳入清单 | 4 项 | 增加：派生 Multica、依赖 MCP Agent Mail、Temporal / Restate / Inngest、智能体编排框架、通用项目管理系统、记忆系统、OpenHands Enterprise、Daytona | 见上文各节 |
-| 第 8、10、11 节 | 未涉及审计与观测；第 11 节第 4、5 项待定 | 第 8 节补审计表（追加写加哈希链）和密钥扫描，补“若用 Multica 守护进程执行，必须放进专用用户或容器”；第 10 节的指标依赖“会话 ↔ 问题单”关联表，要在第一阶段建好；第 11 节第 4 项建议定为团队 API 密钥；第 5 项注意内部 PRD 名“ACP”与智能体客户端协议撞名，Cohive 第三阶段恰恰要用这个协议，建议对内对外都只用 Cohive 这个名字 | [Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)、[Multica Security model](https://github.com/multica-ai/multica/blob/main/apps/docs/content/docs/security-model.mdx) |
+| 第 8、10、11 节 | 未涉及审计与观测；第 11 节第 4、5 项待定 | 第 8 节补审计表（追加写加哈希链）和密钥扫描，补“若用 Multica 守护进程执行，必须放进专用用户或容器”；第 10 节的指标依赖“会话 ↔ 问题单”关联表，要在第一阶段建好；第 11 节第 4 项建议定为团队 API 密钥；第 5 项命名只用 Cohive，Cohive 第三阶段恰恰要用智能体客户端协议（ACP），避免混淆 | [Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)、[Multica Security model](https://github.com/multica-ai/multica/blob/main/apps/docs/content/docs/security-model.mdx) |
 
-## 需要作者拍板的九件事
+## 需要作者拍板的八件事
 
 | 决策点 | 选项 | 建议 |
 |---|---|---|
-| 1. 公司 GitLab 的版本与授权档位 | 免费版 / Premium / Ultimate；是否 ≥ 19.5；管理员是否愿意开放 MCP 访问和细粒度令牌 | 先实查。它决定镜像议题能否用原生状态、智能体能否直接读合并请求；无论结果如何，问题单真源都留在 Cohive |
+| 1. 要对接的 GitLab 的版本与授权档位 | 免费版 / Premium / Ultimate；是否 ≥ 19.5；管理员是否愿意开放 MCP 访问和细粒度令牌 | 先实查。它决定镜像议题能否用原生状态、智能体能否直接读合并请求；无论结果如何，问题单真源都留在 Cohive |
 | 2. 第一阶段开工前是否先花半天试用 Multica | 试 / 不试 | **试**。按官方 compose 自托管，设 `DO_NOT_TRACK=1`，守护进程放进专用用户或容器，在两个交互会话里装技能包，手工走一遍“发现 → 交接 → 修复 → 验证”。重点看三件事：命令行读写顺不顺手、指派后对方能否及时知道、自定义属性能否装下复现脚本和提交号 |
-| 3. 公司内部是否叠加 Multica | 用它的看板和后台执行 / 完全自建 | 取决于第 2 项的结果。若叠加，要接受三点：它的 Next.js 界面与 7.1 节的决定相反、界面品牌不可去除、许可证可能被单方收紧 |
+| 3. 组织内部自用时是否叠加 Multica | 用它的看板和后台执行 / 完全自建 | 取决于第 2 项的结果。若叠加，要接受三点：它的 Next.js 界面与 7.1 节的决定相反、界面品牌不可去除、许可证可能被单方收紧 |
 | 4. 自动执行用什么额度 | 团队 API 密钥 / 开发者个人订阅 | **团队 API 密钥**，每个执行节点或工作空间一把，可随时吊销；个人订阅用于无人值守执行，合规风险很高 |
 | 5. Cohive 是否开源、何时开源、用什么许可证 | MIT / Apache-2.0；先内部后开源 / 一开始就开源 | 建议从第一天就按开源标准选依赖（本报告的绿色清单），许可证倾向 Apache-2.0（带专利授权）。具体选哪个需要作者定 |
-| 6. 内部 ACP 需求与 Cohive 的关系及命名 | 同一产品 / 公司版基于 Cohive 定制 | 同一套核心代码加适配器；内部改名，避免与智能体客户端协议混淆 |
-| 7. 代码占用是否提前到第一阶段末 | 是 / 否 | 是，成本低、差异化强 |
-| 8. 第三阶段执行后端的优先顺序 | 本机执行器 / GitLab Runner / Agent Canvas / Multica 守护进程 | 本机执行器（ACP）加 GitLab Runner 优先；Agent Canvas 作为开源用户的可选后端，等它脱离 beta 后再评估 |
-| 9. 是否收集开发者的遥测 | 默认开 / 默认关 | `cohive init` 默认关，事先说明收集范围（事件里默认带 `user.email`）；第一阶段只靠钩子和工具调用做会话关联 |
+| 6. 代码占用是否提前到第一阶段末 | 是 / 否 | 是，成本低、差异化强 |
+| 7. 第三阶段执行后端的优先顺序 | 本机执行器 / GitLab Runner / Agent Canvas / Multica 守护进程 | 本机执行器（ACP）加 GitLab Runner 优先；Agent Canvas 作为开源用户的可选后端，等它脱离 beta 后再评估 |
+| 8. 是否收集开发者的遥测 | 默认开 / 默认关 | `cohive init` 默认关，事先说明收集范围（事件里默认带 `user.email`）；第一阶段只靠钩子和工具调用做会话关联 |
 
 ## 仍未核实、需要实测的事项
 
