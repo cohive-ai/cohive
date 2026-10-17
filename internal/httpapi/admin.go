@@ -83,7 +83,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 	}
 	adm("POST "+p+"/signups/{id}", decide(func(r *http.Request, ws store.Workspace, actor *store.Account, id int64, approve bool) error {
-		d, err := svc.DecideSignup(r.Context(), actor, ws.ID, id, approve)
+		d, err := svc.DecideSignup(r.Context(), core.WebActor(*actor), ws.ID, id, approve)
 		if err == nil {
 			announce(opts, func(ctx context.Context, a Announcer) error {
 				if d.Member != nil {
@@ -97,7 +97,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		return err
 	}))
 	adm("POST "+p+"/device-auths/{id}", decide(func(r *http.Request, ws store.Workspace, actor *store.Account, id int64, approve bool) error {
-		d, err := svc.DecideDeviceAuth(r.Context(), actor, ws.ID, id, approve)
+		d, err := svc.DecideDeviceAuth(r.Context(), core.WebActor(*actor), ws.ID, id, approve)
 		if err == nil {
 			announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceDeviceDecided(ctx, d) })
 		}
@@ -136,7 +136,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if !decode(w, r, &in) {
 			return
 		}
-		m, err := svc.AddMember(r.Context(), actor, ws.ID, in.Account, in.Role)
+		m, err := svc.AddMember(r.Context(), core.WebActor(*actor), ws.ID, in.Account, in.Role)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -156,7 +156,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			return
 		}
 		if in.Role != "" {
-			if err := svc.SetRole(r.Context(), actor, ws.ID, id, in.Role); err != nil {
+			if err := svc.SetRole(r.Context(), core.WebActor(*actor), ws.ID, id, in.Role); err != nil {
 				writeError(w, err)
 				return
 			}
@@ -203,7 +203,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			for _, sv := range in.Services {
 				plan.Services = append(plan.Services, core.PlanService{Name: sv.Name, ToMemberID: sv.ToMemberID})
 			}
-			if err := svc.ApplyHandover(r.Context(), actor, ws.ID, id, plan, remove); err != nil {
+			if err := svc.ApplyHandover(r.Context(), core.WebActor(*actor), ws.ID, id, plan, remove); err != nil {
 				writeError(w, err)
 				return
 			}
@@ -230,7 +230,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if !ok {
 			return
 		}
-		if err := svc.RevokeDevice(r.Context(), *actor, ws.ID, id); err != nil {
+		if err := svc.RevokeDevice(r.Context(), core.WebActor(*actor), ws.ID, id); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -260,7 +260,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if !decode(w, r, &in) {
 			return
 		}
-		inv, err := svc.CreateInvite(r.Context(), actor, ws.ID, core.InviteSpec{Kind: in.Kind, Admin: in.Role == store.RoleAdmin,
+		inv, err := svc.CreateInvite(r.Context(), core.WebActor(*actor), ws.ID, core.InviteSpec{Kind: in.Kind, Admin: in.Role == store.RoleAdmin,
 			MaxUses: in.MaxUses, TTL: time.Duration(in.TTLHours) * time.Hour})
 		if err != nil {
 			writeError(w, err)
@@ -273,7 +273,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if !ok {
 			return
 		}
-		if err := svc.RevokeInvite(r.Context(), actor, ws.ID, id); err != nil {
+		if err := svc.RevokeInvite(r.Context(), core.WebActor(*actor), ws.ID, id); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -299,7 +299,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if !decode(w, r, &in) {
 			return
 		}
-		if err := svc.UpdateWorkspace(r.Context(), actor, ws.ID, core.WorkspaceSettings{PublicURL: in.PublicURL,
+		if err := svc.UpdateWorkspace(r.Context(), core.WebActor(*actor), ws.ID, core.WorkspaceSettings{PublicURL: in.PublicURL,
 			TelegramChat: in.TelegramChat, ShowTitle: in.ShowTitle, ShowBrief: in.ShowBrief}); err != nil {
 			writeError(w, err)
 			return

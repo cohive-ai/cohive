@@ -137,7 +137,16 @@ func (s *Service) AuthorizeDevice(ctx context.Context, acc store.Account, nonce 
 			}
 		}
 		out = a
-		return store.UpdateDeviceAuth(ctx, tx, a)
+		if err := store.UpdateDeviceAuth(ctx, tx, a); err != nil {
+			return err
+		}
+		if a.Status != store.AuthApproved {
+			return nil
+		}
+		// 首台设备由本人授权即生效：也是一次凭据的发放，记下来
+		return record(ctx, tx, WebActor(fresh), store.AdminEvent{Action: ActDeviceSelfApprove, TargetKind: "device_auth",
+			TargetID: idp(a.ID), TargetName: a.DeviceName,
+			Detail: map[string]any{"owner": fresh.Name, "device_name": a.DeviceName, "tools": a.Tools}})
 	})
 	return out, err
 }
@@ -163,7 +172,8 @@ type DeviceDecision struct {
 // DecideDeviceAuth 由管理员批准或拒绝非首台设备。批准人资格在批准这一刻按在册关系重算：
 // wsID 非 0（工作空间管理页、本群按钮）时要求申请人在该工作空间在册且操作者能管理它；
 // 为 0（服务器管理页）时要求操作者管得到此人。
-func (s *Service) DecideDeviceAuth(ctx context.Context, actor *store.Account, wsID, id int64, approve bool) (DeviceDecision, error) {
+func (s *Service) DecideDeviceAuth(ctx context.Context, act Actor, wsID, id int64, approve bool) (DeviceDecision, error) {
+	actor := act.Account
 	var d DeviceDecision
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		a, err := store.GetDeviceAuth(ctx, tx, id, true)
@@ -198,6 +208,18 @@ func (s *Service) DecideDeviceAuth(ctx context.Context, actor *store.Account, ws
 			a.Status = store.AuthDenied
 		}
 		if err := store.UpdateDeviceAuth(ctx, tx, a); err != nil {
+			return err
+		}
+		detail := map[string]any{"owner": applicant.Name, "device_name": a.DeviceName, "tools": a.Tools}
+		action := ActDeviceApprove
+		if a.Status == store.AuthDenied {
+			action = ActDeviceDeny
+			if approve {
+				detail["requested"], detail["reason"] = "approve", "applicant_disabled"
+			}
+		}
+		if err := record(ctx, tx, act, store.AdminEvent{WorkspaceID: wsp(wsID), Action: action, TargetKind: "device_auth",
+			TargetID: idp(a.ID), TargetName: a.DeviceName, Detail: detail}); err != nil {
 			return err
 		}
 		d.Auth = a
@@ -390,7 +412,11 @@ func (s *Service) IssueWorkspaceTokens(ctx context.Context, dev store.Device, wo
 
 // RevokeDevice 吊销设备及其全部令牌：本人可吊销自己的；管理员可吊销他管得到的人的
 // （wsID 非 0 时要求设备主人是该工作空间在册成员）。看不到的设备一律报不存在。
-func (s *Service) RevokeDevice(ctx context.Context, actor store.Account, wsID, deviceID int64) error {
+func (s *Service) RevokeDevice(ctx context.Context, act Actor, wsID, deviceID int64) error {
+	if act.Account == nil {
+		return errors.New("吊销设备需要操作人")
+	}
+	actor := *act.Account
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		d, err := store.GetDevice(ctx, tx, deviceID)
 		if err != nil {
@@ -415,7 +441,12 @@ func (s *Service) RevokeDevice(ctx context.Context, actor store.Account, wsID, d
 		if err := store.LockActiveDevice(ctx, tx, deviceID); err != nil {
 			return err
 		}
-		return store.RevokeDeviceByID(ctx, tx, deviceID)
+		if err := store.RevokeDeviceByID(ctx, tx, deviceID); err != nil {
+			return err
+		}
+		self := d.AccountID == actor.ID
+		return record(ctx, tx, act, store.AdminEvent{WorkspaceID: wsp(wsID), Action: ActDeviceRevoke, TargetKind: "device",
+			TargetID: idp(d.ID), TargetName: d.Name, Detail: map[string]any{"owner": d.AccountName, "device_name": d.Name, "self": self}})
 	})
 }
 

@@ -18,7 +18,7 @@ func TestAcceptPersonalInvite(t *testing.T) {
 	p := newPeople(t)
 	svc := p.e.svc
 	stranger, _ := store.CreateAccount(ctx, svc.Pool, "zoe", "Zoe")
-	inv, err := svc.CreateInvite(ctx, &p.payAdmin, p.pay, core.InviteSpec{Kind: store.InvitePersonal, Admin: true})
+	inv, err := svc.CreateInvite(ctx, core.WebActor(p.payAdmin), p.pay, core.InviteSpec{Kind: store.InvitePersonal, Admin: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestAcceptTeamInviteCreatesJoinRequest(t *testing.T) {
 	ctx := context.Background()
 	p := newPeople(t)
 	svc := p.e.svc
-	inv, err := svc.CreateInvite(ctx, &p.opsAdmin, p.ops, core.InviteSpec{Kind: store.InviteTeam, MaxUses: 5})
+	inv, err := svc.CreateInvite(ctx, core.WebActor(p.opsAdmin), p.ops, core.InviteSpec{Kind: store.InviteTeam, MaxUses: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,14 +74,14 @@ func TestAcceptTeamInviteCreatesJoinRequest(t *testing.T) {
 		t.Fatalf("待审列表应标出已有账号：%+v %v", list, err)
 	}
 	// 别的工作空间的管理员不能批
-	if _, err := svc.DecideSignup(ctx, &p.payAdmin, p.ops, res.Signup.ID, true); !errors.Is(err, core.ErrNotAdmin) {
+	if _, err := svc.DecideSignup(ctx, core.WebActor(p.payAdmin), p.ops, res.Signup.ID, true); !errors.Is(err, core.ErrNotAdmin) {
 		t.Fatalf("申请人自己（pay 的管理员）不能批 ops 的申请：%v", err)
 	}
 	// 在 pay 的语境下批 ops 的申请：申请不属于 pay，报不存在
-	if _, err := svc.DecideSignup(ctx, &p.payAdmin, p.pay, res.Signup.ID, true); !errors.Is(err, store.ErrNotFound) {
+	if _, err := svc.DecideSignup(ctx, core.WebActor(p.payAdmin), p.pay, res.Signup.ID, true); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("申请不属于 pay：%v", err)
 	}
-	d, err := svc.DecideSignup(ctx, &p.opsAdmin, p.ops, res.Signup.ID, true)
+	d, err := svc.DecideSignup(ctx, core.WebActor(p.opsAdmin), p.ops, res.Signup.ID, true)
 	if err != nil || d.Member == nil || d.Account == nil || d.Account.ID != p.payAdmin.ID {
 		t.Fatalf("批准加入申请：%+v %v", d, err)
 	}
@@ -100,19 +100,19 @@ func TestDisabledAccountCannotJoin(t *testing.T) {
 	p := newPeople(t)
 	svc := p.e.svc
 	zoe, _ := store.CreateAccount(ctx, svc.Pool, "zoe", "")
-	team, _ := svc.CreateInvite(ctx, &p.opsAdmin, p.ops, core.InviteSpec{Kind: store.InviteTeam})
+	team, _ := svc.CreateInvite(ctx, core.WebActor(p.opsAdmin), p.ops, core.InviteSpec{Kind: store.InviteTeam})
 	res, err := svc.AcceptInvite(ctx, zoe, team.Code)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.DisableAccount(ctx, &p.root, zoe.ID); err != nil {
+	if err := svc.DisableAccount(ctx, core.WebActor(p.root), zoe.ID); err != nil {
 		t.Fatal(err)
 	}
 	var ie *core.InputError
-	if _, err := svc.DecideSignup(ctx, &p.opsAdmin, p.ops, res.Signup.ID, true); !errors.As(err, &ie) {
+	if _, err := svc.DecideSignup(ctx, core.WebActor(p.opsAdmin), p.ops, res.Signup.ID, true); !errors.As(err, &ie) {
 		t.Fatalf("停用的账号不能被批准加入：%v", err)
 	}
-	personal, _ := svc.CreateInvite(ctx, &p.opsAdmin, p.ops, core.InviteSpec{Kind: store.InvitePersonal})
+	personal, _ := svc.CreateInvite(ctx, core.WebActor(p.opsAdmin), p.ops, core.InviteSpec{Kind: store.InvitePersonal})
 	if _, err := svc.AcceptInvite(ctx, zoe, personal.Code); !errors.Is(err, store.ErrAccountDisabled) {
 		t.Fatalf("停用的账号不能接受邀请：%v", err)
 	}
@@ -123,8 +123,8 @@ func TestGlobalLoginNames(t *testing.T) {
 	ctx := context.Background()
 	p := newPeople(t)
 	svc := p.e.svc
-	payTeam, _ := svc.CreateInvite(ctx, &p.payAdmin, p.pay, core.InviteSpec{Kind: store.InviteTeam})
-	opsTeam, _ := svc.CreateInvite(ctx, &p.opsAdmin, p.ops, core.InviteSpec{Kind: store.InviteTeam})
+	payTeam, _ := svc.CreateInvite(ctx, core.WebActor(p.payAdmin), p.pay, core.InviteSpec{Kind: store.InviteTeam})
+	opsTeam, _ := svc.CreateInvite(ctx, core.WebActor(p.opsAdmin), p.ops, core.InviteSpec{Kind: store.InviteTeam})
 	if _, err := svc.Register(ctx, core.RegisterInput{Code: payTeam.Code, Name: "ann", Password: goodPassword}); err == nil ||
 		!strings.Contains(err.Error(), "已被使用") {
 		t.Fatalf("与已有账号同名应拒绝：%v", err)
@@ -148,7 +148,7 @@ func TestConcurrentSameNameAcrossWorkspaces(t *testing.T) {
 		a  store.Account
 		ws int64
 	}{{p.payAdmin, p.pay}, {p.opsAdmin, p.ops}} {
-		inv, err := svc.CreateInvite(ctx, &x.a, x.ws, core.InviteSpec{Kind: store.InviteTeam})
+		inv, err := svc.CreateInvite(ctx, core.WebActor(x.a), x.ws, core.InviteSpec{Kind: store.InviteTeam})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -203,7 +203,7 @@ func TestLoginDisabledOnlyWithRightPassword(t *testing.T) {
 	if s, err := svc.Login(ctx, "ann", goodPassword); err != nil || s.Account.ID != p.ann.ID {
 		t.Fatalf("登录：%v", err)
 	}
-	if err := svc.DisableAccount(ctx, &p.root, p.ann.ID); err != nil {
+	if err := svc.DisableAccount(ctx, core.WebActor(p.root), p.ann.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Login(ctx, "ann", "wrong-password!"); !errors.Is(err, core.ErrBadLogin) {

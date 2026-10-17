@@ -52,7 +52,7 @@ func TestDeliveryCoversAllWorkspaces(t *testing.T) {
 		t.Fatalf("还不是 default 的成员：%v", err)
 	}
 	ws, _ := store.WorkspaceByName(ctx, svc.Pool, "default")
-	if _, err := svc.AddMember(ctx, &p.root, ws.ID, "ann", ""); err != nil {
+	if _, err := svc.AddMember(ctx, core.WebActor(p.root), ws.ID, "ann", ""); err != nil {
 		t.Fatal(err)
 	}
 	wt, err := svc.IssueWorkspaceTokens(ctx, dev, "default", []string{"codex"})
@@ -67,7 +67,7 @@ func TestFirstDeviceIsAccountWide(t *testing.T) {
 	p := newPeople(t)
 	svc := p.e.svc
 	d := pair(t, svc, p.ann, "codex")
-	if err := svc.RevokeDevice(ctx, p.ann, 0, d.DeviceID); err != nil {
+	if err := svc.RevokeDevice(ctx, core.WebActor(p.ann), 0, d.DeviceID); err != nil {
 		t.Fatal(err)
 	}
 	// 被移出 pay 也不影响：设备属于人
@@ -103,10 +103,10 @@ func TestRemoveThenReAdd(t *testing.T) {
 	d := pair(t, svc, p.ann, "codex")
 	dev, _, _ := svc.AuthenticateDevice(ctx, d.DeviceSecret)
 	// 服务器管理员不是 pay 的成员：转交要记操作人，提示先把自己加进去
-	if err := svc.ApplyHandover(ctx, &p.root, p.pay, p.annPay.ID, core.HandoverPlan{}, true); !isInput(err) {
+	if err := svc.ApplyHandover(ctx, core.WebActor(p.root), p.pay, p.annPay.ID, core.HandoverPlan{}, true); !isInput(err) {
 		t.Fatalf("非成员的服务器管理员不能在网页上移出：%v", err)
 	}
-	if err := svc.ApplyHandover(ctx, &p.payAdmin, p.pay, p.annPay.ID, core.HandoverPlan{}, true); err != nil {
+	if err := svc.ApplyHandover(ctx, core.WebActor(p.payAdmin), p.pay, p.annPay.ID, core.HandoverPlan{}, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.LookupToken(ctx, svc.Pool, tokenOf(d, "pay", "codex")); !errors.Is(err, store.ErrUnauthorized) {
@@ -123,7 +123,7 @@ func TestRemoveThenReAdd(t *testing.T) {
 	if _, err := svc.IssueWorkspaceTokens(ctx, dev, "pay", []string{"codex"}); !errors.Is(err, core.ErrNotMember) {
 		t.Fatalf("移出后设备密钥签不出 pay 的令牌：%v", err)
 	}
-	m, err := svc.AddMember(ctx, &p.payAdmin, p.pay, "ann", "")
+	m, err := svc.AddMember(ctx, core.WebActor(p.payAdmin), p.pay, "ann", "")
 	if err != nil || m.ID != p.annPay.ID {
 		t.Fatalf("加回应复用原成员资格：%+v %v", m, err)
 	}

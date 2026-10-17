@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
@@ -47,7 +51,9 @@ var allowedWhileMustChange = map[string]bool{
 // authMiddleware 有 Authorization 头时按令牌或设备密钥鉴权，否则认会话 Cookie。
 // 每类凭据能调哪些接口由 handle 注册时声明，在 allowed 里统一判定。
 func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
+	deps := auditDeps{svc: svc, limiter: &keyedLimiter{max: 1, window: time.Minute}}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(context.WithValue(r.Context(), auditKey{}, deps))
 		if h := r.Header.Get("Authorization"); h != "" {
 			plain, ok := strings.CutPrefix(h, "Bearer ")
 			if !ok || plain == "" {
@@ -175,12 +181,102 @@ func allowed(w http.ResponseWriter, c Caller, kinds allow) bool {
 
 // handle 注册一个需要身份的接口，并声明它接受的凭据种类。
 func handle(mux *http.ServeMux, pattern string, kinds allow, h http.HandlerFunc) {
+	register(pattern)
+	// 只认密码会话的接口就是管理接口（含授权设备、接受邀请）：已认证的身份被拒要记下来
+	audited := kinds&aSession == aPassword
 	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-		if !allowed(w, caller(r), kinds) {
+		c := caller(r)
+		if !allowed(w, c, kinds) {
+			if audited {
+				recordDenied(r, c, pattern, core.DenyNeedPassword)
+			}
 			return
 		}
-		h(w, r)
+		if !audited {
+			h(w, r)
+			return
+		}
+		sw := &statusWriter{ResponseWriter: w}
+		h(sw, r)
+		if sw.status == http.StatusForbidden {
+			recordDenied(r, c, pattern, core.DenyNoPermission)
+		}
 	})
+}
+
+// statusWriter 记下响应的状态码。
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	if w.status == 0 {
+		w.status = code
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+// auditDeps 由 authMiddleware 放进请求：记录被拒请求要用的业务层与限频。
+type auditDeps struct {
+	svc     *core.Service
+	limiter *keyedLimiter
+}
+
+type auditKey struct{}
+
+// recordDenied 记下已认证的身份调管理接口被拒。记录失败只写日志，不影响给调用方的响应；
+// 同一身份（账号 + 凭据种类）同一接口一分钟内只记一条，防止陷入循环的智能体把记录刷满。
+func recordDenied(r *http.Request, c Caller, pattern, reason string) {
+	deps, ok := r.Context().Value(auditKey{}).(auditDeps)
+	if !ok || c.Account.ID == 0 {
+		return
+	}
+	act, cred := core.WebActor(c.Account), core.CredPassword
+	switch {
+	case c.Token != nil:
+		act, cred = core.AgentActor(c.Account), core.CredToken
+	case c.Device != nil:
+		act, cred = core.MemberCLIActor(c.Account), core.CredDevice
+	case c.SessionVia == store.SessionViaDevice:
+		cred = core.CredDeviceWeb
+	}
+	if !deps.limiter.allow(strconv.FormatInt(c.Account.ID, 10) + "|" + cred + "|" + pattern) {
+		return
+	}
+	d := core.DeniedAttempt{Workspace: r.PathValue("ws"), Route: pattern, Reason: reason, Credential: cred}
+	if err := deps.svc.RecordDenied(r.Context(), act, d); err != nil {
+		log.Printf("记录被拒的管理请求失败：%v", err)
+	}
+}
+
+// handlePublic 注册不需要身份的接口（登录、注册、设备发起与轮询等）。
+func handlePublic(mux *http.ServeMux, pattern string, h http.HandlerFunc) {
+	register(pattern)
+	mux.HandleFunc(pattern, h)
+}
+
+var (
+	routesMu sync.Mutex
+	routes   = map[string]bool{}
+)
+
+func register(pattern string) {
+	routesMu.Lock()
+	routes[pattern] = true
+	routesMu.Unlock()
+}
+
+// Routes 列出已注册的全部接口（“方法 路径”），供测试检查每个写接口都归了类（管理操作是否留记录）。
+func Routes() []string {
+	routesMu.Lock()
+	defer routesMu.Unlock()
+	out := make([]string, 0, len(routes))
+	for p := range routes {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // sameOrigin 要求浏览器带的 Origin 与本站一致，防止别的网站借用户的 Cookie 发请求。

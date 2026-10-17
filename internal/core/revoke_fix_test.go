@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -18,7 +19,7 @@ func TestRevokedBeforeDelivery(t *testing.T) {
 	if err != nil || a.DeviceID == nil {
 		t.Fatalf("授权：%+v %v", a, err)
 	}
-	if err := e.svc.RevokeDevice(ctx, me, 0, *a.DeviceID); err != nil {
+	if err := e.svc.RevokeDevice(ctx, core.WebActor(me), 0, *a.DeviceID); err != nil {
 		t.Fatal(err)
 	}
 	p, err := e.svc.PollDeviceAuth(ctx, st.RequestID, st.PollSecret)

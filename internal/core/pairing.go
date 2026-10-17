@@ -143,10 +143,8 @@ type CreatedInvite struct {
 }
 
 // CreateInvite 由工作空间管理员（或服务器管理员）生成邀请。
-func (s *Service) CreateInvite(ctx context.Context, actor *store.Account, wsID int64, spec InviteSpec) (CreatedInvite, error) {
-	if err := canAdmin(ctx, s.Pool, actor, wsID); err != nil {
-		return CreatedInvite{}, err
-	}
+func (s *Service) CreateInvite(ctx context.Context, act Actor, wsID int64, spec InviteSpec) (CreatedInvite, error) {
+	actor := act.Account
 	inv := store.Invite{WorkspaceID: wsID, Kind: spec.Kind, Role: store.RoleMember, MaxUses: 1, CreatedBy: actorID(actor)}
 	switch spec.Kind {
 	case store.InvitePersonal:
@@ -179,7 +177,20 @@ func (s *Service) CreateInvite(ctx context.Context, actor *store.Account, wsID i
 	if err != nil {
 		return CreatedInvite{}, err
 	}
-	saved, err := store.CreateInvite(ctx, s.Pool, inv, hashSecret("invite", code))
+	var saved store.Invite
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := canAdmin(ctx, tx, actor, wsID); err != nil {
+			return err
+		}
+		var err error
+		if saved, err = store.CreateInvite(ctx, tx, inv, hashSecret("invite", code)); err != nil {
+			return err
+		}
+		// 邀请码绝不进记录
+		return record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(wsID), Action: ActInviteCreate,
+			TargetKind: "invite", TargetID: idp(saved.ID), Detail: map[string]any{"kind": saved.Kind, "role": saved.Role,
+				"max_uses": saved.MaxUses, "expires_at": saved.ExpiresAt.UTC().Format(time.RFC3339)}})
+	})
 	if err != nil {
 		return CreatedInvite{}, err
 	}
@@ -187,11 +198,18 @@ func (s *Service) CreateInvite(ctx context.Context, actor *store.Account, wsID i
 }
 
 // RevokeInvite 由管理员作废邀请。
-func (s *Service) RevokeInvite(ctx context.Context, actor *store.Account, wsID, id int64) error {
-	if err := canAdmin(ctx, s.Pool, actor, wsID); err != nil {
-		return err
-	}
-	return store.RevokeInvite(ctx, s.Pool, wsID, id)
+func (s *Service) RevokeInvite(ctx context.Context, act Actor, wsID, id int64) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := canAdmin(ctx, tx, act.Account, wsID); err != nil {
+			return err
+		}
+		kind, err := store.RevokeInvite(ctx, tx, wsID, id)
+		if err != nil {
+			return err
+		}
+		return record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(wsID), Action: ActInviteRevoke,
+			TargetKind: "invite", TargetID: idp(id), Detail: map[string]any{"kind": kind}})
+	})
 }
 
 // ListInvites 由管理员列出工作空间的邀请。
@@ -332,10 +350,23 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 			return err
 		}
 		acc, m, err := createAccount(ctx, tx, inv.WorkspaceID, name, display, hash, inv.Role, nil)
+		if err != nil {
+			return err
+		}
 		res.Account, res.Member = &acc, &m
-		return err
+		return recordInviteUse(ctx, tx, acc, m, inv, true)
 	})
 	return res, err
+}
+
+// recordInviteUse 记下本人凭个人邀请得到成员资格。
+func recordInviteUse(ctx context.Context, tx pgx.Tx, acc store.Account, m store.Member, inv store.Invite, created bool) error {
+	d := map[string]any{"invite_id": inv.ID, "role": m.Role}
+	if created {
+		d["account_created"] = true
+	}
+	return record(ctx, tx, WebActor(acc), store.AdminEvent{WorkspaceID: idp(m.WorkspaceID), Action: ActInviteUse,
+		TargetKind: "member", TargetID: idp(m.ID), TargetName: acc.Name, Detail: d})
 }
 
 // createAccount 新建有密码的账号并加入工作空间。
@@ -409,7 +440,10 @@ func (s *Service) AcceptInvite(ctx context.Context, acc store.Account, code stri
 			return err
 		}
 		res.Member = &m
-		return store.UseInvite(ctx, tx, inv.ID)
+		if err := store.UseInvite(ctx, tx, inv.ID); err != nil {
+			return err
+		}
+		return recordInviteUse(ctx, tx, a, m, inv, false)
 	})
 	return res, err
 }
@@ -424,7 +458,8 @@ type SignupDecision struct {
 }
 
 // DecideSignup 由管理员批准或拒绝注册与加入申请。wsID 非 0 时申请必须属于该工作空间（管理页、本群按钮）。
-func (s *Service) DecideSignup(ctx context.Context, actor *store.Account, wsID, id int64, approve bool) (SignupDecision, error) {
+func (s *Service) DecideSignup(ctx context.Context, act Actor, wsID, id int64, approve bool) (SignupDecision, error) {
+	actor := act.Account
 	var d SignupDecision
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		sg, err := store.GetSignupForUpdate(ctx, tx, id)
@@ -466,7 +501,14 @@ func (s *Service) DecideSignup(ctx context.Context, actor *store.Account, wsID, 
 		if err := store.DecideSignup(ctx, tx, sg.ID, sg.Status, accID, sg.MemberID, actorID(actor)); err != nil {
 			return err
 		}
+		sg.PasswordHash = "" // 已决的申请不再保留密码哈希
 		d.Signup = sg
+		action := map[[2]bool]string{{false, true}: ActSignupApprove, {false, false}: ActSignupReject,
+			{true, true}: ActJoinApprove, {true, false}: ActJoinReject}[[2]bool{sg.Existing, approve}]
+		if err := record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(sg.WorkspaceID), Action: action,
+			TargetKind: "signup", TargetID: idp(sg.ID), TargetName: sg.Name, Detail: map[string]any{"applicant": sg.Name}}); err != nil {
+			return err
+		}
 		d.Workspace, err = store.GetWorkspace(ctx, tx, sg.WorkspaceID)
 		return err
 	})

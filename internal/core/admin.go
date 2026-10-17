@@ -24,7 +24,8 @@ func stateErr(format string, args ...any) error {
 // ---- 角色与工作空间设置 ----
 
 // SetRole 由管理员修改成员角色；工作空间至少保留一名在册管理员。wsID 非 0 时成员必须属于该工作空间。
-func (s *Service) SetRole(ctx context.Context, actor *store.Account, wsID, memberID int64, role string) error {
+func (s *Service) SetRole(ctx context.Context, act Actor, wsID, memberID int64, role string) error {
+	actor := act.Account
 	if role != store.RoleAdmin && role != store.RoleMember {
 		return inputErr("角色应为管理员或成员")
 	}
@@ -44,6 +45,9 @@ func (s *Service) SetRole(ctx context.Context, actor *store.Account, wsID, membe
 		if err := canAdmin(ctx, tx, actor, m.WorkspaceID); err != nil {
 			return err
 		}
+		if m.Role == role {
+			return nil
+		}
 		if err := store.SetMemberRole(ctx, tx, m.ID, role); err != nil {
 			return err
 		}
@@ -54,7 +58,9 @@ func (s *Service) SetRole(ctx context.Context, actor *store.Account, wsID, membe
 		if n == 0 {
 			return inputErr("工作空间至少要保留一名管理员")
 		}
-		return nil
+		return record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(m.WorkspaceID), Action: ActMemberRole,
+			TargetKind: "member", TargetID: idp(m.ID), TargetName: m.Name,
+			Detail: map[string]any{"from": m.Role, "to": role}})
 	})
 }
 
@@ -67,7 +73,8 @@ type WorkspaceSettings struct {
 }
 
 // UpdateWorkspace 由管理员修改工作空间设置。群编号为空表示关闭群通知；一个群只能绑一个工作空间。
-func (s *Service) UpdateWorkspace(ctx context.Context, actor *store.Account, wsID int64, in WorkspaceSettings) error {
+func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in WorkspaceSettings) error {
+	actor := act.Account
 	pub := strings.TrimRight(strings.TrimSpace(in.PublicURL), "/")
 	if pub != "" && !strings.HasPrefix(pub, "https://") && !strings.HasPrefix(pub, "http://") {
 		return inputErr("公网地址应以 https:// 或 http:// 开头")
@@ -93,11 +100,32 @@ func (s *Service) UpdateWorkspace(ctx context.Context, actor *store.Account, wsI
 				return err
 			}
 		}
-		err := store.SetWorkspaceNotify(ctx, tx, wsID, cfg, pub)
+		old, err := store.LockWorkspace(ctx, tx, wsID)
+		if err != nil {
+			return err
+		}
+		err = store.SetWorkspaceNotify(ctx, tx, wsID, cfg, pub)
 		if isUniqueViolation(err) {
 			return stateErr("这个群已经绑定了别的工作空间：一个群只能对应一个工作空间")
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		changes := map[string]any{}
+		diff := func(k string, from, to any) {
+			if from != to {
+				changes[k] = map[string]any{"from": from, "to": to}
+			}
+		}
+		diff("public_url", old.PublicURL, pub)
+		diff("telegram_chat", old.Notify.Target, chat)
+		diff("show_title", old.Notify.ShowTitle, in.ShowTitle)
+		diff("show_brief", old.Notify.ShowBrief, in.ShowBrief)
+		if len(changes) == 0 {
+			return nil
+		}
+		return record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(wsID), Action: ActWorkspaceSettings,
+			TargetKind: "workspace", TargetID: idp(wsID), TargetName: old.Name, Detail: changes})
 	})
 }
 
@@ -171,7 +199,8 @@ func (s *Service) LookupAccount(ctx context.Context, actor *store.Account, wsID 
 }
 
 // AddMember 由管理员把已有账号直接加入工作空间；被移出过的复用原成员资格。
-func (s *Service) AddMember(ctx context.Context, actor *store.Account, wsID int64, accountName, role string) (store.Member, error) {
+func (s *Service) AddMember(ctx context.Context, act Actor, wsID int64, accountName, role string) (store.Member, error) {
+	actor := act.Account
 	if role == "" {
 		role = store.RoleMember
 	}
@@ -200,9 +229,58 @@ func (s *Service) AddMember(ctx context.Context, actor *store.Account, wsID int6
 		if errors.Is(err, store.ErrAlreadyMember) {
 			return stateErr("%s 已经是这个工作空间的成员", a.Name)
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		return recordMemberAdd(ctx, tx, act, out, a.Name, role, false)
 	})
 	return out, err
+}
+
+func recordMemberAdd(ctx context.Context, tx pgx.Tx, act Actor, m store.Member, name, role string, created bool) error {
+	d := map[string]any{"role": role}
+	if created {
+		d["account_created"] = true
+	}
+	return record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(m.WorkspaceID), Action: ActMemberAdd,
+		TargetKind: "member", TargetID: idp(m.ID), TargetName: name, Detail: d})
+}
+
+// AddMemberCLI 由服务器命令行把账号加入工作空间；账号不存在时新建（没有密码）。返回是否新建了账号。
+func (s *Service) AddMemberCLI(ctx context.Context, act Actor, wsID int64, name, display, role string) (store.Member, bool, error) {
+	if role != store.RoleAdmin && role != store.RoleMember {
+		return store.Member{}, false, inputErr("角色只能是 admin 或 member，收到 %q", role)
+	}
+	if err := checkMemberName(name); err != nil {
+		return store.Member{}, false, err
+	}
+	var out store.Member
+	created := false
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := requireServerAdmin(ctx, tx, act.Account); err != nil {
+			return err
+		}
+		a, err := store.AccountByName(ctx, tx, name)
+		if errors.Is(err, store.ErrNotFound) {
+			a, err = store.CreateAccount(ctx, tx, name, cleanDisplayName(display))
+			created = true
+		}
+		if err != nil {
+			return err
+		}
+		if a.Disabled() {
+			return inputErr("账号 %s 已停用，不能加入", name)
+		}
+		out, err = store.AddMembership(ctx, tx, a.ID, wsID, role, actorID(act.Account))
+		if errors.Is(err, store.ErrAlreadyMember) {
+			return stateErr("%s 已经是这个工作空间的成员", name)
+		}
+		if err != nil {
+			return err
+		}
+		return recordMemberAdd(ctx, tx, act, out, a.Name, role, created)
+	})
+	return out, created, err
 }
 
 // Handover 是成员名下需要转交的问题单与服务。
@@ -269,7 +347,8 @@ func (s *Service) GetHandover(ctx context.Context, actor *store.Account, wsID, m
 
 // ApplyHandover 由管理员把成员名下的问题单与服务转交给别人；remove 为真时随后把他移出工作空间
 // 并吊销他在该工作空间的全部令牌。全部在一个事务里：清单不完整或任何一张单的版本已变化时整体不做。
-func (s *Service) ApplyHandover(ctx context.Context, actor *store.Account, wsID, memberID int64, plan HandoverPlan, remove bool) error {
+func (s *Service) ApplyHandover(ctx context.Context, act Actor, wsID, memberID int64, plan HandoverPlan, remove bool) error {
+	actor := act.Account
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		if remove {
 			// 先锁本空间的管理员行再锁被移出的人，与并发降级、互相移出排队（顺序一致，不会互相等待）
@@ -360,10 +439,51 @@ func (s *Service) ApplyHandover(ctx context.Context, actor *store.Account, wsID,
 				return err
 			}
 		}
-		if !remove {
+		names := map[int64]string{}
+		nameOf := func(id int64) (string, error) {
+			if n, ok := names[id]; ok {
+				return n, nil
+			}
+			r, err := store.MemberByID(ctx, tx, id)
+			names[id] = r.Name
+			return r.Name, err
+		}
+		issues := make([]map[string]any, 0, len(plan.Issues))
+		for _, p := range plan.Issues {
+			to, err := nameOf(p.ToMemberID)
+			if err != nil {
+				return err
+			}
+			issues = append(issues, map[string]any{"id": p.IssueID, "as": p.As, "to": to})
+		}
+		services := make([]map[string]any, 0, len(plan.Services))
+		for _, p := range plan.Services {
+			to, err := nameOf(p.ToMemberID)
+			if err != nil {
+				return err
+			}
+			services = append(services, map[string]any{"name": p.Name, "to": to})
+		}
+		detail := map[string]any{"issues": issues, "services": services}
+		if actor == nil {
+			detail["as"] = op.Name
+		}
+		action := ActMemberHandover
+		if remove {
+			action = ActMemberRemove
+			n, err := store.CountActiveMemberTokens(ctx, tx, m.ID)
+			if err != nil {
+				return err
+			}
+			detail["tokens_revoked"] = n
+			if err := store.RemoveMembership(ctx, tx, m.ID, actorID(actor)); err != nil {
+				return err
+			}
+		} else if len(issues) == 0 && len(services) == 0 {
 			return nil
 		}
-		return store.RemoveMembership(ctx, tx, m.ID, actorID(actor))
+		return record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(wsID), Action: action, TargetKind: "member",
+			TargetID: idp(m.ID), TargetName: m.Name, Detail: detail})
 	})
 }
 
@@ -465,7 +585,8 @@ func reassign(ctx context.Context, tx pgx.Tx, op store.Member, is store.Issue, o
 
 // DisableAccount 由服务器管理员停用账号（作用于整个人）：吊销全部设备与令牌、注销全部网页登录、
 // 断开 Telegram、作废等待中的设备申请。不能停用自己，不能停用最后一名服务器管理员。
-func (s *Service) DisableAccount(ctx context.Context, actor *store.Account, accountID int64) error {
+func (s *Service) DisableAccount(ctx context.Context, act Actor, accountID int64) error {
+	actor := act.Account
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		if _, err := store.LockServerAdmins(ctx, tx); err != nil {
 			return err
@@ -495,6 +616,10 @@ func (s *Service) DisableAccount(ctx context.Context, actor *store.Account, acco
 		if err := store.SetAccountDisabled(ctx, tx, a.ID, true, actorID(actor)); err != nil {
 			return err
 		}
+		devices, err := store.CountActiveDevices(ctx, tx, a.ID)
+		if err != nil {
+			return err
+		}
 		if err := store.RevokeAccountDevices(ctx, tx, a.ID); err != nil {
 			return err
 		}
@@ -507,12 +632,17 @@ func (s *Service) DisableAccount(ctx context.Context, actor *store.Account, acco
 		if err := store.SetAccountTelegram(ctx, tx, a.ID, nil, ""); err != nil {
 			return err
 		}
-		return store.DenyPendingDeviceAuths(ctx, tx, a.ID)
+		if err := store.DenyPendingDeviceAuths(ctx, tx, a.ID); err != nil {
+			return err
+		}
+		return record(ctx, tx, act, store.AdminEvent{Action: ActAccountDisable, TargetKind: "account",
+			TargetID: idp(a.ID), TargetName: a.Name, Detail: map[string]any{"devices_revoked": devices}})
 	})
 }
 
 // EnableAccount 由服务器管理员启用账号。设备不恢复：要重新配对，并因“有过设备”需管理员批准。
-func (s *Service) EnableAccount(ctx context.Context, actor *store.Account, accountID int64) error {
+func (s *Service) EnableAccount(ctx context.Context, act Actor, accountID int64) error {
+	actor := act.Account
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		if err := requireServerAdmin(ctx, tx, actor); err != nil {
 			return err
@@ -524,12 +654,17 @@ func (s *Service) EnableAccount(ctx context.Context, actor *store.Account, accou
 		if !a.Disabled() {
 			return stateErr("账号 %s 没有停用", a.Name)
 		}
-		return store.SetAccountDisabled(ctx, tx, a.ID, false, nil)
+		if err := store.SetAccountDisabled(ctx, tx, a.ID, false, nil); err != nil {
+			return err
+		}
+		return record(ctx, tx, act, store.AdminEvent{Action: ActAccountEnable, TargetKind: "account",
+			TargetID: idp(a.ID), TargetName: a.Name})
 	})
 }
 
 // SetServerAdmin 由服务器管理员授予或撤销服务器管理员；至少保留一名未停用的服务器管理员。
-func (s *Service) SetServerAdmin(ctx context.Context, actor *store.Account, accountID int64, on bool) error {
+func (s *Service) SetServerAdmin(ctx context.Context, act Actor, accountID int64, on bool) error {
+	actor := act.Account
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		if _, err := store.LockServerAdmins(ctx, tx); err != nil {
 			return err
@@ -554,7 +689,11 @@ func (s *Service) SetServerAdmin(ctx context.Context, actor *store.Account, acco
 		if n == 0 {
 			return inputErr("服务器上至少要保留一名未停用的服务器管理员")
 		}
-		return nil
+		action := ActServerAdminRevoke
+		if on {
+			action = ActServerAdminGrant
+		}
+		return record(ctx, tx, act, store.AdminEvent{Action: action, TargetKind: "account", TargetID: idp(a.ID), TargetName: a.Name})
 	})
 }
 
@@ -582,7 +721,8 @@ func (s *Service) ServerWorkspaces(ctx context.Context, actor *store.Account) ([
 }
 
 // CreateWorkspace 由服务器管理员建工作空间，并指定首位管理员（登录名，空则为操作者自己）。
-func (s *Service) CreateWorkspace(ctx context.Context, actor *store.Account, name, adminName string) (store.Workspace, error) {
+func (s *Service) CreateWorkspace(ctx context.Context, act Actor, name, adminName string) (store.Workspace, error) {
+	actor := act.Account
 	name = strings.TrimSpace(name)
 	if err := checkMemberName(name); err != nil {
 		return store.Workspace{}, inputErr("工作空间名 %q 不合法：小写字母、数字、下划线、横线，1 到 32 个字符", name)
@@ -605,6 +745,8 @@ func (s *Service) CreateWorkspace(ctx context.Context, actor *store.Account, nam
 				return err
 			}
 		}
+		ev := store.AdminEvent{WorkspaceID: idp(ws.ID), WorkspaceName: ws.Name, Action: ActWorkspaceCreate,
+			TargetKind: "workspace", TargetID: idp(ws.ID), TargetName: ws.Name, Detail: map[string]any{}}
 		var admin store.Account
 		switch {
 		case strings.TrimSpace(adminName) != "":
@@ -616,19 +758,23 @@ func (s *Service) CreateWorkspace(ctx context.Context, actor *store.Account, nam
 		case actor != nil:
 			admin = *actor
 		default:
-			return nil
+			return record(ctx, tx, act, ev)
 		}
 		if admin.Disabled() {
 			return inputErr("账号 %s 已停用", admin.Name)
 		}
-		_, err = store.AddMembership(ctx, tx, admin.ID, ws.ID, store.RoleAdmin, actorID(actor))
-		return err
+		if _, err = store.AddMembership(ctx, tx, admin.ID, ws.ID, store.RoleAdmin, actorID(actor)); err != nil {
+			return err
+		}
+		ev.Detail["admin"] = admin.Name
+		return record(ctx, tx, act, ev)
 	})
 	return ws, err
 }
 
 // DeleteWorkspace 由服务器管理员删除没有任何问题单（含草稿）的工作空间。
-func (s *Service) DeleteWorkspace(ctx context.Context, actor *store.Account, name string) error {
+func (s *Service) DeleteWorkspace(ctx context.Context, act Actor, name string) error {
+	actor := act.Account
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		if err := requireServerAdmin(ctx, tx, actor); err != nil {
 			return err
@@ -647,7 +793,11 @@ func (s *Service) DeleteWorkspace(ctx context.Context, actor *store.Account, nam
 		if n > 0 {
 			return stateErr("工作空间 %s 里还有 %d 张问题单，不能删除", name, n)
 		}
-		return store.DeleteEmptyWorkspace(ctx, tx, ws.ID)
+		if err := store.DeleteEmptyWorkspace(ctx, tx, ws.ID); err != nil {
+			return err
+		}
+		return record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(ws.ID), WorkspaceName: ws.Name,
+			Action: ActWorkspaceDelete, TargetKind: "workspace", TargetID: idp(ws.ID), TargetName: ws.Name})
 	})
 }
 

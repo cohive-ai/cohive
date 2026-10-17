@@ -111,6 +111,13 @@ func CreateMember(ctx context.Context, q DBTX, wsID int64, name, display string)
 	return AddMembership(ctx, q, acc.ID, wsID, RoleMember, nil)
 }
 
+// CountActiveMemberTokens 返回成员资格未吊销的令牌数。
+func CountActiveMemberTokens(ctx context.Context, q DBTX, memberID int64) (int, error) {
+	var n int
+	err := q.QueryRow(ctx, `SELECT count(*) FROM tokens WHERE member_id = $1 AND revoked_at IS NULL`, memberID).Scan(&n)
+	return n, err
+}
+
 // RemoveMembership 把成员资格标为已移出，并吊销它的全部令牌。
 func RemoveMembership(ctx context.Context, q DBTX, memberID int64, by *int64) error {
 	if err := execOne(ctx, q, `UPDATE members SET status = 'removed', removed_at = now(), removed_by = $2

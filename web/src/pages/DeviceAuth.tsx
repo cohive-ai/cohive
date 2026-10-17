@@ -66,8 +66,14 @@ export function DeviceAuthPage() {
           </dd>
           <dt className="text-muted">编程工具</dt>
           <dd>{toolsText(d.tools)}</dd>
-          <dt className="text-muted">可用于</dt>
-          <dd>{d.workspaces && d.workspaces.length ? d.workspaces.join("、") : <span className="text-muted">暂无工作空间</span>}</dd>
+          <dt className="text-muted">批准后可用于</dt>
+          <dd>
+            {d.workspaces && d.workspaces.length ? (
+              d.workspaces.join("、")
+            ) : (
+              <span className="text-muted">{deviceScopeText(d.workspaces)}</span>
+            )}
+          </dd>
           <dt className="text-muted">发起时间</dt>
           <dd>
             {absoluteTime(d.created_at)}
@@ -88,7 +94,6 @@ export function DeviceAuthPage() {
                 : "你之前配对过设备（包括已吊销的），这台新设备授权后还需要你所在工作空间的管理员批准才能使用。"}
             </p>
             {me.data && <p className="text-sm font-medium">{authorizeAsText(me.data.account)}</p>}
-            <p className="text-sm font-medium">{deviceScopeText(d.workspaces)}</p>
             <ErrorText>{error}</ErrorText>
             <div className="flex flex-wrap gap-3">
               <button type="button" onClick={() => decide(true)} disabled={!!busy} className={btn.primary}>

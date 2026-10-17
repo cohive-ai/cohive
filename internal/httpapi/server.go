@@ -57,7 +57,7 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if !decode(w, r, &in) {
 			return
 		}
-		ws, err := svc.CreateWorkspace(r.Context(), actor, in.Name, in.Admin)
+		ws, err := svc.CreateWorkspace(r.Context(), core.WebActor(*actor), in.Name, in.Admin)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -65,7 +65,7 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		writeJSON(w, http.StatusCreated, map[string]string{"name": ws.Name})
 	})
 	srv("DELETE "+p+"/workspaces/{name}", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
-		if err := svc.DeleteWorkspace(r.Context(), actor, r.PathValue("name")); err != nil {
+		if err := svc.DeleteWorkspace(r.Context(), core.WebActor(*actor), r.PathValue("name")); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -101,7 +101,7 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			return
 		}
 		if in.ServerAdmin != nil {
-			if err := svc.SetServerAdmin(r.Context(), actor, t.ID, *in.ServerAdmin); err != nil {
+			if err := svc.SetServerAdmin(r.Context(), core.WebActor(*actor), t.ID, *in.ServerAdmin); err != nil {
 				writeError(w, err)
 				return
 			}
@@ -113,7 +113,7 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if !ok {
 			return
 		}
-		if err := svc.DisableAccount(r.Context(), actor, t.ID); err != nil {
+		if err := svc.DisableAccount(r.Context(), core.WebActor(*actor), t.ID); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -124,7 +124,7 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if !ok {
 			return
 		}
-		if err := svc.EnableAccount(r.Context(), actor, t.ID); err != nil {
+		if err := svc.EnableAccount(r.Context(), core.WebActor(*actor), t.ID); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -135,7 +135,7 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if !ok {
 			return
 		}
-		if err := svc.UnlinkTelegram(r.Context(), *actor, t.ID); err != nil {
+		if err := svc.UnlinkTelegram(r.Context(), core.WebActor(*actor), t.ID); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -170,7 +170,7 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeError(w, err)
 			return
 		}
-		d, err := svc.DecideDeviceAuth(r.Context(), actor, 0, id, in.Approve)
+		d, err := svc.DecideDeviceAuth(r.Context(), core.WebActor(*actor), 0, id, in.Approve)
 		if err != nil {
 			writeError(w, err)
 			return

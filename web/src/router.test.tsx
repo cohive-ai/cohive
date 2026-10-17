@@ -106,3 +106,36 @@ it("被要求改密码时先去改密码", async () => {
   const r = open("/w/pay/issues");
   await waitFor(() => expect(path(r)).toBe("/password"));
 });
+
+it("管理页与服务器管理页都有“记录”一栏", async () => {
+  stubApi({ ...baseMe, account: { ...baseMe.account, server_admin: true } });
+  const r1 = open("/w/ops/admin?tab=events");
+  await waitFor(() => expect(path(r1)).toBe("/w/ops/admin"));
+  expect(r1.state.location.search).toEqual({ tab: "events" });
+  expect(await screen.findByRole("link", { name: "记录" })).toBeTruthy();
+  cleanup();
+  const r2 = open("/server?tab=events");
+  await waitFor(() => expect(r2.state.location.search).toEqual({ tab: "events" }));
+  expect(await screen.findByRole("link", { name: "记录" })).toBeTruthy();
+});
+
+it("设备授权页的“可用于”只出现一次", async () => {
+  vi.stubGlobal("fetch", async (url: string) => {
+    const json = (status: number, body: unknown) =>
+      new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+    if (url === "/api/v1/me") return json(200, baseMe);
+    if (url === "/api/v1/device/auth/da_x")
+      return json(200, {
+        device_name: "mac",
+        tools: ["codex"],
+        created_at: new Date().toISOString(),
+        status: "pending",
+        first_device: true,
+        workspaces: ["pay", "ops"],
+      });
+    return json(404, { error: "没有这个接口" });
+  });
+  open("/device/da_x");
+  expect(await screen.findByText("pay、ops")).toBeTruthy();
+  expect(document.body.textContent!.match(/可用于/g)?.length).toBe(1);
+});

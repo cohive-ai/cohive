@@ -26,6 +26,7 @@ var adminRoutes = [][2]string{
 	{"POST", "/api/v1/w/default/admin/invites/1/revoke"},
 	{"GET", "/api/v1/w/default/admin/workspace"},
 	{"POST", "/api/v1/w/default/admin/workspace"},
+	{"GET", "/api/v1/w/default/admin/events"},
 	{"GET", "/api/v1/server/workspaces"},
 	{"POST", "/api/v1/server/workspaces"},
 	{"DELETE", "/api/v1/server/workspaces/x"},
@@ -36,6 +37,7 @@ var adminRoutes = [][2]string{
 	{"DELETE", "/api/v1/server/accounts/lee-claude/telegram"},
 	{"GET", "/api/v1/server/pending-devices"},
 	{"POST", "/api/v1/server/device-auths/1"},
+	{"GET", "/api/v1/server/events"},
 }
 
 // trustRoutes 是会改变本人归属或信任关系的接口：也只认密码登录的网页会话（设计稿第 5 节第 2 条）。

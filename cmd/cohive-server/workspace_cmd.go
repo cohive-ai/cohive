@@ -30,7 +30,7 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 		if err := required("name", name); err != nil {
 			return err
 		}
-		w, err := (&core.Service{Pool: pool}).CreateWorkspace(ctx, nil, name, adminName)
+		w, err := (&core.Service{Pool: pool}).CreateWorkspace(ctx, core.ServerCLI(), name, adminName)
 		if err != nil {
 			return err
 		}
@@ -46,7 +46,7 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 		if err := required("name", name); err != nil {
 			return err
 		}
-		if err := (&core.Service{Pool: pool}).DeleteWorkspace(ctx, nil, name); errors.Is(err, store.ErrNotFound) {
+		if err := (&core.Service{Pool: pool}).DeleteWorkspace(ctx, core.ServerCLI(), name); errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("工作空间 %q 不存在", name)
 		} else if err != nil {
 			return err
@@ -124,7 +124,7 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 		}
 	}
 	// 经业务层写入：一个群只能绑一个工作空间
-	if err := (&core.Service{Pool: pool}).UpdateWorkspace(ctx, nil, wsID, core.WorkspaceSettings{PublicURL: publicURL,
+	if err := (&core.Service{Pool: pool}).UpdateWorkspace(ctx, core.ServerCLI(), wsID, core.WorkspaceSettings{PublicURL: publicURL,
 		TelegramChat: chat, ShowTitle: showTitle, ShowBrief: showBrief}); err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 	if err != nil {
 		return err
 	}
-	if err := (&core.Service{Pool: pool}).SetRole(ctx, nil, ws, m.ID, role); err != nil {
+	if err := (&core.Service{Pool: pool}).SetRole(ctx, core.ServerCLI(), ws, m.ID, role); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "%s 的角色为 %s\n", name, roleLabel(role))
@@ -247,53 +247,45 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 		if !set["display"] && !set["telegram"] && !set["telegram-id"] {
 			return fmt.Errorf("没有要修改的项：用 --display、--telegram 或 --telegram-id")
 		}
-		a, err := store.AccountByName(ctx, pool, name)
-		if errors.Is(err, store.ErrNotFound) {
-			return fmt.Errorf("没有登录名为 %s 的账号", name)
-		}
-		if err != nil {
-			return err
-		}
+		var in core.AccountUpdate
+		var msgs []string
 		if set["display"] {
-			if err := store.SetAccountDisplayName(ctx, pool, a.ID, strings.TrimSpace(display)); err != nil {
-				return err
-			}
-			fmt.Fprintf(out, "%s 的显示名为 %s\n", name, display)
+			d := strings.TrimSpace(display)
+			in.DisplayName = &d
+			msgs = append(msgs, fmt.Sprintf("%s 的显示名为 %s", name, d))
 		}
 		if set["telegram"] {
 			tg = strings.TrimPrefix(strings.TrimSpace(tg), "@")
 			if tg != "" && !telegramUsername.MatchString(tg) {
 				return fmt.Errorf("Telegram 用户名 %q 不合法：5 到 32 位，字母开头，只含字母、数字和下划线", tg)
 			}
-			if err := store.SetAccountTelegramUsername(ctx, pool, a.ID, tg); err != nil {
-				return err
-			}
+			in.TelegramUsername = &tg
 			if tg == "" {
-				fmt.Fprintf(out, "已清除 %s 的 Telegram 用户名\n", name)
+				msgs = append(msgs, fmt.Sprintf("已清除 %s 的 Telegram 用户名", name))
 			} else {
-				fmt.Fprintf(out, "%s 的 Telegram 用户名为 %s\n", name, tg)
+				msgs = append(msgs, fmt.Sprintf("%s 的 Telegram 用户名为 %s", name, tg))
 			}
 		}
 		if set["telegram-id"] {
-			var userID *int64
 			if tgID = strings.TrimSpace(tgID); tgID != "" {
 				v, err := strconv.ParseInt(tgID, 10, 64)
 				if err != nil || v <= 0 {
 					return fmt.Errorf("Telegram 用户编号应为正整数，私聊机器人发 /whoami 可以查到")
 				}
-				userID = &v
-				if other, err := store.AccountByTelegramUserID(ctx, pool, v); err == nil && other.ID != a.ID {
-					return fmt.Errorf("这个 Telegram 账号已经连接了账号 %s：一个 Telegram 账号只能连接一个 Cohive 账号", other.Name)
-				}
-			}
-			if err := store.SetAccountTelegramUserID(ctx, pool, a.ID, userID); err != nil {
-				return err
-			}
-			if userID == nil {
-				fmt.Fprintf(out, "已解绑 %s 的 Telegram 用户编号\n", name)
+				in.TelegramUserID = &v
+				msgs = append(msgs, fmt.Sprintf("%s 已绑定 Telegram 用户编号 %d", name, v))
 			} else {
-				fmt.Fprintf(out, "%s 已绑定 Telegram 用户编号 %d\n", name, *userID)
+				in.ClearTelegramID = true
+				msgs = append(msgs, fmt.Sprintf("已解绑 %s 的 Telegram 用户编号", name))
 			}
+		}
+		if err := svc.UpdateAccount(ctx, core.ServerCLI(), name, in); errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("没有登录名为 %s 的账号", name)
+		} else if err != nil {
+			return err
+		}
+		for _, m := range msgs {
+			fmt.Fprintln(out, m)
 		}
 		return nil
 	case "disable":
@@ -301,7 +293,7 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 		if err != nil {
 			return err
 		}
-		if err := svc.DisableAccount(ctx, nil, a.ID); err != nil {
+		if err := svc.DisableAccount(ctx, core.ServerCLI(), a.ID); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "已停用 %s：全部设备与令牌已吊销，网页登录已注销，Telegram 已断开\n", a.Name)
@@ -311,7 +303,7 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 		if err != nil {
 			return err
 		}
-		if err := svc.EnableAccount(ctx, nil, a.ID); err != nil {
+		if err := svc.EnableAccount(ctx, core.ServerCLI(), a.ID); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "已启用 %s。设备不会恢复：他需要重新执行 cohive login，并由管理员批准\n", a.Name)
@@ -328,7 +320,7 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 		if on == off {
 			return fmt.Errorf("请用 --on 授予或 --off 撤销")
 		}
-		if err := svc.SetServerAdmin(ctx, nil, a.ID, on); err != nil {
+		if err := svc.SetServerAdmin(ctx, core.ServerCLI(), a.ID, on); err != nil {
 			return err
 		}
 		if on {

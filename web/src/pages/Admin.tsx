@@ -49,6 +49,7 @@ import {
 } from "../handover";
 import { canAdminWorkspace } from "../workspace";
 import { useWs } from "./WorkspaceShell";
+import { EventLog } from "./EventLog";
 
 export const adminTabs = [
   { id: "pending", label: "待审" },
@@ -56,6 +57,7 @@ export const adminTabs = [
   { id: "devices", label: "设备" },
   { id: "invites", label: "邀请" },
   { id: "workspace", label: "工作空间" },
+  { id: "events", label: "记录" },
 ] as const;
 
 export type AdminTab = (typeof adminTabs)[number]["id"];
@@ -106,6 +108,7 @@ export function AdminPage() {
       {tab === "devices" && <DevicesTab ws={ws} />}
       {tab === "invites" && <InvitesTab ws={ws} />}
       {tab === "workspace" && <WorkspaceTab ws={ws} />}
+      {tab === "events" && <EventLog scope={{ ws }} />}
     </div>
   );
 }

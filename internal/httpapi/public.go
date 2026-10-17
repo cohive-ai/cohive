@@ -50,7 +50,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	polls := &keyedLimiter{max: 120, window: time.Minute}
 	guard := newLoginGuard()
 
-	mux.HandleFunc("POST /api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
+	handlePublic(mux, "POST /api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		if !logins.allow(limitKey(clientIP(r))) {
 			tooMany(w)
 			return
@@ -97,7 +97,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			"must_change_password": pw.MustChange, "workspaces": workspaceRefs(ms)})
 	})
 
-	mux.HandleFunc("POST /api/v1/auth/logout", func(w http.ResponseWriter, r *http.Request) {
+	handlePublic(mux, "POST /api/v1/auth/logout", func(w http.ResponseWriter, r *http.Request) {
 		if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
 			if !sameOrigin(r) {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "跨站请求已拒绝"})
@@ -113,7 +113,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 
 	// cohive web 生成的一次性链接：建会话后跳到看板
-	mux.HandleFunc("GET /auth/once/{code}", func(w http.ResponseWriter, r *http.Request) {
+	handlePublic(mux, "GET /auth/once/{code}", func(w http.ResponseWriter, r *http.Request) {
 		sess, err := svc.UseWebLoginCode(r.Context(), r.PathValue("code"))
 		if errors.Is(err, core.ErrWebLoginCode) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -130,7 +130,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
-	mux.HandleFunc("GET /api/v1/invites/{code}", func(w http.ResponseWriter, r *http.Request) {
+	handlePublic(mux, "GET /api/v1/invites/{code}", func(w http.ResponseWriter, r *http.Request) {
 		if !lookups.allow(limitKey(clientIP(r))) {
 			tooMany(w)
 			return
@@ -158,7 +158,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		writeJSON(w, http.StatusOK, out)
 	})
 
-	mux.HandleFunc("POST /api/v1/register", func(w http.ResponseWriter, r *http.Request) {
+	handlePublic(mux, "POST /api/v1/register", func(w http.ResponseWriter, r *http.Request) {
 		if !registers.allow(limitKey(clientIP(r))) {
 			tooMany(w)
 			return
@@ -195,7 +195,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			"workspace": map[string]string{"name": res.Workspace.Name, "role": m.Role}})
 	})
 
-	mux.HandleFunc("POST /api/v1/device/start", func(w http.ResponseWriter, r *http.Request) {
+	handlePublic(mux, "POST /api/v1/device/start", func(w http.ResponseWriter, r *http.Request) {
 		if !starts.allow(limitKey(clientIP(r))) {
 			tooMany(w)
 			return
@@ -216,7 +216,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			"url": origin(r) + "/device/" + st.Nonce, "expires_in": int(st.ExpiresIn.Seconds())})
 	})
 
-	mux.HandleFunc("POST /api/v1/device/poll", func(w http.ResponseWriter, r *http.Request) {
+	handlePublic(mux, "POST /api/v1/device/poll", func(w http.ResponseWriter, r *http.Request) {
 		if !polls.allow(limitKey(clientIP(r))) {
 			tooMany(w)
 			return

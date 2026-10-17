@@ -31,7 +31,7 @@ func adminCmd(ctx context.Context, out io.Writer, args []string) error {
 		return err
 	}
 	defer pool.Close()
-	pw, err := (&core.Service{Pool: pool}).ResetPassword(ctx, name)
+	pw, err := (&core.Service{Pool: pool}).ResetPassword(ctx, core.ServerCLI(), name)
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("没有登录名为 %s 的账号", name)
 	}

@@ -200,7 +200,12 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "设备不存在"})
 			return
 		}
-		if err := svc.RevokeDevice(r.Context(), a, 0, id); err != nil {
+		// 用设备密钥调用的是成员本机命令行（cohive login --force 吊销本机旧设备），其余是网页
+		act := core.WebActor(a)
+		if caller(r).Device != nil {
+			act = core.MemberCLIActor(a)
+		}
+		if err := svc.RevokeDevice(r.Context(), act, 0, id); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -241,7 +246,7 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 	handle(mux, "DELETE /api/v1/me/links/telegram", aSession, func(w http.ResponseWriter, r *http.Request) {
 		a := caller(r).Account
-		if err := svc.UnlinkTelegram(r.Context(), a, a.ID); err != nil {
+		if err := svc.UnlinkTelegram(r.Context(), core.WebActor(a), a.ID); err != nil {
 			writeError(w, err)
 			return
 		}

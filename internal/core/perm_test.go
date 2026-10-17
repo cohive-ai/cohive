@@ -90,21 +90,21 @@ func TestDeviceApproverMustManageApplicantNow(t *testing.T) {
 	id := p.pendingDevice(t)
 
 	// pay 的管理员在 ops 的语境下不能批（他不是 ops 的管理员）
-	if _, err := svc.DecideDeviceAuth(ctx, &p.payAdmin, p.ops, id, true); !errors.Is(err, core.ErrNotAdmin) {
+	if _, err := svc.DecideDeviceAuth(ctx, core.WebActor(p.payAdmin), p.ops, id, true); !errors.Is(err, core.ErrNotAdmin) {
 		t.Fatalf("别的工作空间的管理员不能批：%v", err)
 	}
 	// ann 被移出 pay 后，pay 的管理员不再能批
 	if err := store.RemoveMembership(ctx, svc.Pool, p.annPay.ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.DecideDeviceAuth(ctx, &p.payAdmin, p.pay, id, true); !errors.Is(err, core.ErrNotManager) {
+	if _, err := svc.DecideDeviceAuth(ctx, core.WebActor(p.payAdmin), p.pay, id, true); !errors.Is(err, core.ErrNotManager) {
 		t.Fatalf("申请人已移出 pay，pay 的管理员不能批：%v", err)
 	}
-	if _, err := svc.DecideDeviceAuth(ctx, &p.payAdmin, 0, id, true); !errors.Is(err, core.ErrNotManager) {
+	if _, err := svc.DecideDeviceAuth(ctx, core.WebActor(p.payAdmin), 0, id, true); !errors.Is(err, core.ErrNotManager) {
 		t.Fatalf("不带工作空间语境时也按在册关系判定：%v", err)
 	}
 	// ops 的管理员还能批
-	if _, err := svc.DecideDeviceAuth(ctx, &p.opsAdmin, p.ops, id, true); err != nil {
+	if _, err := svc.DecideDeviceAuth(ctx, core.WebActor(p.opsAdmin), p.ops, id, true); err != nil {
 		t.Fatalf("申请人仍在 ops，ops 的管理员可以批：%v", err)
 	}
 }
@@ -121,11 +121,11 @@ func TestDeviceWithoutMembershipsOnlyServerAdmin(t *testing.T) {
 		}
 	}
 	for _, a := range []store.Account{p.payAdmin, p.opsAdmin} {
-		if _, err := svc.DecideDeviceAuth(ctx, &a, 0, id, true); !errors.Is(err, core.ErrNotManager) {
+		if _, err := svc.DecideDeviceAuth(ctx, core.WebActor(a), 0, id, true); !errors.Is(err, core.ErrNotManager) {
 			t.Fatalf("%s 不应能批：%v", a.Name, err)
 		}
 	}
-	if _, err := svc.DecideDeviceAuth(ctx, &p.root, 0, id, true); err != nil {
+	if _, err := svc.DecideDeviceAuth(ctx, core.WebActor(p.root), 0, id, true); err != nil {
 		t.Fatalf("服务器管理员可以批：%v", err)
 	}
 }
@@ -136,23 +136,23 @@ func TestCanAdminRules(t *testing.T) {
 	p := newPeople(t)
 	svc := p.e.svc
 	spec := core.InviteSpec{Kind: store.InvitePersonal}
-	if _, err := svc.CreateInvite(ctx, &p.root, p.pay, spec); err != nil {
+	if _, err := svc.CreateInvite(ctx, core.WebActor(p.root), p.pay, spec); err != nil {
 		t.Fatalf("服务器管理员可以给任一工作空间发邀请：%v", err)
 	}
-	if _, err := svc.CreateInvite(ctx, &p.payAdmin, p.pay, spec); err != nil {
+	if _, err := svc.CreateInvite(ctx, core.WebActor(p.payAdmin), p.pay, spec); err != nil {
 		t.Fatalf("工作空间管理员可以给本空间发邀请：%v", err)
 	}
-	if _, err := svc.CreateInvite(ctx, &p.payAdmin, p.ops, spec); !errors.Is(err, core.ErrNotAdmin) {
+	if _, err := svc.CreateInvite(ctx, core.WebActor(p.payAdmin), p.ops, spec); !errors.Is(err, core.ErrNotAdmin) {
 		t.Fatalf("不能给别的工作空间发邀请：%v", err)
 	}
-	if _, err := svc.CreateInvite(ctx, &p.ann, p.pay, spec); !errors.Is(err, core.ErrNotAdmin) {
+	if _, err := svc.CreateInvite(ctx, core.WebActor(p.ann), p.pay, spec); !errors.Is(err, core.ErrNotAdmin) {
 		t.Fatalf("普通成员不能发邀请：%v", err)
 	}
 	// 管理员被移出后，旧的账号快照不再有效
 	if err := store.RemoveMembership(ctx, svc.Pool, p.payAdminMember.ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.CreateInvite(ctx, &p.payAdmin, p.pay, spec); !errors.Is(err, core.ErrNotAdmin) {
+	if _, err := svc.CreateInvite(ctx, core.WebActor(p.payAdmin), p.pay, spec); !errors.Is(err, core.ErrNotAdmin) {
 		t.Fatalf("移出后不再是管理员：%v", err)
 	}
 	// 服务器管理员被停用后，什么都不能做
@@ -160,11 +160,11 @@ func TestCanAdminRules(t *testing.T) {
 	if err := store.SetServerAdmin(ctx, svc.Pool, other.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.DisableAccount(ctx, &p.root, other.ID); err != nil {
+	if err := svc.DisableAccount(ctx, core.WebActor(p.root), other.ID); err != nil {
 		t.Fatal(err)
 	}
 	other.ServerAdmin = true
-	if _, err := svc.CreateInvite(ctx, &other, p.pay, spec); !errors.Is(err, store.ErrAccountDisabled) {
+	if _, err := svc.CreateInvite(ctx, core.WebActor(other), p.pay, spec); !errors.Is(err, store.ErrAccountDisabled) {
 		t.Fatalf("已停用的服务器管理员不能做管理操作：%v", err)
 	}
 	if _, err := svc.ServerAccounts(ctx, &p.payAdmin, ""); !errors.Is(err, core.ErrNotServerAdmin) {
@@ -182,13 +182,13 @@ func TestRevokeDeviceScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	stranger, _ := store.CreateAccount(ctx, svc.Pool, "stranger", "")
-	if err := svc.RevokeDevice(ctx, stranger, 0, d.ID); !errors.Is(err, store.ErrNotFound) {
+	if err := svc.RevokeDevice(ctx, core.WebActor(stranger), 0, d.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("管不到的人不能吊销：%v", err)
 	}
-	if err := svc.RevokeDevice(ctx, p.payAdmin, p.ops, d.ID); !errors.Is(err, store.ErrNotFound) {
+	if err := svc.RevokeDevice(ctx, core.WebActor(p.payAdmin), p.ops, d.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("在 ops 语境下 pay 的管理员看不到：%v", err)
 	}
-	if err := svc.RevokeDevice(ctx, p.payAdmin, p.pay, d.ID); err != nil {
+	if err := svc.RevokeDevice(ctx, core.WebActor(p.payAdmin), p.pay, d.ID); err != nil {
 		t.Fatalf("pay 的管理员可以吊销 pay 成员的设备：%v", err)
 	}
 }
@@ -199,7 +199,7 @@ func TestConcurrentServerAdminRevoke(t *testing.T) {
 	p := newPeople(t)
 	svc := p.e.svc
 	b, _ := store.CreateAccount(ctx, svc.Pool, "root-b", "")
-	if err := svc.SetServerAdmin(ctx, &p.root, b.ID, true); err != nil {
+	if err := svc.SetServerAdmin(ctx, core.WebActor(p.root), b.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	b.ServerAdmin = true
@@ -215,7 +215,7 @@ func TestConcurrentServerAdminRevoke(t *testing.T) {
 		wg.Add(1)
 		go func(actor, target store.Account) {
 			defer wg.Done()
-			_ = svc.SetServerAdmin(ctx, &actor, target.ID, false)
+			_ = svc.SetServerAdmin(ctx, core.WebActor(actor), target.ID, false)
 		}(pair[0], pair[1])
 	}
 	time.Sleep(300 * time.Millisecond)
@@ -233,7 +233,7 @@ func TestConcurrentServerAdminRevoke(t *testing.T) {
 		}
 	}
 	var ie *core.InputError
-	if err := svc.SetServerAdmin(ctx, &last, last.ID, false); !errors.As(err, &ie) {
+	if err := svc.SetServerAdmin(ctx, core.WebActor(last), last.ID, false); !errors.As(err, &ie) {
 		t.Fatalf("最后一名服务器管理员不能撤销：%v", err)
 	}
 }
@@ -287,7 +287,7 @@ func TestDisableDeletesSessionsInDB(t *testing.T) {
 	if _, err := svc.CreateWebLoginCode(ctx, p.ann.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.DisableAccount(ctx, &p.root, p.ann.ID); err != nil {
+	if err := svc.DisableAccount(ctx, core.WebActor(p.root), p.ann.ID); err != nil {
 		t.Fatal(err)
 	}
 	var sessions, codes int

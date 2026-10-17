@@ -62,6 +62,7 @@ func Handler(svc *core.Service, opts Options) http.Handler {
 	workspaceRoutes(mux, svc)
 	adminRoutes(mux, svc, opts)
 	serverRoutes(mux, svc, opts)
+	eventRoutes(mux, svc)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "没有这个接口"})
 	})

@@ -49,10 +49,10 @@ func TestTelegramLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	other := acct(t, e, e.b)
-	if err := e.svc.UnlinkTelegram(ctx, other, e.a.AccountID); !errors.Is(err, core.ErrNotServerAdmin) {
+	if err := e.svc.UnlinkTelegram(ctx, core.WebActor(other), e.a.AccountID); !errors.Is(err, core.ErrNotServerAdmin) {
 		t.Fatalf("工作空间管理员不能解除别人的连接：%v", err)
 	}
-	if err := e.svc.UnlinkTelegram(ctx, acct(t, e, e.a), e.a.AccountID); err != nil {
+	if err := e.svc.UnlinkTelegram(ctx, core.WebActor(acct(t, e, e.a)), e.a.AccountID); err != nil {
 		t.Fatal(err)
 	}
 	if m, _ := store.MemberByID(ctx, e.svc.Pool, e.a.MemberID); m.TelegramUserID != nil || m.TelegramUsername != "" {

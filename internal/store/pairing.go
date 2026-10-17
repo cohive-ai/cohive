@@ -104,6 +104,13 @@ func RevokeDeviceByID(ctx context.Context, q DBTX, deviceID int64) error {
 	return err
 }
 
+// CountActiveDevices 返回账号未吊销的设备数。
+func CountActiveDevices(ctx context.Context, q DBTX, accountID int64) (int, error) {
+	var n int
+	err := q.QueryRow(ctx, `SELECT count(*) FROM devices WHERE account_id = $1 AND revoked_at IS NULL`, accountID).Scan(&n)
+	return n, err
+}
+
 // RevokeAccountDevices 吊销账号的全部设备与全部令牌（停用时）。
 func RevokeAccountDevices(ctx context.Context, q DBTX, accountID int64) error {
 	if _, err := q.Exec(ctx, `UPDATE devices SET revoked_at = now() WHERE account_id = $1 AND revoked_at IS NULL`, accountID); err != nil {
@@ -232,15 +239,10 @@ func ListInvites(ctx context.Context, q DBTX, wsID int64) ([]Invite, error) {
 }
 
 // RevokeInvite 作废工作空间里的邀请；不存在或已作废时返回 ErrNotFound。
-func RevokeInvite(ctx context.Context, q DBTX, wsID, id int64) error {
-	tag, err := q.Exec(ctx, `UPDATE invites SET revoked_at = now() WHERE id = $2 AND workspace_id = $1 AND revoked_at IS NULL`, wsID, id)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+func RevokeInvite(ctx context.Context, q DBTX, wsID, id int64) (kind string, err error) {
+	err = q.QueryRow(ctx, `UPDATE invites SET revoked_at = now() WHERE id = $2 AND workspace_id = $1 AND revoked_at IS NULL
+		RETURNING kind`, wsID, id).Scan(&kind)
+	return kind, notFound(err)
 }
 
 // ---- 注册申请 ----
@@ -349,8 +351,9 @@ func listSignups(ctx context.Context, q DBTX, sql string, arg any) ([]Signup, er
 
 // DecideSignup 写回审批结果；accountID 为获批后的账号（拒绝时为空，加入申请时保持原值）。
 func DecideSignup(ctx context.Context, q DBTX, id int64, status string, accountID, memberID, decidedBy *int64) error {
+	// 已决的申请清掉密码哈希：拒绝的没有用处，批准的已复制进账号表
 	_, err := q.Exec(ctx, `UPDATE signups SET status = $2, account_id = coalesce($3, account_id), member_id = $4,
-		decided_by = $5, decided_at = now() WHERE id = $1`, id, status, accountID, memberID, decidedBy)
+		decided_by = $5, decided_at = now(), password_hash = NULL WHERE id = $1`, id, status, accountID, memberID, decidedBy)
 	return err
 }
 

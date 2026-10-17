@@ -36,7 +36,7 @@ func adminOf(t *testing.T, e env) store.Account {
 
 func invite(t *testing.T, e env, admin store.Account, spec core.InviteSpec) string {
 	t.Helper()
-	inv, err := e.svc.CreateInvite(context.Background(), &admin, e.b.WorkspaceID, spec)
+	inv, err := e.svc.CreateInvite(context.Background(), core.WebActor(admin), e.b.WorkspaceID, spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,14 +105,14 @@ func TestTeamInviteNeedsApproval(t *testing.T) {
 		t.Fatalf("待审时登录应提示等待批准：%v", err)
 	}
 	plain := acct(t, e, e.a)
-	if _, err := e.svc.DecideSignup(ctx, &plain, 0, res.Signup.ID, true); !errors.Is(err, core.ErrNotAdmin) {
+	if _, err := e.svc.DecideSignup(ctx, core.WebActor(plain), 0, res.Signup.ID, true); !errors.Is(err, core.ErrNotAdmin) {
 		t.Fatalf("非管理员不能审批：%v", err)
 	}
-	d, err := e.svc.DecideSignup(ctx, &admin, e.b.WorkspaceID, res.Signup.ID, true)
+	d, err := e.svc.DecideSignup(ctx, core.WebActor(admin), e.b.WorkspaceID, res.Signup.ID, true)
 	if err != nil || d.Member == nil || d.Member.Name != "carol" || d.Decider != "lee-codex" {
 		t.Fatalf("批准后应建成员：%+v %v", d, err)
 	}
-	if _, err := e.svc.DecideSignup(ctx, &admin, 0, res.Signup.ID, false); !errors.Is(err, core.ErrDecided) {
+	if _, err := e.svc.DecideSignup(ctx, core.WebActor(admin), 0, res.Signup.ID, false); !errors.Is(err, core.ErrDecided) {
 		t.Fatalf("不能重复审批：%v", err)
 	}
 	if _, err := e.svc.Login(ctx, "carol", goodPassword); err != nil {
@@ -123,7 +123,7 @@ func TestTeamInviteNeedsApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.svc.DecideSignup(ctx, nil, 0, res.Signup.ID, false); err != nil {
+	if _, err := e.svc.DecideSignup(ctx, core.ServerCLI(), 0, res.Signup.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.svc.Login(ctx, "dave", goodPassword); !errors.Is(err, core.ErrBadLogin) {
@@ -139,21 +139,21 @@ func TestInviteRules(t *testing.T) {
 	e := newEnv(t)
 	admin := adminOf(t, e)
 	plain := acct(t, e, e.a)
-	if _, err := e.svc.CreateInvite(ctx, &plain, e.a.WorkspaceID, core.InviteSpec{Kind: store.InvitePersonal}); !errors.Is(err, core.ErrNotAdmin) {
+	if _, err := e.svc.CreateInvite(ctx, core.WebActor(plain), e.a.WorkspaceID, core.InviteSpec{Kind: store.InvitePersonal}); !errors.Is(err, core.ErrNotAdmin) {
 		t.Fatalf("非管理员不能发邀请：%v", err)
 	}
 	var ie *core.InputError
 	for _, spec := range []core.InviteSpec{{Kind: "x"}, {Kind: store.InviteTeam, Admin: true}, {Kind: store.InviteTeam, MaxUses: 1000},
 		{Kind: store.InvitePersonal, TTL: time.Minute}} {
-		if _, err := e.svc.CreateInvite(ctx, &admin, e.b.WorkspaceID, spec); !errors.As(err, &ie) {
+		if _, err := e.svc.CreateInvite(ctx, core.WebActor(admin), e.b.WorkspaceID, spec); !errors.As(err, &ie) {
 			t.Errorf("%+v 应拒绝：%v", spec, err)
 		}
 	}
-	inv, err := e.svc.CreateInvite(ctx, &admin, e.b.WorkspaceID, core.InviteSpec{Kind: store.InvitePersonal})
+	inv, err := e.svc.CreateInvite(ctx, core.WebActor(admin), e.b.WorkspaceID, core.InviteSpec{Kind: store.InvitePersonal})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.RevokeInvite(ctx, &admin, e.b.WorkspaceID, inv.Invite.ID); err != nil {
+	if err := e.svc.RevokeInvite(ctx, core.WebActor(admin), e.b.WorkspaceID, inv.Invite.ID); err != nil {
 		t.Fatal(err)
 	}
 	if info, _ := e.svc.LookupInvite(ctx, inv.Code, nil); info.Valid {
@@ -240,10 +240,10 @@ func TestDeviceAuthFirstFreeThenApproval(t *testing.T) {
 	if err != nil || len(pending) != 1 || pending[0].AccountName != "lee-claude" {
 		t.Fatalf("管理员应看到待审设备：%+v %v", pending, err)
 	}
-	if _, err := e.svc.DecideDeviceAuth(ctx, &me, e.a.WorkspaceID, a.ID, true); !errors.Is(err, core.ErrNotAdmin) {
+	if _, err := e.svc.DecideDeviceAuth(ctx, core.WebActor(me), e.a.WorkspaceID, a.ID, true); !errors.Is(err, core.ErrNotAdmin) {
 		t.Fatalf("成员不能自己批准：%v", err)
 	}
-	if _, err := e.svc.DecideDeviceAuth(ctx, &admin, e.b.WorkspaceID, a.ID, true); err != nil {
+	if _, err := e.svc.DecideDeviceAuth(ctx, core.WebActor(admin), e.b.WorkspaceID, a.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	p2, err := e.svc.PollDeviceAuth(ctx, st2.RequestID, st2.PollSecret)
@@ -257,10 +257,10 @@ func TestDeviceAuthFirstFreeThenApproval(t *testing.T) {
 	if err := store.SetMemberRole(ctx, e.svc.Pool, e.b.MemberID, store.RoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.RevokeDevice(ctx, other, 0, p.DeviceID); !errors.Is(err, store.ErrNotFound) {
+	if err := e.svc.RevokeDevice(ctx, core.WebActor(other), 0, p.DeviceID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("不能吊销别人的设备：%v", err)
 	}
-	if err := e.svc.RevokeDevice(ctx, me, 0, p.DeviceID); err != nil {
+	if err := e.svc.RevokeDevice(ctx, core.WebActor(me), 0, p.DeviceID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.LookupToken(ctx, e.svc.Pool, more.Tokens["codex"]); !errors.Is(err, store.ErrUnauthorized) {
@@ -343,7 +343,7 @@ func TestInitialAdminAndPasswords(t *testing.T) {
 		t.Fatalf("当前会话保留：%v", err)
 	}
 
-	newPw, err := e.svc.ResetPassword(ctx, "admin")
+	newPw, err := e.svc.ResetPassword(ctx, core.ServerCLI(), "admin")
 	if err != nil || len(newPw) != 20 {
 		t.Fatalf("重置密码：%v", err)
 	}

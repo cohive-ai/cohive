@@ -111,32 +111,32 @@ func TestRemoveWithHandover(t *testing.T) {
 	// 清单不完整
 	partial := h.fullPlan(h.bob.ID)
 	partial.Issues = partial.Issues[:1]
-	if err := svc.ApplyHandover(ctx, &p.payAdmin, p.pay, p.annPay.ID, partial, true); !errors.As(err, &he) || len(he.Handover.Issues) != 2 {
+	if err := svc.ApplyHandover(ctx, core.WebActor(p.payAdmin), p.pay, p.annPay.ID, partial, true); !errors.As(err, &he) || len(he.Handover.Issues) != 2 {
 		t.Fatalf("清单不完整应 409 并附最新清单：%v", err)
 	}
 	unchanged("清单不完整")
 	noSvc := h.fullPlan(h.bob.ID)
 	noSvc.Services = nil
-	if err := svc.ApplyHandover(ctx, &p.payAdmin, p.pay, p.annPay.ID, noSvc, true); !errors.As(err, &he) {
+	if err := svc.ApplyHandover(ctx, core.WebActor(p.payAdmin), p.pay, p.annPay.ID, noSvc, true); !errors.As(err, &he) {
 		t.Fatalf("服务没有转交应 409：%v", err)
 	}
 	// 版本已变化
 	stale := h.fullPlan(h.bob.ID)
 	stale.Issues[1].ExpectedVersion--
-	if err := svc.ApplyHandover(ctx, &p.payAdmin, p.pay, p.annPay.ID, stale, true); !errors.As(err, &he) {
+	if err := svc.ApplyHandover(ctx, core.WebActor(p.payAdmin), p.pay, p.annPay.ID, stale, true); !errors.As(err, &he) {
 		t.Fatalf("版本已变应 409：%v", err)
 	}
 	unchanged("版本已变")
 	// 接手人不合格：被移出的人自己、别的工作空间的人、已停用的人
 	for _, bad := range []int64{p.annPay.ID, p.opsMember.ID} {
-		if err := svc.ApplyHandover(ctx, &p.payAdmin, p.pay, p.annPay.ID, h.fullPlan(bad), true); !isInput(err) {
+		if err := svc.ApplyHandover(ctx, core.WebActor(p.payAdmin), p.pay, p.annPay.ID, h.fullPlan(bad), true); !isInput(err) {
 			t.Fatalf("接手人 %d 不合格应 400：%v", bad, err)
 		}
 	}
-	if err := svc.DisableAccount(ctx, &p.root, h.bob.AccountID); err != nil {
+	if err := svc.DisableAccount(ctx, core.WebActor(p.root), h.bob.AccountID); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.ApplyHandover(ctx, &p.payAdmin, p.pay, p.annPay.ID, h.fullPlan(h.bob.ID), true); !isInput(err) {
+	if err := svc.ApplyHandover(ctx, core.WebActor(p.payAdmin), p.pay, p.annPay.ID, h.fullPlan(h.bob.ID), true); !isInput(err) {
 		t.Fatalf("已停用的接手人应 400：%v", err)
 	}
 	unchanged("接手人不合格")
@@ -144,7 +144,7 @@ func TestRemoveWithHandover(t *testing.T) {
 	// 成功：全部转给 pay-admin
 	annTok := tokenFor(t, svc, p.annPay)
 	to := h.payAdminMember.ID
-	if err := svc.ApplyHandover(ctx, &p.payAdmin, p.pay, p.annPay.ID, h.fullPlan(to), true); err != nil {
+	if err := svc.ApplyHandover(ctx, core.WebActor(p.payAdmin), p.pay, p.annPay.ID, h.fullPlan(to), true); err != nil {
 		t.Fatal(err)
 	}
 	o, _ := store.GetIssue(ctx, svc.Pool, h.asOwner.ID)
@@ -198,14 +198,14 @@ func TestRemoveLastAdminOrSelf(t *testing.T) {
 	ctx := context.Background()
 	p := newPeople(t)
 	svc := p.e.svc
-	if err := svc.ApplyHandover(ctx, &p.payAdmin, p.pay, p.payAdminMember.ID, core.HandoverPlan{}, true); !isInput(err) {
+	if err := svc.ApplyHandover(ctx, core.WebActor(p.payAdmin), p.pay, p.payAdminMember.ID, core.HandoverPlan{}, true); !isInput(err) {
 		t.Fatalf("不能移出自己：%v", err)
 	}
 	// 服务器管理员作为普通成员加入 ops，再移出 ops 唯一的管理员
-	if _, err := svc.AddMember(ctx, &p.root, p.ops, "root", store.RoleMember); err != nil {
+	if _, err := svc.AddMember(ctx, core.WebActor(p.root), p.ops, "root", store.RoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.ApplyHandover(ctx, &p.root, p.ops, p.opsMember.ID, core.HandoverPlan{}, true); !isInput(err) {
+	if err := svc.ApplyHandover(ctx, core.WebActor(p.root), p.ops, p.opsMember.ID, core.HandoverPlan{}, true); !isInput(err) {
 		t.Fatalf("不能移出最后一名管理员：%v", err)
 	}
 	if m, _ := store.MemberByID(ctx, svc.Pool, p.opsMember.ID); m.Status != store.MemberActive {
@@ -237,22 +237,22 @@ func TestDisableAndEnable(t *testing.T) {
 	}
 	approved, _ := svc.StartDeviceAuth(ctx, []string{"codex"}, "a")
 	a2, _ := svc.AuthorizeDevice(ctx, p.ann, approved.Nonce, true)
-	if _, err := svc.DecideDeviceAuth(ctx, &p.payAdmin, p.pay, a2.ID, true); err != nil {
+	if _, err := svc.DecideDeviceAuth(ctx, core.WebActor(p.payAdmin), p.pay, a2.ID, true); err != nil {
 		t.Fatal(err)
 	}
 
 	// 工作空间管理员不能停用；不能停用自己；不能停用最后一名服务器管理员
-	if err := svc.DisableAccount(ctx, &p.payAdmin, p.ann.ID); !errors.Is(err, core.ErrNotServerAdmin) {
+	if err := svc.DisableAccount(ctx, core.WebActor(p.payAdmin), p.ann.ID); !errors.Is(err, core.ErrNotServerAdmin) {
 		t.Fatalf("工作空间管理员不能停用：%v", err)
 	}
-	if err := svc.DisableAccount(ctx, &p.root, p.root.ID); !isInput(err) {
+	if err := svc.DisableAccount(ctx, core.WebActor(p.root), p.root.ID); !isInput(err) {
 		t.Fatalf("不能停用自己：%v", err)
 	}
-	if err := svc.DisableAccount(ctx, nil, p.root.ID); !isInput(err) {
+	if err := svc.DisableAccount(ctx, core.ServerCLI(), p.root.ID); !isInput(err) {
 		t.Fatalf("不能停用最后一名服务器管理员：%v", err)
 	}
 
-	if err := svc.DisableAccount(ctx, &p.root, p.ann.ID); err != nil {
+	if err := svc.DisableAccount(ctx, core.WebActor(p.root), p.ann.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Login(ctx, "ann", goodPassword); !errors.Is(err, store.ErrAccountDisabled) {
@@ -290,7 +290,7 @@ func TestDisableAndEnable(t *testing.T) {
 	}
 
 	// 启用：设备不恢复，再配对需管理员批准
-	if err := svc.EnableAccount(ctx, &p.root, p.ann.ID); err != nil {
+	if err := svc.EnableAccount(ctx, core.WebActor(p.root), p.ann.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Login(ctx, "ann", goodPassword); err != nil {
@@ -307,10 +307,10 @@ func TestHandoverWithoutRemoving(t *testing.T) {
 	ctx := context.Background()
 	h := newHandover(t)
 	p, svc := h.p, h.p.e.svc
-	if err := svc.DisableAccount(ctx, &p.root, p.ann.ID); err != nil {
+	if err := svc.DisableAccount(ctx, core.WebActor(p.root), p.ann.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.ApplyHandover(ctx, &p.payAdmin, p.pay, p.annPay.ID, h.fullPlan(h.bob.ID), false); err != nil {
+	if err := svc.ApplyHandover(ctx, core.WebActor(p.payAdmin), p.pay, p.annPay.ID, h.fullPlan(h.bob.ID), false); err != nil {
 		t.Fatal(err)
 	}
 	if m, _ := store.MemberByID(ctx, svc.Pool, p.annPay.ID); m.Status != store.MemberActive {
@@ -332,22 +332,22 @@ func TestAddExistingAccount(t *testing.T) {
 	if _, err := svc.LookupAccount(ctx, &p.payAdmin, p.pay, "ops"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("不支持前缀查找：%v", err)
 	}
-	if _, err := svc.AddMember(ctx, &p.ann, p.pay, "ops-admin", ""); !errors.Is(err, core.ErrNotAdmin) {
+	if _, err := svc.AddMember(ctx, core.WebActor(p.ann), p.pay, "ops-admin", ""); !errors.Is(err, core.ErrNotAdmin) {
 		t.Fatalf("普通成员不能加人：%v", err)
 	}
-	m, err := svc.AddMember(ctx, &p.payAdmin, p.pay, "ops-admin", store.RoleAdmin)
+	m, err := svc.AddMember(ctx, core.WebActor(p.payAdmin), p.pay, "ops-admin", store.RoleAdmin)
 	if err != nil || m.Role != store.RoleAdmin || m.AccountID != p.opsAdmin.ID {
 		t.Fatalf("直接加入：%+v %v", m, err)
 	}
 	var se *core.StateError
-	if _, err := svc.AddMember(ctx, &p.payAdmin, p.pay, "ops-admin", ""); !errors.As(err, &se) {
+	if _, err := svc.AddMember(ctx, core.WebActor(p.payAdmin), p.pay, "ops-admin", ""); !errors.As(err, &se) {
 		t.Fatalf("已是成员应 409：%v", err)
 	}
 	zoe, _ := store.CreateAccount(ctx, svc.Pool, "zoe", "")
-	if err := svc.DisableAccount(ctx, &p.root, zoe.ID); err != nil {
+	if err := svc.DisableAccount(ctx, core.WebActor(p.root), zoe.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.AddMember(ctx, &p.payAdmin, p.pay, "zoe", ""); !isInput(err) {
+	if _, err := svc.AddMember(ctx, core.WebActor(p.payAdmin), p.pay, "zoe", ""); !isInput(err) {
 		t.Fatalf("不能加入已停用的账号：%v", err)
 	}
 }
@@ -357,7 +357,7 @@ func TestDeleteWorkspace(t *testing.T) {
 	ctx := context.Background()
 	p := newPeople(t)
 	svc := p.e.svc
-	if err := svc.DeleteWorkspace(ctx, &p.payAdmin, "ops"); !errors.Is(err, core.ErrNotServerAdmin) {
+	if err := svc.DeleteWorkspace(ctx, core.WebActor(p.payAdmin), "ops"); !errors.Is(err, core.ErrNotServerAdmin) {
 		t.Fatalf("工作空间管理员不能删：%v", err)
 	}
 	// ops 有一张草稿：不能删
@@ -366,23 +366,23 @@ func TestDeleteWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	var se *core.StateError
-	if err := svc.DeleteWorkspace(ctx, &p.root, "ops"); !errors.As(err, &se) {
+	if err := svc.DeleteWorkspace(ctx, core.WebActor(p.root), "ops"); !errors.As(err, &se) {
 		t.Fatalf("有草稿也算有问题单：%v", err)
 	}
 	// 新建一个空工作空间，带邀请、成员、令牌、群绑定，删掉
-	ws, err := svc.CreateWorkspace(ctx, &p.root, "tmp", "ann")
+	ws, err := svc.CreateWorkspace(ctx, core.WebActor(p.root), "tmp", "ann")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.UpdateWorkspace(ctx, &p.root, ws.ID, core.WorkspaceSettings{TelegramChat: "-1009"}); err != nil {
+	if err := svc.UpdateWorkspace(ctx, core.WebActor(p.root), ws.ID, core.WorkspaceSettings{TelegramChat: "-1009"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.CreateInvite(ctx, &p.ann, ws.ID, core.InviteSpec{Kind: store.InviteTeam}); err != nil {
+	if _, err := svc.CreateInvite(ctx, core.WebActor(p.ann), ws.ID, core.InviteSpec{Kind: store.InviteTeam}); err != nil {
 		t.Fatal(err)
 	}
 	m, _ := store.MemberOf(ctx, svc.Pool, p.ann.ID, ws.ID)
 	tok := tokenFor(t, svc, m)
-	if err := svc.DeleteWorkspace(ctx, &p.root, "tmp"); err != nil {
+	if err := svc.DeleteWorkspace(ctx, core.WebActor(p.root), "tmp"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.WorkspaceByName(ctx, svc.Pool, "tmp"); !errors.Is(err, store.ErrNotFound) {
@@ -405,15 +405,15 @@ func TestGroupBoundOnce(t *testing.T) {
 	ctx := context.Background()
 	p := newPeople(t)
 	svc := p.e.svc
-	if err := svc.UpdateWorkspace(ctx, &p.payAdmin, p.pay, core.WorkspaceSettings{TelegramChat: "-1001"}); err != nil {
+	if err := svc.UpdateWorkspace(ctx, core.WebActor(p.payAdmin), p.pay, core.WorkspaceSettings{TelegramChat: "-1001"}); err != nil {
 		t.Fatal(err)
 	}
 	var se *core.StateError
-	if err := svc.UpdateWorkspace(ctx, &p.opsAdmin, p.ops, core.WorkspaceSettings{TelegramChat: "-1001"}); !errors.As(err, &se) ||
+	if err := svc.UpdateWorkspace(ctx, core.WebActor(p.opsAdmin), p.ops, core.WorkspaceSettings{TelegramChat: "-1001"}); !errors.As(err, &se) ||
 		!strings.Contains(err.Error(), "pay") {
 		t.Fatalf("同一个群不能绑第二个工作空间，并说明已绑给谁：%v", err)
 	}
-	if err := svc.UpdateWorkspace(ctx, &p.payAdmin, p.pay, core.WorkspaceSettings{TelegramChat: "-1001", ShowTitle: true}); err != nil {
+	if err := svc.UpdateWorkspace(ctx, core.WebActor(p.payAdmin), p.pay, core.WorkspaceSettings{TelegramChat: "-1001", ShowTitle: true}); err != nil {
 		t.Fatalf("重存自己的群编号不受影响：%v", err)
 	}
 	if ws, err := svc.WorkspaceByGroup(ctx, -1001); err != nil || ws.ID != p.pay {
@@ -426,7 +426,7 @@ func TestConcurrentMutualRemoval(t *testing.T) {
 	ctx := context.Background()
 	p := newPeople(t)
 	svc := p.e.svc
-	b, err := svc.AddMember(ctx, &p.payAdmin, p.pay, "ops-admin", store.RoleAdmin)
+	b, err := svc.AddMember(ctx, core.WebActor(p.payAdmin), p.pay, "ops-admin", store.RoleAdmin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +447,7 @@ func TestConcurrentMutualRemoval(t *testing.T) {
 		wg.Add(1)
 		go func(j job) {
 			defer wg.Done()
-			errs <- svc.ApplyHandover(ctx, &j.actor, p.pay, j.target, core.HandoverPlan{}, true)
+			errs <- svc.ApplyHandover(ctx, core.WebActor(j.actor), p.pay, j.target, core.HandoverPlan{}, true)
 		}(j)
 	}
 	time.Sleep(300 * time.Millisecond)

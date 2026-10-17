@@ -136,25 +136,7 @@ func memberAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 	if role != store.RoleAdmin && role != store.RoleMember {
 		return fmt.Errorf("角色只能是 admin 或 member，收到 %q", role)
 	}
-	if err := core.CheckName(name); err != nil {
-		return err
-	}
-	acc, err := store.AccountByName(ctx, pool, name)
-	created := false
-	if errors.Is(err, store.ErrNotFound) {
-		acc, err = store.CreateAccount(ctx, pool, name, display)
-		created = true
-	}
-	if err != nil {
-		return err
-	}
-	if acc.Disabled() {
-		return fmt.Errorf("账号 %s 已停用，不能加入", name)
-	}
-	m, err := store.AddMembership(ctx, pool, acc.ID, ws, role, nil)
-	if errors.Is(err, store.ErrAlreadyMember) {
-		return fmt.Errorf("%s 已经是这个工作空间的成员", name)
-	}
+	m, created, err := (&core.Service{Pool: pool}).AddMemberCLI(ctx, core.ServerCLI(), ws, name, display, role)
 	if err != nil {
 		return err
 	}
@@ -237,7 +219,7 @@ func memberRemove(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int
 	for _, n := range h.Services {
 		plan.Services = append(plan.Services, core.PlanService{Name: n, ToMemberID: r.ID})
 	}
-	if err := svc.ApplyHandover(ctx, nil, ws, m.ID, plan, true); err != nil {
+	if err := svc.ApplyHandover(ctx, core.ServerCLI(), ws, m.ID, plan, true); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "已移出 %s：%d 张问题单、%d 个服务转给 %s，他在这个工作空间的令牌已吊销\n", name, len(plan.Issues), len(plan.Services), to)
@@ -255,18 +237,14 @@ func tokenIssue(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 	if err := required("member", member, "tool", tool); err != nil {
 		return err
 	}
-	m, err := store.MemberByName(ctx, pool, ws, member)
+	t, err := (&core.Service{Pool: pool}).IssueToken(ctx, core.ServerCLI(), ws, member, tool)
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("成员 %q 不存在", member)
 	}
 	if err != nil {
 		return err
 	}
-	plain, id, err := store.IssueToken(ctx, pool, m.ID, tool)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "已为 %s 的 %s 签发令牌（编号 %d）。令牌只显示这一次，请妥善保存：\n%s\n", m.Name, tool, id, plain)
+	fmt.Fprintf(out, "已为 %s 的 %s 签发令牌（编号 %d）。令牌只显示这一次，请妥善保存：\n%s\n", t.Member, tool, t.ID, t.Plain)
 	return nil
 }
 
@@ -297,7 +275,7 @@ func tokenRevoke(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int6
 	if id <= 0 {
 		return fmt.Errorf("缺少参数 --id")
 	}
-	if err := store.RevokeTokenInWorkspace(ctx, pool, ws, id); errors.Is(err, store.ErrNotFound) {
+	if err := (&core.Service{Pool: pool}).RevokeToken(ctx, core.ServerCLI(), ws, id); errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("令牌 %d 不存在、已吊销，或不属于这个工作空间", id)
 	} else if err != nil {
 		return err
@@ -317,17 +295,11 @@ func serviceAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 	if err := required("name", name, "owner", owner); err != nil {
 		return err
 	}
-	m, err := store.MemberByName(ctx, pool, ws, owner)
+	m, err := (&core.Service{Pool: pool}).SetServiceOwner(ctx, core.ServerCLI(), ws, name, owner)
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("成员 %q 不存在", owner)
 	}
 	if err != nil {
-		return err
-	}
-	if m.AccountDisabled {
-		return fmt.Errorf("成员 %q 已停用，不能登记为负责人", owner)
-	}
-	if err := store.UpsertService(ctx, pool, ws, name, m.ID); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "服务 %s 的负责人为 %s\n", name, m.Name)

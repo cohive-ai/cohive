@@ -62,14 +62,15 @@ type chatAPI interface {
 // Core 是机器人用到的业务操作，由 core.Service 实现。
 type Core interface {
 	CompleteTelegramLink(ctx context.Context, startParam string, tgUserID int64, username string) (core.LinkResult, error)
-	DecideSignup(ctx context.Context, actor *store.Account, wsID, id int64, approve bool) (core.SignupDecision, error)
-	DecideDeviceAuth(ctx context.Context, actor *store.Account, wsID, id int64, approve bool) (core.DeviceDecision, error)
+	DecideSignup(ctx context.Context, act core.Actor, wsID, id int64, approve bool) (core.SignupDecision, error)
+	DecideDeviceAuth(ctx context.Context, act core.Actor, wsID, id int64, approve bool) (core.DeviceDecision, error)
 	Workspace(ctx context.Context, id int64) (store.Workspace, error)
 	WorkspaceByGroup(ctx context.Context, chatID int64) (store.Workspace, error)
 	AccountByTelegram(ctx context.Context, tgUserID int64) (store.Account, error)
 	Memberships(ctx context.Context, accountID int64) ([]store.Membership, error)
 	RecordBotPost(ctx context.Context, p store.BotPost) error
 	BotPosts(ctx context.Context, kind string, refID int64) ([]store.BotPost, error)
+	RecordDenied(ctx context.Context, act core.Actor, d core.DeniedAttempt) error
 }
 
 // Bot 用长轮询接收机器人消息：/chatid、/whoami、连接 Telegram（/start ln_xxx）与群里的审批按钮。
@@ -428,8 +429,9 @@ func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
 	var text string
 	switch parts[0] {
 	case "su":
-		d, err := b.Core.DecideSignup(ctx, &actor, ws.ID, id, approve)
+		d, err := b.Core.DecideSignup(ctx, core.BotActor(actor), ws.ID, id, approve)
 		if err != nil {
+			b.denied(ctx, actor, ws, "注册或加入申请的审批按钮", err)
 			b.failCallback(err, answer)
 			return
 		}
@@ -442,8 +444,9 @@ func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
 			}()
 		}
 	case "da":
-		d, err := b.Core.DecideDeviceAuth(ctx, &actor, ws.ID, id, approve)
+		d, err := b.Core.DecideDeviceAuth(ctx, core.BotActor(actor), ws.ID, id, approve)
 		if err != nil {
+			b.denied(ctx, actor, ws, "新设备的审批按钮", err)
 			b.failCallback(err, answer)
 			return
 		}
@@ -466,6 +469,17 @@ func verdict(approve bool) string {
 		return "已批准"
 	}
 	return "已拒绝"
+}
+
+// denied 记下已连接 Telegram 的账号在群里点审批按钮却没有权限（与网页上被拒的管理请求同样记录）。
+func (b *Bot) denied(ctx context.Context, actor store.Account, ws store.Workspace, button string, err error) {
+	if !errors.Is(err, core.ErrNotAdmin) && !errors.Is(err, core.ErrNotManager) {
+		return
+	}
+	d := core.DeniedAttempt{Workspace: ws.Name, Route: button, Reason: core.DenyNoPermission, Credential: core.CredTelegram}
+	if err := b.Core.RecordDenied(ctx, core.BotActor(actor), d); err != nil {
+		b.logf("记录被拒的审批失败：%v", err)
+	}
 }
 
 func (b *Bot) failCallback(err error, answer func(string)) {

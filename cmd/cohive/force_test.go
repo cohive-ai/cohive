@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/client"
+	"github.com/cohive-ai/cohive/internal/core"
 )
 
 // B17：--force 重新配对（需管理员批准）成功后，自动吊销本机旧设备，并清掉旧设备上没重登的工具条目。
@@ -25,7 +26,7 @@ func TestForceRepairRevokesOldDevice(t *testing.T) {
 		for i := 0; i < 300; i++ {
 			var id int64
 			if err := s.svc.Pool.QueryRow(ctx, `SELECT id FROM device_auths WHERE status = 'awaiting_admin'`).Scan(&id); err == nil {
-				if _, err := s.svc.DecideDeviceAuth(ctx, nil, 0, id, true); err != nil {
+				if _, err := s.svc.DecideDeviceAuth(ctx, core.ServerCLI(), 0, id, true); err != nil {
 					t.Error(err)
 				}
 				return
