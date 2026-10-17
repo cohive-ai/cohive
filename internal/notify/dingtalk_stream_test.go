@@ -275,6 +275,12 @@ func TestDingTalkChannelSend(t *testing.T) {
 	if c := f.callsTo("/v1.0/robot/groupMessages/send"); len(c) != 2 || !strings.Contains(c[1].body["msgParam"].(string), "管理 → 待审") {
 		t.Fatalf("降级的审批消息应指向网页：%+v", c)
 	}
+	// 配了审批模板，但 Stream 不在线（点了按钮也收不到回调）：同样不带按钮
+	offline := &notify.DingTalkChannel{API: f.api(), ApprovalTemplate: "tpl-a"}
+	if ref, err := offline.SendApproval(ctx, "cid1", notify.Rendered{Title: "注册申请", Text: "x"}, notify.Approval{Kind: "su", WorkspaceID: 4, RefID: 6}); err != nil || ref != "" ||
+		len(f.callsTo("/v1.0/card/instances/createAndDeliver")) != 1 {
+		t.Fatalf("Stream 不在线时不发审批卡片：%q %v", ref, err)
+	}
 	if err := card.FinishApproval(ctx, "cid1", "", notify.Rendered{Text: "x"}); err != nil || len(f.callsTo("/v1.0/card/instances")) != 0 {
 		t.Fatal("没有卡片编号时不改")
 	}

@@ -148,3 +148,27 @@ func TestDingTalkChatBind(t *testing.T) {
 		t.Fatal("解绑后不再反查到")
 	}
 }
+
+// 绑定码过期后无效（账号绑定码、群绑定码都一样）。
+func TestDingTalkCodesExpire(t *testing.T) {
+	ctx := context.Background()
+	p := newPeople(t)
+	svc := p.e.svc
+	l, _ := svc.StartLink(ctx, p.ann.ID, core.ProviderDingTalk)
+	b, _ := svc.StartChatBind(ctx, core.WebActor(p.payAdmin), p.pay, core.ProviderDingTalk)
+	if _, err := svc.Pool.Exec(ctx, `UPDATE link_requests SET expires_at = now() - interval '1 second' WHERE id = $1`, l.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Pool.Exec(ctx, `UPDATE chat_bind_requests SET expires_at = now() - interval '1 second' WHERE id = $1`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SubmitLinkCode(ctx, core.ProviderDingTalk, l.Nonce, core.ChatSender{Tenant: "corp1", UserID: "u-ann"}, true); !errors.Is(err, core.ErrLinkCodeGone) {
+		t.Fatalf("过期的账号绑定码：%v", err)
+	}
+	if _, err := svc.CompleteChatBind(ctx, core.ProviderDingTalk, "cid-pay", "支付群", b.Code); !errors.Is(err, core.ErrBindCodeGone) {
+		t.Fatalf("过期的群绑定码：%v", err)
+	}
+	if st, _ := svc.ChatBindStatus(ctx, core.WebActor(p.payAdmin), p.pay, b.ID); st.Status != store.LinkExpired {
+		t.Fatalf("网页上显示已过期：%+v", st)
+	}
+}

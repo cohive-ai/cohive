@@ -170,6 +170,11 @@ func TestDingTalkReplyWebhookHost(t *testing.T) {
 			t.Errorf("%s 不应放行", bad)
 		}
 	}
+	// 能连通的别的主机（另一个本机端口）也不放行：校验在发请求之前
+	other := newFakeDingTalk(t)
+	if err := api.Reply(ctx, other.srv.URL+"/robot/send", "t", "hi"); err == nil || len(other.callsTo("/robot/send")) != 0 {
+		t.Fatalf("别的主机不应收到请求：%v", err)
+	}
 	real := &notify.DingTalk{ClientID: "x", ClientSecret: "y"}
 	if err := real.Reply(ctx, "https://evil.example.com/robot/send", "t", "hi"); err == nil {
 		t.Fatal("不配测试地址时只放行 *.dingtalk.com")
