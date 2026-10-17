@@ -396,13 +396,13 @@ func TestHookStartOfflineThenOnline(t *testing.T) {
 	}
 }
 
-// tellsUser 断言给模型的文字要求它在本轮最终答复的开头把 say 原样告诉用户（Codex 桌面版不显示 systemMessage，
-// 还会在本轮结束后折叠中途的进度说明），并且不再有“不必主动提起”这类话。
+// tellsUser 断言给模型的文字要求它在本轮最终答复的末尾另起一行原样写出 say（Codex 桌面版不显示 systemMessage，
+// 还会在本轮结束后折叠中途的进度说明；回复长时放开头容易被略过），并且不再有“不必主动提起”这类话。
 func tellsUser(t *testing.T, o hookOutput, say string) {
 	t.Helper()
 	ctx := o.Specific.Context
-	if !strings.Contains(ctx, "最终答复（本轮结束时给用户的那条消息，不是中途的进度说明）开头，先用一句话告诉用户“"+say+"”") ||
-		!strings.Contains(ctx, "即使与用户这次的请求无关也要说") ||
+	if !strings.Contains(ctx, "最终答复（本轮结束时给用户的那条消息，不是中途的进度说明）的末尾，正文写完之后另起一行，原样写出“"+say+"”") ||
+		!strings.Contains(ctx, "即使与用户这次的请求无关也要写") || !strings.Contains(ctx, "不要放在开头") ||
 		!strings.Contains(ctx, "只说这一次") || !strings.Contains(ctx, "不要因此调用改变问题单状态的工具") ||
 		strings.Contains(ctx, "不必主动提起") {
 		t.Fatalf("应要求模型在回复第一句告诉用户“%s”：\n%s", say, ctx)
