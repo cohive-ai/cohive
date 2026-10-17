@@ -36,6 +36,8 @@ it("还没设置时预填当前地址，并明确提示尚未保存；保存时�
   fireEvent.click(screen.getByText("保存"));
   await waitFor(() => expect(bodies).toEqual([{ external_url: "https://cohive.example.com" }]));
   expect(await screen.findByText("已保存，立即生效。")).toBeTruthy();
+  expect(screen.queryByText(/尚未设置/)).toBeNull();
+  expect((screen.getByLabelText("对外地址") as HTMLInputElement).value).toBe("https://cohive.example.com");
 });
 
 it("带路径的地址不能保存", () => {

@@ -419,13 +419,14 @@ function SettingsTab() {
   const q = useQuery({ queryKey: ["server", "settings"], queryFn: api.serverSettings });
   if (q.isPending) return <Notice>正在读取…</Notice>;
   if (q.isError) return <Notice tone="danger">读取失败：{q.error.message}</Notice>;
-  return <ExternalURLForm key={q.data.external_url} initial={q.data} />;
+  return <ExternalURLForm initial={q.data} />;
 }
 
 export function ExternalURLForm({ initial }: { initial: ServerSettings }) {
   const qc = useQueryClient();
   // 还没设时用当前访问地址预填，但明确告诉人这还没保存
-  const unset = !initial.external_url;
+  const [saved, setSaved] = useState(initial.external_url);
+  const unset = !saved;
   const [value, setValue] = useState(initial.external_url || initial.suggested);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
@@ -442,6 +443,7 @@ export function ExternalURLForm({ initial }: { initial: ServerSettings }) {
     try {
       const res = await api.saveServerSettings(trimmed);
       setValue(res.external_url);
+      setSaved(res.external_url);
       setOk(res.external_url ? "已保存，立即生效。" : "已清除：群消息里不再带链接。");
       await qc.invalidateQueries({ queryKey: ["server", "settings"] });
     } catch (err) {
