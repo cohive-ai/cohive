@@ -46,7 +46,7 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		items := make([]map[string]any, 0, len(list))
 		for _, ws := range list {
 			items = append(items, map[string]any{"name": ws.Name, "display_name": ws.Label(), "created_at": ws.CreatedAt, "members": ws.Members,
-				"admins": ws.Admins, "open_issues": ws.OpenIssues, "telegram_bound": ws.TelegramBound, "i_am_member": mine[ws.ID]})
+				"admins": ws.Admins, "open_issues": ws.OpenIssues, "telegram_bound": ws.TelegramBound, "chat_provider": ws.Notify.Channel, "i_am_member": mine[ws.ID]})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	})
@@ -80,14 +80,28 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeError(w, err)
 			return
 		}
+		ids := make([]int64, 0, len(list))
+		for _, a := range list {
+			ids = append(ids, a.ID)
+		}
+		chats, err := svc.ChatIdentities(r.Context(), ids)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
 		items := make([]map[string]any, 0, len(list))
 		for _, a := range list {
+			dtLinked := false
+			for _, c := range chats[a.ID] {
+				dtLinked = dtLinked || (c.Provider == store.ProviderDingTalk && c.UserID != "")
+			}
 			wss := make([]map[string]string, 0, len(a.Memberships))
 			for _, m := range a.Memberships {
 				wss = append(wss, map[string]string{"name": m.Workspace, "role": m.Role, "status": m.Status})
 			}
 			items = append(items, map[string]any{"name": a.Name, "display_name": a.DisplayName, "server_admin": a.ServerAdmin,
-				"disabled": a.Disabled(), "telegram_linked": a.TelegramUserID != nil, "devices": a.Devices, "workspaces": wss})
+				"disabled": a.Disabled(), "telegram_linked": a.TelegramUserID != nil, "dingtalk_linked": dtLinked,
+				"devices": a.Devices, "workspaces": wss})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	})

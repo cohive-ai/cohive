@@ -60,6 +60,9 @@ type fakeCore struct {
 	memberships []store.Membership        // 申请人在册的工作空间
 	byID        map[int64]store.Workspace // Workspace(id)；为空时返回 workspace
 	posts       []store.BotPost
+	dtGroups    map[string]store.Workspace // 钉钉群编号 → 工作空间
+	dtUsers     map[string]store.Account   // “corpId/userId” → 账号
+	delay       time.Duration              // 审批前等一会儿（模拟数据库慢）
 }
 
 func (f *fakeCore) CompleteTelegramLink(_ context.Context, p string, uid int64, name string) (core.LinkResult, error) {
@@ -67,6 +70,7 @@ func (f *fakeCore) CompleteTelegramLink(_ context.Context, p string, uid int64, 
 	return f.link, f.err
 }
 func (f *fakeCore) DecideSignup(_ context.Context, act core.Actor, ws, id int64, ok bool) (core.SignupDecision, error) {
+	time.Sleep(f.delay)
 	a := act.Account
 	f.calls = append(f.calls, "signup", a.ID, ws, id, ok)
 	d := core.SignupDecision{Signup: store.Signup{ID: id, Name: "ann", DisplayName: "Ann", Status: store.SignupRejected},
@@ -94,7 +98,10 @@ func (f *fakeCore) Workspace(_ context.Context, id int64) (store.Workspace, erro
 	return f.workspace, nil
 }
 func (f *fakeCore) WorkspaceByChat(_ context.Context, provider, _, chatID string) (store.Workspace, error) {
-	if provider != store.ProviderTelegram {
+	if provider == store.ProviderDingTalk {
+		if w, ok := f.dtGroups[chatID]; ok {
+			return w, nil
+		}
 		return store.Workspace{}, store.ErrNotFound
 	}
 	if f.groups == nil {
@@ -106,12 +113,16 @@ func (f *fakeCore) WorkspaceByChat(_ context.Context, provider, _, chatID string
 	}
 	return store.Workspace{}, store.ErrNotFound
 }
-func (f *fakeCore) AccountByChat(_ context.Context, provider, _, userID string) (store.Account, error) {
+func (f *fakeCore) AccountByChat(_ context.Context, provider, tenant, userID string) (store.Account, error) {
 	uid, _ := strconv.ParseInt(userID, 10, 64)
-	f.calls = append(f.calls, "who", uid)
-	if provider != store.ProviderTelegram {
+	if provider == store.ProviderDingTalk {
+		f.calls = append(f.calls, "who", userID)
+		if a, ok := f.dtUsers[tenant+"/"+userID]; ok {
+			return a, nil
+		}
 		return store.Account{}, store.ErrNotFound
 	}
+	f.calls = append(f.calls, "who", uid)
 	return f.actor, f.actorErr
 }
 func (f *fakeCore) ChatIdentities(context.Context, []int64) (map[int64][]store.ChatIdentity, error) {

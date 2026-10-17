@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -51,6 +51,7 @@ import {
 import { canAdminWorkspace } from "../workspace";
 import { useWs } from "./WorkspaceShell";
 import { EventLog } from "./EventLog";
+import { DingTalkBind } from "./DingTalk";
 
 export const adminTabs = [
   { id: "pending", label: "待审" },
@@ -1059,9 +1060,11 @@ function WorkspaceTab({ ws, serverAdmin }: { ws: string; serverAdmin: boolean })
   if (q.isError) return <Notice tone="danger">读取失败：{q.error.message}</Notice>;
   return (
     <div className="space-y-4">
-      {!q.data.telegram_chat && (
+      {!q.data.telegram_chat && !q.data.chat && (
         <Callout>
-          下一步：把 Telegram 机器人拉进项目群，在群里发 /chatid，把得到的群编号填到下面并保存；然后到“成员”里添加已有账号，或到“邀请”里生成邀请链接。
+          {q.data.channels?.some((c) => c.provider === "dingtalk")
+            ? "下一步：在下面绑定项目群（钉钉群用“生成群绑定码”，Telegram 群填群编号）；然后到“成员”里添加已有账号，或到“邀请”里生成邀请链接。"
+            : "下一步：把 Telegram 机器人拉进项目群，在群里发 /chatid，把得到的群编号填到下面并保存；然后到“成员”里添加已有账号，或到“邀请”里生成邀请链接。"}
         </Callout>
       )}
       <WorkspaceForm key={ws} ws={ws} initial={q.data} serverAdmin={serverAdmin} />
@@ -1087,6 +1090,14 @@ export function WorkspaceForm({
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
   const displayOk = [...display.trim()].length <= 40;
+  const providers = initial.channels?.map((c) => c.provider);
+  const dtEnabled = !!providers?.includes("dingtalk") || initial.chat?.provider === "dingtalk";
+  // 旧版服务端不返回 channels；只启用了钉钉时不显示 Telegram 群编号（已绑 Telegram 群的照样显示）
+  const tgShown = !providers || providers.includes("telegram") || !!initial.telegram_chat || !dtEnabled;
+  const dtBound = initial.chat?.provider === "dingtalk";
+  const refresh = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ["admin", ws, "workspace"] });
+  }, [qc, ws]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1156,25 +1167,33 @@ export function WorkspaceForm({
           )}
           <p className="mt-1 text-xs text-muted">对外地址是整个服务器共用的，由服务器管理员设置。</p>
         </div>
-        {!initial.bot_enabled && (
+        {!initial.bot_enabled && !dtEnabled && (
           <Callout>
             协作服务没有启用 Telegram 机器人，下面的群设置暂时不会生效。请在服务器上配置机器人后重启协作服务。
           </Callout>
         )}
-        <Field
-          label="Telegram 群编号"
-          htmlFor="telegram-chat"
-          hint="把机器人拉进群后，在群里发 /chatid 获取，形如 -1001234567890。留空则不发群消息。"
-        >
-          <input
-            id="telegram-chat"
-            inputMode="numeric"
-            spellCheck={false}
-            value={chat}
-            onChange={(e) => setChat(e.target.value)}
-            className={`${inputClass} font-mono`}
-          />
-        </Field>
+        {dtEnabled && <DingTalkBind ws={ws} chat={initial.chat} onChange={refresh} />}
+        {tgShown && (
+          <Field
+            label="Telegram 群编号"
+            htmlFor="telegram-chat"
+            hint={
+              dtBound
+                ? "本工作空间已绑定钉钉群；要改用 Telegram 群，先解绑钉钉群。"
+                : "把机器人拉进群后，在群里发 /chatid 获取，形如 -1001234567890。留空则不发群消息。"
+            }
+          >
+            <input
+              id="telegram-chat"
+              inputMode="numeric"
+              spellCheck={false}
+              value={chat}
+              disabled={dtBound}
+              onChange={(e) => setChat(e.target.value)}
+              className={`${inputClass} font-mono`}
+            />
+          </Field>
+        )}
         <fieldset className="space-y-2 text-sm">
           <legend className="mb-1">群消息里显示</legend>
           <label className="flex items-center gap-2">

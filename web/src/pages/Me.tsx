@@ -7,6 +7,7 @@ import { absoluteTime, roleLabel, workspaceLabel } from "../format";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
 import { initCommands, installCommands, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
+import { DingTalkLink } from "./DingTalk";
 
 export function MePage() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
@@ -66,7 +67,7 @@ export function MePage() {
 
       <MyDevices />
 
-      <Telegram me={m} />
+      <ChatTools me={m} />
 
       <Section title="修改密码">
         <ChangePasswordForm hasPassword={m.account.has_password} />
@@ -268,10 +269,7 @@ function Telegram({ me }: { me: Me }) {
   const waiting = status === "pending";
 
   return (
-    <Section
-      title="通讯工具"
-      description="连接 Telegram 后，群里的问题单通知会 @ 到你，管理员也能在群里直接点按钮审批。"
-    >
+    <div>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="font-medium">Telegram</span>
         {linked ? (
@@ -325,6 +323,26 @@ function Telegram({ me }: { me: Me }) {
         </p>
       )}
       <ErrorText>{error}</ErrorText>
+    </div>
+  );
+}
+
+// ChatTools 列出服务器启用的通讯工具（以及本人已连接的）：连接后群通知会 @ 到你，管理员也能在群里点按钮审批。
+function ChatTools({ me }: { me: Me }) {
+  const providers = me.channels?.map((c) => c.provider);
+  const dtLinked = !!me.chat?.some((c) => c.provider === "dingtalk");
+  const showDT = !!providers?.includes("dingtalk") || dtLinked;
+  // 旧版服务端不返回 channels；都没启用时照旧显示 Telegram（点了会提示没有启用）
+  const showTG = !providers || providers.includes("telegram") || !!me.account.telegram?.linked || !showDT;
+  return (
+    <Section
+      title="通讯工具"
+      description="连接后，群里的问题单通知会 @ 到你，管理员也能在群里直接点按钮审批。"
+    >
+      <div className="space-y-3">
+        {showTG && <Telegram me={me} />}
+        {showDT && <DingTalkLink me={me} />}
+      </div>
     </Section>
   );
 }

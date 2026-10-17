@@ -181,6 +181,39 @@ func TestDispatchUsesWorkspaceChannel(t *testing.T) {
 	}
 }
 
+// 钉钉接口本月额度用完：通知保留、不计失败次数，本轮暂停；额度恢复后照常送出。
+func TestDispatchDingTalkQuotaPauses(t *testing.T) {
+	e := newDispatchEnv(t)
+	ctx := context.Background()
+	ws, _ := store.DefaultWorkspace(ctx, e.pool)
+	if err := store.SetWorkspaceNotify(ctx, e.pool, ws, store.NotifyConfig{Channel: store.ProviderDingTalk, Target: "cid-1"}); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeDingTalk(t)
+	f.failCode, f.failStatus = "Forbidden.AccessDenied.ApiCountLimitForOrg", 403
+	e.d.Senders[store.ProviderDingTalk] = &notify.DingTalkChannel{API: f.api(), NoticeTemplate: "tpl-n"}
+	is := e.submitOne(t)
+	if _, err := e.d.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	n := e.notification(t, is.ID)
+	if n.Status != "pending" || n.Attempts != 0 || !strings.Contains(n.LastError, "额度") {
+		t.Fatalf("额度用完应保留、不计失败：%+v", n)
+	}
+	// 额度恢复：到了下次投递时间照常送出，卡片编号由通知编号定（重发不会出现第二张卡）
+	f.failCode = ""
+	if _, err := e.pool.Exec(ctx, `UPDATE notifications SET next_attempt_at = now() WHERE id = $1`, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.d.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	c := f.callsTo("/v1.0/card/instances/createAndDeliver")
+	if len(c) < 2 || c[len(c)-1].body["outTrackId"] != fmt.Sprintf("cohive-n%d", n.ID) || e.notification(t, is.ID).Status != "sent" {
+		t.Fatalf("恢复后应送出：%+v %+v", c, e.notification(t, is.ID))
+	}
+}
+
 func TestDispatchRetriesThenFails(t *testing.T) {
 	e := newDispatchEnv(t)
 	is := e.submitOne(t)

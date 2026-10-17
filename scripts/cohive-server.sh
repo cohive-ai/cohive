@@ -19,6 +19,8 @@
 #     run/           进程号文件 server.pid
 # 机器人令牌：沿用 ~/.config/cohive/telegram.env（scripts/set-telegram-token.sh 写入），
 #   只在服务进程里加载，不打印、不写日志、不进 server.env；可用 COHIVE_TELEGRAM_ENV 指定别的文件。
+# 钉钉应用凭据：同样处理 ~/.config/cohive/dingtalk.env（scripts/set-dingtalk-credentials.sh 写入），
+#   可用 COHIVE_DINGTALK_ENV 指定别的文件。
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -34,6 +36,7 @@ run_dir="${COHIVE_RUN_DIR:-$COHIVE_HOME/run}"
 pid_file="$run_dir/server.pid"
 log_file="$log_dir/server.log"
 tg_env="${COHIVE_TELEGRAM_ENV:-$HOME/.config/cohive/telegram.env}"
+dt_env="${COHIVE_DINGTALK_ENV:-$HOME/.config/cohive/dingtalk.env}"
 
 label="${COHIVE_LAUNCHD_LABEL:-com.anormlylee.cohive.server}"
 plist="${COHIVE_LAUNCHD_PLIST:-$HOME/Library/LaunchAgents/$label.plist}"
@@ -81,6 +84,11 @@ exec_server() {
     # shellcheck disable=SC1090
     . "$tg_env"
     export COHIVE_TELEGRAM_BOT_TOKEN
+  fi
+  if [ -f "$dt_env" ]; then
+    # shellcheck disable=SC1090
+    . "$dt_env"
+    export COHIVE_DINGTALK_CLIENT_ID COHIVE_DINGTALK_CLIENT_SECRET COHIVE_DINGTALK_NOTICE_TEMPLATE COHIVE_DINGTALK_APPROVAL_TEMPLATE
   fi
   exec "$bin" serve --addr "$addr"
 }

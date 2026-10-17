@@ -305,7 +305,8 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
           {a.disabled && <span className={`${tag} bg-sunken text-danger`}>已停用</span>}
         </p>
         <p className="text-xs text-muted">
-          Telegram {a.telegram_linked ? "已连接" : "未连接"} · {a.devices} 台设备
+          Telegram {a.telegram_linked ? "已连接" : "未连接"}
+          {a.dingtalk_linked ? " · 钉钉已连接" : ""} · {a.devices} 台设备
         </p>
         <p className="text-xs text-muted">
           工作空间：
@@ -364,6 +365,18 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
             />
           )
         )}
+        {a.dingtalk_linked && (
+          <ConfirmButton
+            label="断开钉钉"
+            title="断开他的钉钉连接？"
+            message={`断开后钉钉群里的通知不会再 @ 到“${label}”，他也不能再在钉钉群里点按钮审批。他可以在个人中心重新连接。`}
+            confirmLabel="确认断开"
+            action={async () => {
+              await api.serverUnlink(a.name, "dingtalk");
+              await onChanged();
+            }}
+          />
+        )}
         {a.telegram_linked && (
           <ConfirmButton
             label="断开 Telegram"
@@ -419,7 +432,46 @@ function SettingsTab() {
   const q = useQuery({ queryKey: ["server", "settings"], queryFn: api.serverSettings });
   if (q.isPending) return <Notice>正在读取…</Notice>;
   if (q.isError) return <Notice tone="danger">读取失败：{q.error.message}</Notice>;
-  return <ExternalURLForm initial={q.data} />;
+  return (
+    <div className="space-y-4">
+      <ExternalURLForm initial={q.data} />
+      <ChannelsPanel />
+    </div>
+  );
+}
+
+// ChannelsPanel 显示服务器启用的通讯工具与连接状态（钉钉的 Stream 掉线、额度用完等原因在这里看）。
+function ChannelsPanel() {
+  const q = useQuery({ queryKey: ["server", "channels"], queryFn: api.serverChannels, refetchInterval: 30_000 });
+  return (
+    <Section title="通讯工具" description="在服务器上配置机器人令牌或钉钉应用凭据后重启协作服务即启用。">
+      {q.isPending ? (
+        <p className="text-sm text-muted">正在读取…</p>
+      ) : q.isError ? (
+        <p className="text-sm text-danger">读取失败：{q.error.message}</p>
+      ) : q.data.channels.length === 0 ? (
+        <p className="text-sm text-muted">还没有启用任何通讯工具，群通知暂不发送（待发记录会保留）。</p>
+      ) : (
+        <ul className="divide-y divide-line rounded border border-line text-sm">
+          {q.data.channels.map((c) => (
+            <li key={c.provider} className="space-y-1 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{c.provider === "dingtalk" ? "钉钉" : "Telegram"}</span>
+                {c.bot_name && <span className="text-muted">@{c.bot_name}</span>}
+                {c.app_id && <span className="text-muted">应用 Client ID {c.app_id}</span>}
+                <span
+                  className={`rounded px-1.5 py-px text-xs ${c.online ? "bg-teal-soft text-teal" : "bg-amber-soft text-amber"}`}
+                >
+                  {c.online ? "在线" : "离线"}
+                </span>
+              </div>
+              {c.detail && <p className="break-words text-xs text-muted">{c.detail}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
 }
 
 export function ExternalURLForm({ initial }: { initial: ServerSettings }) {

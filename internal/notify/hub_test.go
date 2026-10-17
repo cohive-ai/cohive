@@ -14,6 +14,7 @@ type plainFormat struct{}
 
 func (plainFormat) Esc(s string) string  { return strings.ReplaceAll(s, "*", `\*`) }
 func (plainFormat) Code(s string) string { return "`" + s + "`" }
+func (plainFormat) Link(u string) string { return "<" + u + ">" }
 func (plainFormat) Mention(label string, id *store.ChatIdentity, _ bool) string {
 	if id == nil || id.UserID == "" {
 		return label

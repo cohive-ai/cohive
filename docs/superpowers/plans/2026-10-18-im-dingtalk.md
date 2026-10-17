@@ -424,8 +424,8 @@ type ChatUser struct{ Provider, Tenant, UserID, Handle, Name string }
 - 变异 7 项全部变红：迁移丢只有用户名的连接、迁移把关闭群通知的也迁过去、点击不核对按钮数据、回写时只按消息编号跳过、Mentions 带上未连接的人、改开关解除钉钉群、按 Telegram 编号找账号不限通讯工具。
 
 #### T4：钉钉客户端与配置
-- [ ] 假钉钉服务器（`httptest`）：取令牌、投放卡片、更新卡片、群消息、`sessionWebhook`。
-- [ ] 用例：
+- [x] 假钉钉服务器（`httptest`）：取令牌、投放卡片、更新卡片、群消息、`sessionWebhook`。
+- [x] 用例：
   - 令牌缓存与并发只取一次；
   - 过期前刷新；
   - 请求头带令牌，地址里不带；
@@ -433,20 +433,20 @@ type ChatUser struct{ Provider, Tenant, UserID, Handle, Name string }
   - `sessionWebhook` 主机名校验；
   - 配置只给一半时启动报错；
   - 日志和错误里不出现 Secret 与令牌（断言输出里不含假密钥字符串）。
-- [ ] `scripts/set-dingtalk-credentials.sh`，`cohive-server.sh` 与 `run-server.sh` 加载，Docker 编排透传；`scripts_test` 补用例。
-- [ ] commit：`feat(im-T4): 钉钉开放接口客户端与凭据配置`
+- [x] `scripts/set-dingtalk-credentials.sh`，`cohive-server.sh` 与 `run-server.sh` 加载，Docker 编排透传；`scripts_test` 补用例。
+- [x] commit：`feat(im-T4): 钉钉开放接口客户端与凭据配置`
 
 #### T5：Stream 收件、绑群、账号绑定
-- [ ] 翻译层单测：喂依赖包的消息结构，断言产出的 `Command` / `Click`，包括 @ 机器人前缀、全角空格、码大小写。
-- [ ] 端到端单测：假 Stream 网关，包括 `connections/open` 和本地 WebSocket，推一帧机器人消息、一帧卡片回调，断言我们的应答帧。确认依赖包在 `WithOpenApiHost` 下完全不连外网。
-- [ ] 业务用例（真实 Postgres）：
+- [x] 翻译层单测：喂依赖包的消息结构，断言产出的 `Command` / `Click`，包括 @ 机器人前缀、全角空格、码大小写。
+- [x] 端到端单测：假 Stream 网关，包括 `connections/open` 和本地 WebSocket，推一帧机器人消息、一帧卡片回调，断言我们的应答帧。确认依赖包在 `WithOpenApiHost` 下完全不连外网。
+- [x] 业务用例（真实 Postgres）：
   - 绑群：码过期、码复用、群已绑别处、成功后网页状态；
   - 账号绑定：单聊发码 → 待确认 → 确认才生效；取消；码出现在群里立即作废；钉钉用户已连别人；停用账号。
-- [ ] 网页：个人中心“连接钉钉”、工作空间“生成绑定码”（vitest）。
-- [ ] commit：`feat(im-T5): 钉钉 Stream 收件，群里绑定工作空间，单聊绑定码加网页确认`
+- [x] 网页：个人中心“连接钉钉”、工作空间“生成绑定码”（vitest）。
+- [x] commit：`feat(im-T5): 钉钉 Stream 收件，群里绑定工作空间，单聊绑定码加网页确认`
 
 #### T6：通知卡片、审批按钮、降级
-- [ ] 用例：
+- [x] 用例：
   - 通知卡片的 `atUserIds` 只含已连接的人；
   - Markdown 转义；
   - 没配模板时降级为 `groupSend`；
@@ -456,15 +456,15 @@ type ChatUser struct{ Provider, Tenant, UserID, Handle, Name string }
   - 网页审批后改所有卡；
   - 额度用尽时暂停、不计失败；
   - Stream 离线时审批消息不带按钮。
-- [ ] commit：`feat(im-T6): 钉钉群通知卡片与 @，群里审批按钮，额度与离线降级`
+- [x] commit：`feat(im-T6): 钉钉群通知卡片与 @，群里审批按钮，额度与离线降级`
 
 #### T7：部署者文档定稿与走查
-- [ ] `docs/guides/dingtalk.md` 按实现定稿；`group-notify.md`、`onboarding.md`、`test-server.md` 补钉钉入口。
-- [ ] 本机走查（8792 端口，库 `cohive_dingtalk_try`，用假钉钉服务）：绑群、连接、发单、审批全流程，截图存证。
-- [ ] commit：`docs(im-T7): 钉钉部署指南定稿`
+- [x] `docs/guides/dingtalk.md` 按实现定稿；`group-notify.md`、`onboarding.md`、`test-server.md` 补钉钉入口。
+- [x] 本机走查（8792 端口，库 `cohive_dingtalk_try`，用假钉钉服务）：绑群、连接、发单、审批全流程，截图存证。
+- [x] commit：`docs(im-T7): 钉钉部署指南定稿`
 
 #### T8：变异与回报
-- [ ] 变异：
+- [x] 变异：
   - M1 点击时信按钮数据不查 `bot_posts`；
   - M2 不核对卡片所在群；
   - M3 账号绑定不等网页确认就生效；
@@ -475,7 +475,34 @@ type ChatUser struct{ Provider, Tenant, UserID, Handle, Name string }
   - M8 迁移丢掉只有用户名的连接；
   - M9 Telegram 按编号 @ 不转义；
   - M10 回调超时不先返回。
-- [ ] 全量验证，回报主脑（阶段完成，请检查分支）。
+- [x] 全量验证，回报主脑（阶段完成，请检查分支）。
+
+**钉钉部分实施记录（2026-10-18，变基到合入第 0 步的 main 后：T4/T5 `791ea23`、凭据脚本 `e4fc770`、网页 `492a4e7`、文档 `4b54838`、变异补用例 `513dae3`）：** 与上文不同的地方：
+- **待拍板 1 改选 B：Stream 协议自己实现**（约 250 行，只依赖 `gorilla/websocket`，BSD-2 许可证）。原因：官方 SDK v0.9.1 在断线时，读消息的协程会向已关闭的通道发送；这个协程没有异常保护，会让整个服务进程崩溃。另外它的重连循环不随 context 结束，日志器是全局的，连接成功的日志里还带一次性票据。修好这些问题的 0.9.2 还是测试版。协议与 SDK 一致，用假网关做了端到端用例（换票据、ping、机器人消息、卡片回调、服务端要求重连）。
+- **审批卡片模板加一个私有变量 `tip`**：给点击者看的提示，例如没有权限、处理中、已批准。钉钉卡片回调的响应里没有独立的提示字段，只能这样做。部署指南的模板说明已同步。
+- **工作空间群表一律不记企业**：钉钉 openConversationId 全局唯一。通讯账号表照样记 corpId，同一个 userId 在别的企业不会串号。所以 `Click` 去掉了 Tenant 字段，点击者的企业在 `From.Tenant` 里。
+- **`Formatter` 加了 `Link`，`Rendered` 加了 `Key`**：`Key` 是幂等键，钉钉卡片编号用 `cohive-n<通知编号>`，重发不会出现第二张卡，是否生效列入实测清单。用户输入里的 Markdown 记号换成全角字符，因为钉钉对反斜杠转义的支持没有核实。
+- **群绑定**：网页群绑定码和命令行 `workspace notify --dingtalk-chat` 走同一条业务路径，都要求“一个群只绑一个工作空间、第一期一个工作空间只绑一个群”。`workspace notify --off` 会一并解绑钉钉群。
+- **走查**：本机 8792 端口、库 `cohive_dingtalk_try`，钉钉侧用假服务（开放接口加 Stream 网关）。走通了以下流程：生成群绑定码并在群里绑定；单聊发码后在网页确认；账号绑定码误发到群里作废，回复不复述码；团队注册后群里出现审批卡片，点批准后在回调响应里改成结果并发加入通知；陌生人点按钮只看到提示；网页拒绝后卡片同步改成结果；管理操作记录正确；服务器日志里没有密钥、访问令牌或票据。在浏览器里看过个人中心、工作空间设置、服务器设置三个页面。问题单通知加 @ 的路径没有走查，由真实数据库用例覆盖。走查库合入后再删。
+- **变异**：钉钉部分 16 项全部变红，依次是：
+  - 点击时不查审批消息记录；
+  - 不核对按钮所在群；
+  - 不等网页确认就连接；
+  - 群里出现的码不作废；
+  - 卡片不带 atUserIds；
+  - 额度用完当成不值得重试；
+  - 会话 Webhook 不校验主机名；
+  - 名字不转义；
+  - 回调超时不先返回；
+  - 钉钉格式不转义；
+  - 别人能确认我的连接；
+  - ping 不原样应答；
+  - 群绑定码不看过期；
+  - 账号绑定码不看过期；
+  - Stream 不在线时照样发按钮；
+  - 点击者身份不取平台字段。
+
+  其中 4 项（会话 Webhook 主机名、两种码的过期、Stream 不在线）第一次没有变红，补了用例后变红。第 0 步的 17 项重跑仍全部变红。
 
 ## 5. 工作量
 

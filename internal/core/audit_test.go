@@ -326,6 +326,39 @@ func auditCases() []auditCase {
 			_, err = f.svc.CompleteTelegramLink(ctx, l.Nonce, 9002, "anntg")
 			return err
 		}, wantEvent{core.ActTelegramLink, core.ViaTelegram, "", "account", "ann", "ann", map[string]any{"telegram_username": "anntg"}}},
+		{"本人连接钉钉（单聊发码后网页确认）", func(t *testing.T, f *afix) error {
+			l, err := f.svc.StartLink(ctx, f.p.ann.ID, core.ProviderDingTalk)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.svc.SubmitLinkCode(ctx, core.ProviderDingTalk, l.Nonce, core.ChatSender{Tenant: "corp1", UserID: "u-ann", Name: "安"}, true); err != nil {
+				t.Fatal(err)
+			}
+			return f.svc.ConfirmLink(ctx, core.WebActor(f.p.ann), l.ID, true)
+		}, wantEvent{core.ActDingTalkLink, core.ViaWeb, "", "account", "ann", "ann", map[string]any{"dingtalk_name": "安"}}},
+		{"本人断开钉钉", func(t *testing.T, f *afix) error {
+			if err := store.UpsertChatIdentity(ctx, f.svc.Pool, store.ChatIdentity{AccountID: f.p.ann.ID, Provider: store.ProviderDingTalk, UserID: "u-ann"}); err != nil {
+				t.Fatal(err)
+			}
+			return f.svc.Unlink(ctx, core.WebActor(f.p.ann), f.p.ann.ID, core.ProviderDingTalk)
+		}, wantEvent{core.ActDingTalkUnlink, core.ViaWeb, "", "account", "ann", "ann", map[string]any{"self": true}}},
+		{"群里 @机器人 绑定钉钉群", func(t *testing.T, f *afix) error {
+			if err := store.DeleteWorkspaceChats(ctx, f.svc.Pool, f.p.pay, ""); err != nil { // 夹具里 pay 绑了 Telegram 群
+				t.Fatal(err)
+			}
+			b, err := f.svc.StartChatBind(ctx, core.WebActor(f.p.payAdmin), f.p.pay, core.ProviderDingTalk)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = f.svc.CompleteChatBind(ctx, core.ProviderDingTalk, "cid-pay", "支付群", b.Code)
+			return err
+		}, wantEvent{core.ActWorkspaceChatBind, core.ViaDingTalk, "pay", "workspace", "pay", "pay-admin", map[string]any{"chat_title": "支付群"}}},
+		{"管理页解绑钉钉群", func(t *testing.T, f *afix) error {
+			if err := store.SetWorkspaceChat(ctx, f.svc.Pool, store.WorkspaceChat{WorkspaceID: f.p.pay, Provider: store.ProviderDingTalk, ChatID: "cid-pay", Title: "支付群"}); err != nil {
+				t.Fatal(err)
+			}
+			return f.svc.UnbindChat(ctx, core.WebActor(f.p.payAdmin), f.p.pay, core.ProviderDingTalk)
+		}, wantEvent{core.ActWorkspaceChatUnbind, core.ViaWeb, "pay", "workspace", "pay", "pay-admin", map[string]any{"chat_title": "支付群"}}},
 		{"本人改密码", func(t *testing.T, f *afix) error {
 			f.keep("new-password-0123")
 			return f.svc.ChangePassword(ctx, f.p.ann, "", "", "new-password-0123")

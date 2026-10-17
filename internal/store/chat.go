@@ -152,3 +152,52 @@ func UpdateWorkspaceChatID(ctx context.Context, q DBTX, wsID int64, provider, ch
 	_, err := q.Exec(ctx, `UPDATE workspace_chats SET chat_id = $3 WHERE workspace_id = $1 AND provider = $2`, wsID, provider, chatID)
 	return err
 }
+
+// 群绑定码状态
+const (
+	BindPending = "pending"
+	BindBound   = "bound"
+	BindFailed  = "failed"
+)
+
+// ChatBindRequest 是一次群绑定：工作空间管理员在网页生成绑定码，在群里 @机器人 发出后完成。
+type ChatBindRequest struct {
+	ID          int64
+	WorkspaceID int64
+	Provider    string
+	CreatedBy   int64
+	Code        string
+	Status      string
+	Detail      string
+	ExpiresAt   time.Time
+}
+
+const chatBindColumns = `id, workspace_id, provider, created_by, code, status, detail, expires_at`
+
+func scanChatBind(row interface{ Scan(...any) error }) (ChatBindRequest, error) {
+	var r ChatBindRequest
+	err := row.Scan(&r.ID, &r.WorkspaceID, &r.Provider, &r.CreatedBy, &r.Code, &r.Status, &r.Detail, &r.ExpiresAt)
+	return r, notFound(err)
+}
+
+// CreateChatBindRequest 保存群绑定码。
+func CreateChatBindRequest(ctx context.Context, q DBTX, r ChatBindRequest) (ChatBindRequest, error) {
+	return scanChatBind(q.QueryRow(ctx, `INSERT INTO chat_bind_requests (workspace_id, provider, created_by, code, expires_at)
+		VALUES ($1, $2, $3, $4, $5) RETURNING `+chatBindColumns, r.WorkspaceID, r.Provider, r.CreatedBy, r.Code, r.ExpiresAt))
+}
+
+// ChatBindByCodeForUpdate 按绑定码读取并锁定群绑定请求。
+func ChatBindByCodeForUpdate(ctx context.Context, q DBTX, provider, code string) (ChatBindRequest, error) {
+	return scanChatBind(q.QueryRow(ctx, `SELECT `+chatBindColumns+` FROM chat_bind_requests
+		WHERE provider = $1 AND code = $2 FOR UPDATE`, provider, code))
+}
+
+// GetChatBindRequest 读取某工作空间的群绑定请求。
+func GetChatBindRequest(ctx context.Context, q DBTX, wsID, id int64) (ChatBindRequest, error) {
+	return scanChatBind(q.QueryRow(ctx, `SELECT `+chatBindColumns+` FROM chat_bind_requests WHERE id = $1 AND workspace_id = $2`, id, wsID))
+}
+
+// FinishChatBindRequest 写回群绑定结果。
+func FinishChatBindRequest(ctx context.Context, q DBTX, id int64, status, detail string) error {
+	return execOne(ctx, q, `UPDATE chat_bind_requests SET status = $2, detail = $3 WHERE id = $1`, id, status, detail)
+}
