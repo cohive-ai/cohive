@@ -1,5 +1,5 @@
 # 常驻隧道（cohive-tunnel.plist.template）用 --config 指向本文件复制到数据根目录的那份，
-# 免得 cloudflared 缺省去读 ~/.cloudflared/config.yml（本机别的项目的配置）。
+# 免得 cloudflared 缺省去读 ~/.cloudflared/config.yml（可能是本机别的项目的配置）。
 # 隧道是远程托管的：域名到 http://127.0.0.1:8787 的路由在 Cloudflare 控制台里配，不在这里。
 # 只写一个缺省值：完全空的文件 cloudflared 会报“配置为空”。
 loglevel: info

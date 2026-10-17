@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  macOS 常驻运行 Cohive 协作服务（登录后启动，退出后自动拉起）。用法见 docs/guides/test-server.md 的“常驻服务”一节：
+  macOS 常驻运行 Cohive 协作服务（登录后启动，退出后自动拉起）。用法见 docs/guides/single-host.md 的“常驻服务”一节：
   把 __REPO__ 换成仓库绝对路径、__HOME__ 换成用户目录、__COHIVE_HOME__ 换成数据根目录，
   保存为 ~/Library/LaunchAgents/com.anormlylee.cohive.server.plist。
   用 env -i 清空环境再启动：配置一律以 server.env 为准，launchctl setenv 等残留的 COHIVE_DATABASE_URL 带不进来。

@@ -109,7 +109,7 @@ Cohive 不做的事：不替人认领、不替人改代码、不在后台无人�
 - [新成员接入](docs/guides/onboarding.md)
 - [安装 cohive 命令行](docs/guides/install-cli.md)
 - [群通知与公网访问](docs/guides/group-notify.md)
-- [不用 Docker 的单机运行](docs/guides/test-server.md)
+- [不用 Docker 的单机运行](docs/guides/single-host.md)
 - [方案](docs/plan.md)、[早期选型调研](docs/research/2026-10-14-component-selection.md)
 
 ## 从源码构建

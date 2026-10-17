@@ -6,10 +6,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -460,3 +462,65 @@ esac
 }
 
 func syscallZero() os.Signal { return syscall.Signal(0) }
+
+// 2026-10-17 事故：launchd 下 LANG=en_US.UTF-8，macOS 自带的 bash 3.2 把“$addr）”里的多字节字符当成变量名的一部分，
+// set -u 下报 unbound variable，服务起不来。变量名后紧跟非 ASCII 字符时必须写成 ${名字}。
+var bareVarBeforeNonASCII = regexp.MustCompile(`\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]`)
+
+func TestShellVarsBracedBeforeNonASCII(t *testing.T) {
+	files := []string{filepath.Join("..", "internal", "clidist", "install.sh.tmpl")}
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(path, ".sh") {
+			files = append(files, path)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) < 5 {
+		t.Fatalf("应扫描到 scripts 下的全部 .sh 与安装脚本模板，只找到 %v", files)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			if m := bareVarBeforeNonASCII.FindString(line); m != "" {
+				t.Errorf("%s:%d：%q 后面紧跟非 ASCII 字符，改成 ${名字}：%s", f, i+1, m, strings.TrimSpace(line))
+			}
+		}
+	}
+}
+
+// 实际用 macOS 自带的 bash（没有就用 PATH 里的 bash）在 UTF-8 语言环境下跑一次 run 子命令，它会打印“监听 ${addr}）”。
+func TestServerScriptRunsUnderUTF8Locale(t *testing.T) {
+	needBash(t)
+	bash := "/bin/bash"
+	if _, err := os.Stat(bash); err != nil {
+		bash = "bash"
+	}
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "cohive-home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "server.env"),
+		[]byte("COHIVE_DATABASE_URL=postgres://u:p@localhost:1/demo\nCOHIVE_ADDR=127.0.0.1:18799\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(tmp, "cohive-server")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho \"fake $*\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bash, "cohive-server.sh", "run")
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + tmp, "COHIVE_HOME=" + home, "COHIVE_BIN=" + fake,
+		"COHIVE_TELEGRAM_ENV=" + filepath.Join(tmp, "none.env"), "COHIVE_LAUNCHD_PLIST=" + filepath.Join(tmp, "none.plist"),
+		"LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8"}
+	b, err := cmd.CombinedOutput()
+	out := string(b)
+	if err != nil || !strings.Contains(out, "监听 127.0.0.1:18799）") || !strings.Contains(out, "fake serve --addr 127.0.0.1:18799") {
+		t.Fatalf("UTF-8 语言环境下 run 应正常打印监听地址并启动服务：%v\n%s", err, out)
+	}
+}
