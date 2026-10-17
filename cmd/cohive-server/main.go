@@ -35,6 +35,10 @@ const usage = `用法：cohive-server <命令>
   account server-admin --name <登录名> --on|--off  授予或撤销服务器管理员
   admin reset-password --name <登录名>             重置网页密码，新密码只在这里显示一次，登录后须修改
 
+管理操作记录（只读；网页的“管理”与“服务器管理”页各有“记录”一栏）：
+  audit list [--workspace <名称>] [--type <类别>] [--actor <登录名>] [--via <入口>] [--limit 50] [--before <编号>]
+                                                  按时间倒序列出管理操作记录
+
 成员资格、令牌与服务（都可加 --workspace <名称>，缺省为 default）：
   member add --name <登录名> [--display <显示名>] [--role admin]
                                                   把账号加入工作空间；账号不存在时新建（没有密码）
@@ -87,6 +91,8 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		return notifyCmd(ctx, out, args[1:])
 	case "admin":
 		return adminCmd(ctx, out, args[1:])
+	case "audit":
+		return auditCmd(ctx, out, args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(out, usage)
 		return nil

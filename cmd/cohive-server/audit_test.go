@@ -8,6 +8,7 @@ import (
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 func lastAdminEvent(t *testing.T) (store.AdminEvent, int) {
@@ -105,5 +106,47 @@ func TestEveryCommandClassified(t *testing.T) {
 	}
 	if n < 20 {
 		t.Fatalf("只从用法里解析出 %d 条命令，解析可能失效", n)
+	}
+}
+
+// audit list：人话、入口、工作空间、翻页提示；用户填的名字里的控制字符不会原样打到终端。
+func TestAuditList(t *testing.T) {
+	adminEnv(t)
+	mustRun(t, "migrate")
+	if out := mustRun(t, "audit", "list"); !strings.Contains(out, "没有记录") {
+		t.Fatalf("空库：%s", out)
+	}
+	mustRun(t, "member", "add", "--name", "lee", "--role", "admin")
+	mustRun(t, "member", "add", "--name", "ann")
+	mustRun(t, "member", "set", "--name", "ann", "--role", "admin")
+	pool, err := openDB(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	err = pgx.BeginFunc(context.Background(), pool, func(tx pgx.Tx) error {
+		return store.InsertAdminEvent(context.Background(), tx, store.AdminEvent{Via: core.ViaWeb, ActorName: "lee",
+			Action: core.ActDeviceRevoke, TargetKind: "device", TargetName: "evil\x1b[31m\nname",
+			Detail: map[string]any{"owner": "ann", "device_name": "evil\x1b[31m\nname"}})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := mustRun(t, "audit", "list", "--limit", "2")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 3 || !strings.Contains(lines[0], "lee 在网页上吊销了 ann 的设备 evil [31m name") ||
+		!strings.Contains(lines[1], "服务器命令行把 ann 的角色从成员改为管理员") || !strings.Contains(lines[1], "[default]") ||
+		!strings.Contains(lines[1], "服务器命令行") || !strings.HasPrefix(lines[2], "更早的记录：--before ") {
+		t.Fatalf("输出：%q", out)
+	}
+	if strings.ContainsRune(out, '\x1b') {
+		t.Fatalf("控制字符应被替换：%q", out)
+	}
+	if out := mustRun(t, "audit", "list", "--type", "member", "--workspace", "default"); strings.Count(out, "\n") != 2 {
+		t.Fatalf("按类别与工作空间筛选：%s", out)
+	}
+	if _, err := runCmd(t, "audit", "list", "--type", "nope"); err == nil {
+		t.Fatal("不认识的类别应报错")
 	}
 }
