@@ -121,8 +121,9 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 			case "claude-code":
 				fmt.Fprintln(out, "  Claude Code：第一次在这个文件夹打开时要选“信任此文件夹”，钩子与 MCP 服务才会生效。")
 			case "codex":
-				fmt.Fprintln(out, "  Codex：要先在命令行版里信任 cohive 的两条钩子（SessionStart、UserPromptSubmit），否则不会提醒：在项目目录执行一次 codex，按提示选择全部信任（也可在命令行版里输入 /hooks 查看、信任）。"+
-					"桌面版不能信任钩子，但会执行命令行版信任过的。每台电脑、每个克隆目录各要信任一次；换服务地址或工作空间后要重新信任。"+
+				fmt.Fprintln(out, "  Codex：要先信任 cohive 的两条钩子（SessionStart、UserPromptSubmit），否则不会提醒：在项目目录执行一次命令行版 codex，"+
+					"启动时提示“Hooks need review”，选“Trust all and continue”。只用桌面版也要这样做一次（桌面版里没有信任钩子的入口，信任后桌面版随之生效）。"+
+					"每台电脑、每个克隆目录各要信任一次；换服务地址或工作空间后要重新信任。"+
 					"在 git 工作树里 Codex 读的是主检出目录的配置，请把这些文件提交。")
 			}
 		}
@@ -158,7 +159,7 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 		fmt.Fprintf(out, "\n注意：%s 还没有登录，执行：\n  cohive login --tools %s\n", t, t)
 	}
 	fmt.Fprintln(out, "\n下一步：")
-	fmt.Fprintln(out, "  1. 在 Claude Code、Codex 里打开这个项目，第一次会询问是否信任项目、是否启用 cohive 这个 MCP 服务，都选同意（Codex 的钩子要在命令行版 codex 里信任一次，见上）。")
+	fmt.Fprintln(out, "  1. 在 Claude Code、Codex 里打开这个项目，第一次会询问是否信任项目、是否启用 cohive 这个 MCP 服务，都选同意（Codex 的钩子要在项目目录执行一次命令行版 codex 信任，见上）。")
 	fmt.Fprintln(out, "  2. Claude Code 里用 /cohive，Codex 里用 $cohive，查看和处理分给你的问题单。")
 	return nil
 }

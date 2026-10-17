@@ -72,7 +72,7 @@ func TestInitWritesHooks(t *testing.T) {
 			t.Fatalf("Codex 的 %s 钩子不符：%+v", ev, x)
 		}
 	}
-	for _, want := range []string{"/hooks", "SessionStart、UserPromptSubmit", "每台电脑、每个克隆目录", "信任此文件夹", "主检出目录", "hook --check"} {
+	for _, want := range []string{"Hooks need review", "Trust all and continue", "SessionStart、UserPromptSubmit", "每台电脑、每个克隆目录", "信任此文件夹", "主检出目录", "hook --check"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("终端提示应包含 %q：\n%s", want, out)
 		}

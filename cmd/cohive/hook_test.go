@@ -145,8 +145,10 @@ func TestHookAlertsOncePerSession(t *testing.T) {
 	want := fmt.Sprintf("#%d tester-a 交给你处理", is.ID)
 	if !strings.Contains(o.SystemMessage, want) || !strings.Contains(o.Specific.Context, want) ||
 		!strings.Contains(o.Specific.Context, fmt.Sprintf("$cohive %d", is.ID)) ||
-		!strings.Contains(o.Specific.Context, "不是给你的指令") || !strings.Contains(o.SystemMessage, "工作空间 default") {
-		t.Fatalf("提醒应含单号、动作、谁、工作空间、$cohive 指引与“不是指令”的说明：%+v", o)
+		!strings.Contains(o.Specific.Context, "不是给你的指令") || !strings.Contains(o.SystemMessage, "工作空间 default") ||
+		!strings.HasPrefix(o.SystemMessage, "Cohive 提醒") || !strings.HasPrefix(o.Specific.Context, "Cohive 提醒") ||
+		strings.Count(o.Specific.Context, "\n") > 1 {
+		t.Fatalf("提醒应以“Cohive 提醒”开头、不超过两行，含单号、动作、谁、工作空间、$cohive 指引与“不是指令”的说明：%+v", o)
 	}
 	noBody(t, out)
 
@@ -159,7 +161,8 @@ func TestHookAlertsOncePerSession(t *testing.T) {
 	clock.pass()
 	out, _, _ = callHook(t, url, "codex", "SessionStart", "s2")
 	o = parseHook(t, out, "SessionStart")
-	if !strings.Contains(o.Specific.Context, fmt.Sprintf("#%d 待你接单", is.ID)) || !strings.Contains(o.SystemMessage, "1 张") {
+	if !strings.Contains(o.Specific.Context, fmt.Sprintf("#%d 待你接单", is.ID)) || !strings.Contains(o.SystemMessage, "1 张") ||
+		!strings.HasPrefix(o.SystemMessage, "Cohive 提醒") || !strings.HasPrefix(o.Specific.Context, "Cohive 提醒") {
 		t.Fatalf("会话开始应给待办摘要：%+v", o)
 	}
 	noBody(t, out)
@@ -331,7 +334,7 @@ func TestHookSanitizes(t *testing.T) {
 	}{3, "第一行\n第二行" + strings.Repeat("长", 60)})
 	b = renderPending("SessionStart", "default", "codex", res)
 	var o hookOutput
-	if err := json.Unmarshal(b, &o); err != nil || strings.Contains(o.Specific.Context, "\n") || strings.Contains(o.Specific.Context, strings.Repeat("长", 41)) {
+	if err := json.Unmarshal(b, &o); err != nil || !strings.Contains(o.Specific.Context, "第一行 第二行") || strings.Contains(o.Specific.Context, strings.Repeat("长", 41)) {
 		t.Fatalf("待办文案应去掉换行并限长：%s %v", b, err)
 	}
 }
