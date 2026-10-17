@@ -16,7 +16,7 @@ cohive_install() {
   for arg in "$@"; do
     case "$arg" in
       --login) login=1 ;;
-      *) fail "不认识的参数 $arg（只支持 --login）" ;;
+      *) fail "不认识的参数 ${arg}（只支持 --login）" ;;
     esac
   done
 {{- if .Missing}}
@@ -65,7 +65,7 @@ cohive_install() {
   fetch "$server/dl/cohive/$platform" "$tmp/cohive" || fail "下载失败，请检查网络后重试"
   got="$(sum "$tmp/cohive")"
   if [ "$got" != "$want" ]; then
-    fail "校验和不符（期望 $want，实际 $got），已删除下载的文件，没有安装。请重试；仍不符请告诉管理员"
+    fail "校验和不符（期望 ${want}，实际 ${got}），已删除下载的文件，没有安装。请重试；仍不符请告诉管理员"
   fi
   chmod 755 "$tmp/cohive"
   mkdir -p "$dir" || fail "无法创建目录 $dir"

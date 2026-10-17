@@ -57,8 +57,8 @@ case "$probe" in :*) probe="127.0.0.1$probe" ;; 0.0.0.0:*) probe="127.0.0.1:${pr
 port="${addr##*:}"
 
 need_config() {
-  [ -n "${COHIVE_DATABASE_URL:-}" ] || fail "没有设置 COHIVE_DATABASE_URL：写进 $COHIVE_SERVER_ENV（参照 scripts/server.env.example）或在环境变量里设置"
-  [ -x "$bin" ] || fail "找不到服务端程序 $bin：先在仓库根目录执行 make build，或用 COHIVE_BIN 指定"
+  [ -n "${COHIVE_DATABASE_URL:-}" ] || fail "没有设置 COHIVE_DATABASE_URL：写进 ${COHIVE_SERVER_ENV}（参照 scripts/server.env.example）或在环境变量里设置"
+  [ -x "$bin" ] || fail "找不到服务端程序 ${bin}：先在仓库根目录执行 make build，或用 COHIVE_BIN 指定"
 }
 
 # running 判断进程号文件里的进程是否在运行且确是 cohive-server；是则输出进程号。
@@ -71,7 +71,7 @@ running() {
   case "$comm" in
     *cohive-server*) printf '%s' "$pid" ;;
     "") return 1 ;;
-    *) echo "进程号文件 $pid_file 记录的 $pid 是别的程序（$comm），不会动它" >&2; return 2 ;;
+    *) echo "进程号文件 $pid_file 记录的 $pid 是别的程序（${comm}），不会动它" >&2; return 2 ;;
   esac
 }
 
@@ -99,7 +99,7 @@ wait_healthy() {
   for _ in $(seq 1 30); do
     pid="$(launchd_pid)"
     if [ -n "$pid" ] && [ "$pid" != "$old" ] && curl -fsS "http://$probe/healthz" >/dev/null 2>&1; then
-      echo "已由 launchd 启动，进程号 $pid，监听 $addr"
+      echo "已由 launchd 启动，进程号 ${pid}，监听 $addr"
       echo "  日志：$log_file"
       return 0
     fi
@@ -126,7 +126,7 @@ launchd_stop() {
   fi
   launchctl bootout "$domain/$label"
   rm -f "$pid_file"
-  echo "已停止并从 launchd 卸下 $label；下次登录会自动装回，要现在恢复执行 $0 start"
+  echo "已停止并从 launchd 卸下 ${label}；下次登录会自动装回，要现在恢复执行 $0 start"
 }
 
 launchd_restart() {
@@ -142,7 +142,7 @@ start() {
   local pid rc=0
   pid="$(running)" || rc=$?
   if [ "$rc" -eq 0 ]; then
-    echo "已在运行，进程号 $pid（$addr）"
+    echo "已在运行，进程号 ${pid}（${addr}）"
     return 0
   fi
   [ "$rc" -eq 2 ] && fail "进程号文件指向别的程序，请确认后删除 $pid_file 再启动"
@@ -153,14 +153,14 @@ start() {
   chmod 700 "$COHIVE_HOME" "$COHIVE_DATA_DIR" "$run_dir" 2>/dev/null || true
   {
     echo
-    echo "==== $(date '+%Y-%m-%d %H:%M:%S') 启动（库 $(cohive_db_name "$COHIVE_DATABASE_URL")，监听 $addr）===="
+    echo "==== $(date '+%Y-%m-%d %H:%M:%S') 启动（库 $(cohive_db_name "$COHIVE_DATABASE_URL")，监听 ${addr}）===="
   } >> "$log_file"
   ( exec_server ) >> "$log_file" 2>&1 < /dev/null &
   pid=$!
   echo "$pid" > "$pid_file"
   for _ in $(seq 1 30); do
     if curl -fsS "http://$probe/healthz" >/dev/null 2>&1; then
-      echo "已启动，进程号 $pid，监听 $addr"
+      echo "已启动，进程号 ${pid}，监听 $addr"
       echo "  数据目录：$COHIVE_DATA_DIR"
       echo "  日志：$log_file"
       return 0
@@ -192,7 +192,7 @@ stop() {
   for _ in $(seq 1 20); do
     if ! kill -0 "$pid" 2>/dev/null; then
       rm -f "$pid_file"
-      echo "已停止（进程号 $pid）"
+      echo "已停止（进程号 ${pid}）"
       return 0
     fi
     sleep 0.5
@@ -212,14 +212,14 @@ status() {
         echo "由 launchd 托管：$label"
       else
         rc=1
-        echo "由 launchd 托管：$label，当前没有进程（launchd 会每 10 秒重试，看日志 $log_file）"
+        echo "由 launchd 托管：${label}，当前没有进程（launchd 会每 10 秒重试，看日志 ${log_file}）"
       fi
     else
       echo "装了 launchd 服务 $label 但未装载（执行 $0 start 装载）"
     fi
   fi
   if [ "$rc" -eq 0 ]; then
-    echo "运行中，进程号 $pid，监听 $addr"
+    echo "运行中，进程号 ${pid}，监听 $addr"
     local v
     v="$(curl -fsS "http://$probe/api/v1/version" 2>/dev/null | sed -nE 's/.*"version":"([^"]*)"[^"]*$/\1/p' || true)"
     [ -n "$v" ] && echo "  版本：$v"
@@ -258,7 +258,7 @@ case "${1:-}" in
     need_config
     mkdir -p "$COHIVE_DATA_DIR" "$run_dir"
     echo
-    echo "==== $(date '+%Y-%m-%d %H:%M:%S') 前台启动（库 $(cohive_db_name "$COHIVE_DATABASE_URL")，监听 $addr）===="
+    echo "==== $(date '+%Y-%m-%d %H:%M:%S') 前台启动（库 $(cohive_db_name "$COHIVE_DATABASE_URL")，监听 ${addr}）===="
     # exec 不换进程号：记下来，status 与 stop 照样能认出它
     echo "$$" > "$pid_file"
     exec_server

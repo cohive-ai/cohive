@@ -57,7 +57,7 @@ if [ -n "$container" ]; then
   # -e PGPASSWORD 不带值：从本进程的环境变量传入容器，密码不出现在命令参数里
   PGPASSWORD="$pass" docker exec -e PGPASSWORD "$container" \
     pg_dump -h 127.0.0.1 -p "$cport" -U "$user" -Fc "$db" > "$part" \
-    || fail "pg_dump 失败（容器 $container，库 $db）"
+    || fail "pg_dump 失败（容器 ${container}，库 ${db}）"
   # 用容器里同版本的 pg_restore 校验：旧版 pg_restore 读不了新版的备份格式
   docker exec -i "$container" pg_restore --list < "$part" > /dev/null \
     || fail "备份文件校验失败，已丢弃"
@@ -67,12 +67,12 @@ else
   if command -v psql >/dev/null 2>&1; then
     server_num="$(PGPASSWORD="$pass" PGSSLMODE="$sslmode" psql -h "$host" -p "$port" -U "$user" -d "$db" -tAc 'SHOW server_version_num' 2>/dev/null || true)"
     if [[ "$server_num" =~ ^[0-9]+$ ]] && [ "$((server_num / 10000))" -gt "$local_major" ]; then
-      fail "本机 pg_dump 是 $local_major，数据库服务器是 $((server_num / 10000))，pg_dump 不能备份更新版本的服务器。" \
+      fail "本机 pg_dump 是 ${local_major}，数据库服务器是 $((server_num / 10000))，pg_dump 不能备份更新版本的服务器。" \
         "请安装同版本客户端（macOS：brew install postgresql@$((server_num / 10000))），或在 server.env 里设置 COHIVE_PG_CONTAINER=<数据库容器名>"
     fi
   fi
   PGPASSWORD="$pass" PGSSLMODE="$sslmode" pg_dump -h "$host" -p "$port" -U "$user" -Fc -f "$part" "$db" \
-    || fail "pg_dump 失败（库 $db）"
+    || fail "pg_dump 失败（库 ${db}）"
   pg_restore --list "$part" > /dev/null || fail "备份文件校验失败，已丢弃"
 fi
 
@@ -90,4 +90,4 @@ if [ "${#backups[@]}" -gt "$keep" ]; then
     removed=$((removed + 1))
   done < <(printf '%s\n' "${backups[@]}" | sort -r | tail -n +"$((keep + 1))")
 fi
-echo "$(date '+%Y-%m-%d %H:%M:%S') 已备份库 $db → $out（$size）；保留最近 $keep 份，删除旧备份 $removed 份"
+echo "$(date '+%Y-%m-%d %H:%M:%S') 已备份库 $db → ${out}（${size}）；保留最近 $keep 份，删除旧备份 $removed 份"
