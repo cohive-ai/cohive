@@ -127,6 +127,27 @@ func TestDispatchSends(t *testing.T) {
 	}
 }
 
+// 从库里读出的成员带着 Telegram 用户编号，群通知按编号提到负责人。
+func TestDispatchMentionsByTelegramUserID(t *testing.T) {
+	e := newDispatchEnv(t)
+	ctx := context.Background()
+	id := int64(5551)
+	if err := store.SetAccountTelegramUserID(ctx, e.pool, e.b.AccountID, &id); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAccountTelegramUsername(ctx, e.pool, e.b.AccountID, "old_codex"); err != nil {
+		t.Fatal(err)
+	}
+	e.submitOne(t)
+	if n, err := e.d.RunOnce(ctx); err != nil || n != 1 {
+		t.Fatalf("应处理 1 条，得到 %d %v", n, err)
+	}
+	if len(e.sender.sent) != 1 || !strings.Contains(e.sender.sent[0], `新单交给 <a href="tg://user?id=5551">lee-codex</a>`) ||
+		strings.Contains(e.sender.sent[0], "@old_codex") {
+		t.Fatalf("应按用户编号提到负责人：%v", e.sender.sent)
+	}
+}
+
 func TestDispatchRetriesThenFails(t *testing.T) {
 	e := newDispatchEnv(t)
 	is := e.submitOne(t)

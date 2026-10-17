@@ -20,10 +20,7 @@ func Render(base string, ws store.Workspace, is store.Issue, n store.Notificatio
 		if !ok {
 			return "（未知成员）"
 		}
-		if m.TelegramUsername != "" {
-			return "@" + m.TelegramUsername
-		}
-		return esc(m.Name)
+		return tgMention(m.TelegramUserID, m.TelegramUsername, esc(m.Name), false)
 	}
 	mentions := func(ids []int64) string {
 		parts := make([]string, 0, len(ids))
@@ -83,6 +80,21 @@ func Render(base string, ws store.Workspace, is store.Issue, n store.Notificatio
 		lines = append(lines, esc(link))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// tgMention 是群消息里提到一个人。连接了 Telegram 的按用户编号提到（tg://user?id= 链接，不依赖用户名，
+// 对方没设或改了用户名都能通知到）；只有用户名没有编号的旧数据退回 @用户名；都没有时只写 label。
+// label 必须是已转义的 HTML；withLabel 为 true 时 @用户名 后面再括注 label。
+func tgMention(userID *int64, username, label string, withLabel bool) string {
+	switch {
+	case userID != nil:
+		return fmt.Sprintf(`<a href="tg://user?id=%d">%s</a>`, *userID, label)
+	case username != "" && withLabel:
+		return "@" + html.EscapeString(username) + "（" + label + "）"
+	case username != "":
+		return "@" + html.EscapeString(username)
+	}
+	return label
 }
 
 func toolLabel(tool string) string {

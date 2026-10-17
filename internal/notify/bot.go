@@ -204,9 +204,6 @@ func (b *Bot) handleStart(ctx context.Context, u Update) (string, bool) {
 		return "暂时无法完成连接，请稍后在网页上重试。", true
 	}
 	text := fmt.Sprintf("已连接到 Cohive 账号 %s，在你所在的全部工作空间通用。回到网页即可看到。", html.EscapeString(res.Account))
-	if m.From.Username == "" {
-		text += "\n你还没有设置 Telegram 用户名，群通知没法 @ 到你，建议在 Telegram 设置里设一个，再重新连接。"
-	}
 	return text, true
 }
 
@@ -255,12 +252,9 @@ func mentionName(name, display string) string {
 	return s
 }
 
-// mention 是群里 @ 某人：连接了 Telegram 且有用户名时 @ 他，否则只写名字。
-func mention(name, display, tgUsername string) string {
-	if tgUsername != "" {
-		return "@" + html.EscapeString(tgUsername) + "（" + mentionName(name, display) + "）"
-	}
-	return mentionName(name, display)
+// mention 是群里 @ 某人，规则见 tgMention；链接文字是登录名与显示名。
+func mention(m store.Member) string {
+	return tgMention(m.TelegramUserID, m.TelegramUsername, mentionName(m.Name, m.DisplayName), true)
 }
 
 func approvalButtons(kind string, wsID, id int64) [][]Button {
@@ -380,7 +374,7 @@ func (b *Bot) AnnounceJoined(ctx context.Context, m store.Member) error {
 	if err != nil || chat == 0 {
 		return err
 	}
-	return b.api().SendText(ctx, chat, fmt.Sprintf("%s 已加入工作空间 %s。", mention(m.Name, m.DisplayName, m.TelegramUsername),
+	return b.api().SendText(ctx, chat, fmt.Sprintf("%s 已加入工作空间 %s。", mention(m),
 		html.EscapeString(ws.Label())))
 }
 
