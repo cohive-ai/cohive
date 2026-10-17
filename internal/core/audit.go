@@ -97,13 +97,12 @@ const (
 	ActServiceOwner      = "service.owner"
 	ActAccessDenied      = "access.denied"
 
-	// 预留给 M6-d（对外地址改为服务器级、工作空间拆路径与显示名），业务还没实现
 	ActServerSettings       = "server.settings"
 	ActWorkspaceDisplayName = "workspace.display_name"
 )
 
 // ReservedActions 是已登记、但还没有业务入口的动作。实现业务时从这里删掉，并补上用例。
-var ReservedActions = map[string]bool{ActServerSettings: true, ActWorkspaceDisplayName: true}
+var ReservedActions = map[string]bool{}
 
 // 动作类别（查看时按类别筛选）。
 const (

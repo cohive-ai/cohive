@@ -27,14 +27,20 @@ func sampleIssue() store.Issue {
 	}
 }
 
-func workspace(showTitle, showBrief bool, url string) store.Workspace {
-	return store.Workspace{Name: "payments", PublicURL: url,
-		Notify: store.NotifyConfig{Channel: "telegram", Target: "-100", ShowTitle: showTitle, ShowBrief: showBrief}}
+// tws 是测试用的工作空间与服务器级对外地址。
+type tws struct {
+	ws   store.Workspace
+	base string
 }
 
-func render(t *testing.T, ws store.Workspace, is store.Issue, event string, actor int64, tool string, recipients ...int64) string {
+func workspace(showTitle, showBrief bool, url string) tws {
+	return tws{ws: store.Workspace{Name: "payments", DisplayName: "支付组",
+		Notify: store.NotifyConfig{Channel: "telegram", Target: "-100", ShowTitle: showTitle, ShowBrief: showBrief}}, base: url}
+}
+
+func render(t *testing.T, w tws, is store.Issue, event string, actor int64, tool string, recipients ...int64) string {
 	t.Helper()
-	return notify.Render(ws, is, store.Notification{Event: event, ActorMemberID: actor, ActorTool: tool, Recipients: recipients}, members())
+	return notify.Render(w.base, w.ws, is, store.Notification{Event: event, ActorMemberID: actor, ActorTool: tool, Recipients: recipients}, members())
 }
 
 func TestAssignedMessage(t *testing.T) {
@@ -44,6 +50,14 @@ func TestAssignedMessage(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("消息应包含 %q：\n%s", want, text)
 		}
+	}
+}
+
+// 链接用服务器级对外地址 + 路径，不用显示名。
+func TestLinkUsesExternalURLAndPath(t *testing.T) {
+	text := render(t, workspace(true, true, "https://cohive.example.com"), sampleIssue(), "assigned", claude.ID, "claude-code", codex.ID)
+	if !strings.Contains(text, "https://cohive.example.com/w/payments/issues/12") || strings.Contains(text, "支付组") {
+		t.Fatalf("链接应为对外地址 + 路径：\n%s", text)
 	}
 }
 

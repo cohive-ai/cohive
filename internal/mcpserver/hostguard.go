@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-// hostGuard 是带白名单的 DNS 重绑定防护：从本机地址进来的请求，Host 必须是 localhost
-// 或白名单里的域名（例如经 Cloudflare 隧道转发来的公网域名），否则返回 403。
+// hostGuard 是带白名单的 DNS 重绑定防护：从本机地址进来的请求，Host 必须是 localhost、
+// 白名单里的域名（COHIVE_ALLOWED_HOSTS），或服务器级对外地址的主机名（dynamic 返回，可为空），否则返回 403。
 // 它替代 MCP 开发包自带的同类防护，后者不支持白名单。
-func hostGuard(allowed []string, next http.Handler) http.Handler {
+func hostGuard(allowed []string, dynamic func() string, next http.Handler) http.Handler {
 	ok := map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}
 	for _, h := range allowed {
 		if h = normalizeHost(h); h != "" {
@@ -18,8 +18,9 @@ func hostGuard(allowed []string, next http.Handler) http.Handler {
 		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if viaLoopback(r) && !ok[normalizeHost(r.Host)] {
-			http.Error(w, fmt.Sprintf("Forbidden: invalid Host header %q（如经隧道访问，请把该域名加入 COHIVE_ALLOWED_HOSTS）", r.Host), http.StatusForbidden)
+		h := normalizeHost(r.Host)
+		if viaLoopback(r) && !ok[h] && (dynamic == nil || h == "" || h != normalizeHost(dynamic())) {
+			http.Error(w, fmt.Sprintf("Forbidden: invalid Host header %q（如经隧道访问，请在网页“服务器管理 → 设置”里填写对外地址，或把该域名加入 COHIVE_ALLOWED_HOSTS）", r.Host), http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)

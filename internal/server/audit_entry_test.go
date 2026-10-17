@@ -214,9 +214,17 @@ func webCases() []webCase {
 			return code
 		}, core.ActWorkspaceDelete, core.ViaWeb, "tmp", "lee-codex"},
 		{"POST /api/v1/w/{ws}/admin/workspace", "改工作空间设置", func(t *testing.T, w *auditWeb) int {
-			code, _ := w.admin.do("POST", wa+"/workspace", map[string]any{"public_url": "https://c.example"}, "")
+			code, _ := w.admin.do("POST", wa+"/workspace", map[string]any{"show_title": true}, "")
 			return code
 		}, core.ActWorkspaceSettings, core.ViaWeb, "default", "lee-codex"},
+		{"POST /api/v1/w/{ws}/admin/workspace", "改工作空间显示名", func(t *testing.T, w *auditWeb) int {
+			code, _ := w.admin.do("POST", wa+"/workspace", map[string]any{"display_name": "默认组"}, "")
+			return code
+		}, core.ActWorkspaceDisplayName, core.ViaWeb, "default", "lee-codex"},
+		{"POST /api/v1/server/settings", "改对外地址", func(t *testing.T, w *auditWeb) int {
+			code, _ := w.admin.do("POST", "/api/v1/server/settings", map[string]any{"external_url": "https://c.example.com"}, "")
+			return code
+		}, core.ActServerSettings, core.ViaWeb, "", "lee-codex"},
 		{"DELETE /api/v1/server/accounts/{name}/telegram", "服务器管理页断开 Telegram", func(t *testing.T, w *auditWeb) int {
 			tg := int64(77)
 			if err := store.SetAccountTelegram(ctx, w.f.svc.Pool, w.claude.ID, &tg, "claudetg"); err != nil {

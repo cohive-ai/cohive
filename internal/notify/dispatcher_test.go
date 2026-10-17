@@ -3,6 +3,7 @@ package notify_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -54,7 +55,7 @@ func newDispatchEnv(t *testing.T) dispatchEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetWorkspaceNotify(ctx, pool, ws, store.NotifyConfig{Channel: "telegram", Target: "-100", ShowTitle: true, ShowBrief: true}, ""); err != nil {
+	if err := store.SetWorkspaceNotify(ctx, pool, ws, store.NotifyConfig{Channel: "telegram", Target: "-100", ShowTitle: true, ShowBrief: true}); err != nil {
 		t.Fatal(err)
 	}
 	ident := func(name, tool string) store.Identity {
@@ -186,7 +187,7 @@ func TestDispatchPermanentAndRateLimit(t *testing.T) {
 func TestDispatchSkipsWhenGroupTurnedOff(t *testing.T) {
 	e := newDispatchEnv(t)
 	is := e.submitOne(t)
-	if err := store.SetWorkspaceNotify(context.Background(), e.pool, is.WorkspaceID, store.NotifyConfig{}, ""); err != nil {
+	if err := store.SetWorkspaceNotify(context.Background(), e.pool, is.WorkspaceID, store.NotifyConfig{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.d.RunOnce(context.Background()); err != nil {
@@ -197,5 +198,28 @@ func TestDispatchSkipsWhenGroupTurnedOff(t *testing.T) {
 	}
 	if got := e.notification(t, is.ID); got.Status != "failed" || !strings.Contains(got.LastError, "关闭") {
 		t.Fatalf("应标记为失败并说明已关闭：%+v", got)
+	}
+}
+
+// 投递时链接取服务器级对外地址：没设时不带链接；BaseURL 为空时读数据库里的设置。
+func TestDispatchLinkFromServerSettings(t *testing.T) {
+	ctx := context.Background()
+	e := newDispatchEnv(t)
+	e.submitOne(t)
+	if _, err := e.d.RunOnce(ctx); err != nil || len(e.sender.sent) != 1 || strings.Contains(e.sender.sent[0], "http") {
+		t.Fatalf("没设对外地址时不带链接：%v %v", e.sender.sent, err)
+	}
+	if err := store.SetExternalURL(ctx, e.d.Pool, "https://c.example.com", nil); err != nil {
+		t.Fatal(err)
+	}
+	is := e.submitOne(t)
+	if _, err := e.d.RunOnce(ctx); err != nil || len(e.sender.sent) != 2 ||
+		!strings.Contains(e.sender.sent[1], fmt.Sprintf("https://c.example.com/w/default/issues/%d", is.ID)) {
+		t.Fatalf("应带对外地址拼的链接：%v %v", e.sender.sent, err)
+	}
+	e.d.BaseURL = func(context.Context) string { return "https://env.example.com" }
+	is = e.submitOne(t)
+	if _, err := e.d.RunOnce(ctx); err != nil || !strings.Contains(e.sender.sent[2], "https://env.example.com/w/") {
+		t.Fatalf("服务端传入的对外地址优先：%v %v", e.sender.sent, err)
 	}
 }

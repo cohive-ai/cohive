@@ -5,14 +5,15 @@ package notify
 import (
 	"fmt"
 	"html"
-	"net/url"
 	"strings"
 
+	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
-// Render 生成一条群消息（Telegram HTML 格式，所有用户输入都已转义）。
-func Render(ws store.Workspace, is store.Issue, n store.Notification, members map[int64]store.Member) string {
+// Render 生成一条群消息（Telegram HTML 格式，所有用户输入都已转义）。base 是服务器级对外地址，
+// 末尾的问题单链接为“对外地址 + /w/路径/issues/编号”；没设对外地址时不带链接。
+func Render(base string, ws store.Workspace, is store.Issue, n store.Notification, members map[int64]store.Member) string {
 	esc := html.EscapeString
 	mention := func(id int64) string {
 		m, ok := members[id]
@@ -78,9 +79,8 @@ func Render(ws store.Workspace, is store.Issue, n store.Notification, members ma
 		lines = append(lines, "简述："+esc(is.Brief))
 	}
 	lines = append(lines, fmt.Sprintf("在编程工具里用 /cohive %d（Codex 用 $cohive %d）处理", is.ID, is.ID))
-	if ws.PublicURL != "" {
-		// 网页按工作空间分前缀：/w/{工作空间}/issues/{编号}
-		lines = append(lines, esc(fmt.Sprintf("%s/w/%s/issues/%d", strings.TrimRight(ws.PublicURL, "/"), url.PathEscape(ws.Name), is.ID)))
+	if link := core.IssueLink(base, ws.Name, is.ID); link != "" {
+		lines = append(lines, esc(link))
 	}
 	return strings.Join(lines, "\n")
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/issue"
@@ -26,6 +27,10 @@ type Service struct {
 	Pool *pgxpool.Pool
 	// DataDir 是服务器数据目录，保存初始管理员密码文件；只有服务端进程需要设置。
 	DataDir string
+	// EnvExternalURL 是环境变量 COHIVE_EXTERNAL_URL 给的对外地址（已规范化）；非空时锁定，网页与命令行不能改。
+	EnvExternalURL string
+
+	external atomic.Pointer[externalCache] // 进程内缓存的对外地址，见 settings.go
 }
 
 // InputError 表示调用参数不完整或不合法。

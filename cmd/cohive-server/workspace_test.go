@@ -62,10 +62,15 @@ func TestWorkspaceNotifyAndAccountTelegram(t *testing.T) {
 		t.Fatal("不合法的 Telegram 用户名应报错")
 	}
 
-	mustRun(t, "workspace", "notify", "--workspace", "payments", "--telegram-chat", "-1001234567890",
-		"--show-title=false", "--public-url", "https://cohive.example.com/")
+	// 对外地址已改为服务器级：--public-url 报错并指向 server set
+	if _, err := runCmd(t, "workspace", "notify", "--workspace", "payments", "--telegram-chat", "-1001234567890",
+		"--public-url", "https://cohive.example.com/"); err == nil || !strings.Contains(err.Error(), "server set --external-url") {
+		t.Fatalf("--public-url 应提示改用 server set：%v", err)
+	}
+	mustRun(t, "workspace", "notify", "--workspace", "payments", "--telegram-chat", "-1001234567890", "--show-title=false")
+	mustRun(t, "workspace", "set", "--name", "payments", "--display", "支付组")
 	out = mustRun(t, "workspace", "list")
-	for _, want := range []string{"telegram", "-1001234567890", "标题 关", "简述 开", "https://cohive.example.com"} {
+	for _, want := range []string{"telegram", "-1001234567890", "标题 关", "简述 开", "支付组"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("工作空间列表应显示 %q：%s", want, out)
 		}
@@ -107,5 +112,34 @@ func TestAccountTelegramID(t *testing.T) {
 	mustRun(t, "member", "add", "--workspace", "payments", "--name", "lee")
 	if out := mustRun(t, "member", "list", "--workspace", "payments"); !strings.Contains(out, "7012345678") {
 		t.Fatalf("第二个工作空间里也应看到同一个 Telegram 连接：%s", out)
+	}
+}
+
+func TestServerExternalURL(t *testing.T) {
+	adminEnv(t)
+	mustRun(t, "migrate")
+	if out := mustRun(t, "server", "show"); !strings.Contains(out, "未设置") {
+		t.Fatalf("初始未设置：%s", out)
+	}
+	if _, err := runCmd(t, "server", "set", "--external-url", "https://c.example.com/cohive"); err == nil {
+		t.Fatal("带路径的地址应报错")
+	}
+	if out := mustRun(t, "server", "set", "--external-url", "HTTPS://C.Example.com/"); !strings.Contains(out, "https://c.example.com") {
+		t.Fatalf("应规范化：%s", out)
+	}
+	if out := mustRun(t, "server", "show"); !strings.Contains(out, "对外地址：https://c.example.com") {
+		t.Fatalf("show：%s", out)
+	}
+	// 环境变量锁定：show 显示锁定，set 报错
+	t.Setenv("COHIVE_EXTERNAL_URL", "https://locked.example.com")
+	if out := mustRun(t, "server", "show"); !strings.Contains(out, "locked.example.com") || !strings.Contains(out, "锁定") {
+		t.Fatalf("锁定时 show：%s", out)
+	}
+	if _, err := runCmd(t, "server", "set", "--external-url", "https://x.example.com"); err == nil || !strings.Contains(err.Error(), "锁定") {
+		t.Fatalf("锁定时 set 应报错：%v", err)
+	}
+	t.Setenv("COHIVE_EXTERNAL_URL", "not a url")
+	if _, err := runCmd(t, "server", "show"); err == nil || !strings.Contains(err.Error(), "COHIVE_EXTERNAL_URL") {
+		t.Fatalf("环境变量不合法应报错：%v", err)
 	}
 }

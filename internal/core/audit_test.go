@@ -279,10 +279,25 @@ func auditCases() []auditCase {
 			return f.svc.DeleteWorkspace(ctx, web(f.p.root), "tmp")
 		}, wantEvent{core.ActWorkspaceDelete, core.ViaWeb, "tmp", "workspace", "tmp", "root", nil}},
 		{"改工作空间设置", func(t *testing.T, f *afix) error {
-			return f.svc.UpdateWorkspace(ctx, web(f.p.payAdmin), f.p.pay, core.WorkspaceSettings{PublicURL: "https://c.example",
-				TelegramChat: "-1001", ShowTitle: false, ShowBrief: false})
+			return f.svc.UpdateWorkspace(ctx, web(f.p.payAdmin), f.p.pay, core.WorkspaceSettings{
+				TelegramChat: "-1001", ShowTitle: true, ShowBrief: false})
 		}, wantEvent{core.ActWorkspaceSettings, core.ViaWeb, "pay", "workspace", "pay", "pay-admin",
-			map[string]any{"public_url": map[string]any{"from": "", "to": "https://c.example"}}}},
+			map[string]any{"show_title": map[string]any{"from": false, "to": true}}}},
+		{"设置页改显示名（群设置不变）", func(t *testing.T, f *afix) error {
+			d := " 支付组 "
+			return f.svc.UpdateWorkspace(ctx, web(f.p.payAdmin), f.p.pay, core.WorkspaceSettings{
+				TelegramChat: "-1001", DisplayName: &d})
+		}, wantEvent{core.ActWorkspaceDisplayName, core.ViaWeb, "pay", "workspace", "pay", "pay-admin",
+			map[string]any{"display_name": map[string]any{"from": "pay", "to": "支付组"}}}},
+		{"命令行改显示名", func(t *testing.T, f *afix) error {
+			return f.svc.SetWorkspaceDisplayName(ctx, core.ServerCLI(), f.p.ops, "运维")
+		}, wantEvent{core.ActWorkspaceDisplayName, core.ViaServerCLI, "ops", "workspace", "ops", "",
+			map[string]any{"display_name": map[string]any{"from": "ops", "to": "运维"}}}},
+		{"改对外地址", func(t *testing.T, f *afix) error {
+			_, err := f.svc.SetExternalURL(ctx, web(f.p.root), "HTTPS://C.Example.com/")
+			return err
+		}, wantEvent{core.ActServerSettings, core.ViaWeb, "", "server", "对外地址", "root",
+			map[string]any{"external_url": map[string]any{"from": "", "to": "https://c.example.com"}}}},
 		{"命令行重置密码", func(t *testing.T, f *afix) error {
 			pw, err := f.svc.ResetPassword(ctx, core.ServerCLI(), "ann")
 			f.keep(pw)
@@ -561,7 +576,7 @@ func TestNoopLeavesNoRecord(t *testing.T) {
 			return f.svc.SetRole(ctx, core.WebActor(f.p.payAdmin), f.p.pay, f.p.annPay.ID, store.RoleMember)
 		},
 		func() error {
-			return f.svc.UpdateWorkspace(ctx, core.WebActor(f.p.payAdmin), f.p.pay, core.WorkspaceSettings{PublicURL: ws.PublicURL,
+			return f.svc.UpdateWorkspace(ctx, core.WebActor(f.p.payAdmin), f.p.pay, core.WorkspaceSettings{
 				TelegramChat: ws.Notify.Target, ShowTitle: ws.Notify.ShowTitle, ShowBrief: ws.Notify.ShowBrief})
 		},
 		func() error { return f.svc.UnlinkTelegram(ctx, core.WebActor(f.p.ann), f.p.ann.ID) },
