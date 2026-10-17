@@ -19,7 +19,6 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| M6-e | `feature/phase1-m6e-session-alerts`（基于 main） | m6e / `local_1caa8871-0d36-4ef4-88e4-591341865886` | 已验收 = `656592e`（打回小项） | 打回 | 先交两家客户端（命令行版与桌面版）钩子与频道能力的实测结论表和计划，主脑审批后再写代码。验收：全量；探针 ≥2（候选：提醒带出问题单正文、离线时阻塞会话、游标导致重复或漏提醒）；两家桌面版钩子 lee 已实测生效（Codex 需命令行版信任一次），已转 m6e |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
@@ -28,6 +27,8 @@
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
+- P2 T-1 追查偶发失败：M6-e 合并后的 main 上全量一次出现 4 处失败、未保存日志；其后 2 次全量与 4 个包各 5 遍均通过。已知同类：通知包 TestChatMigratedUpdatesTarget（程序时钟与数据库 now() 相差几毫秒）。下次复现时保存完整日志 —— 来源 主脑 2026-10-17
+- P1 L-3 lee 用真实 cohive 钩子走一遍：重装命令行 → playground 重新 `cohive init` → 项目目录执行一次命令行版 codex 选全部信任 → 发单接单，看会话里是否出现“Cohive 提醒”；顺带看群消息链接是否为 `https://cohive-test.anormlylee.com/w/lee/issues/…` —— 来源 M6-e、M6-d
 - P1 L-2（审批按钮已通过：批准、拒绝各一次；群通知 @ 待 lee 回报）lee 亲手实测 Telegram：个人中心连接 Telegram；管理 → 工作空间填“小项目”群编号 `-1004357698945`（群里有其他真人），触发一次团队注册后在群里点批准。M5 已先合入（lee 2026-10-16：先按建议做，实际使用中有问题再调），真人试用前做完 —— 来源 D6
 - P1 B-1 采集基线：试用前人工记录两周跨人交接情况（方案第 11 节）—— lee 亲手做，不派
 - P2 M6-b 部署：Docker 镜像 + compose（数据目录挂载、初始密码文件位置）+ 数据库备份 —— 来源 M5 会话
@@ -41,6 +42,6 @@
 - 备份：`scripts/backup-db.sh` 手动可用，备份在 `~/.local/share/cohive-server/backups/`，保留 14 份；launchd 定时备份已安装（`~/Library/LaunchAgents/com.anormlylee.cohive.backup.plist`，每天 03:30，日志 `…/logs/backup.log`；撤销见 `docs/guides/test-server.md` 第 5 节），2026-10-16 已试跑成功。Docker Desktop 没开时备份会失败。迁移 M5b 前的备份在主脑临时目录 `…/scratchpad/backup/`。
 - 测试账号：admin（服务器管理员）、tester-a、tester-b（已停用）；密码文件在 `~/.local/share/cohive-server/data/`（权限 600，测试凭据）。工作空间：default、proj-b、proj-c。
 - 旧库：`cohive`（M4 数据，群编号 `-1004357698945`，停用不删）、`cohive_m5`（旧版第六号，停用）。
-- 待清理：库 `cohive_m6e_dev`（M6-e 合入后直接删，lee 已长期授权）；主脑临时目录里的旧启动脚本 `test-restart.sh` 与 `test-data/` 已不再使用。
+- 待清理：主脑临时目录里的旧启动脚本 `test-restart.sh` 与 `test-data/` 已不再使用。
 - 机器人：同一个机器人令牌同时只能有一个程序收消息，测试服与本机调试不要同时跑。
-- 已归档：M5 实施会话、doc-1、m5b、m6-a。、m6c（M6-c、M6-d 均已合入）。待归档会话：无。
+- 已归档：M5 实施会话、doc-1、m5b、m6-a。、m6c（M6-c、M6-d 均已合入）、m6e（M6-e 已合入）。待归档会话：无。
