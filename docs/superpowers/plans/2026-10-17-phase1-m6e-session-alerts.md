@@ -135,7 +135,7 @@ CREATE INDEX member_alerts_member ON member_alerts (member_id, id);
  "pending": {"count": 3, "top": [{"issue_id": 12, "needs": "待你接单、退回或转交"}]}}
 ```
 
-- 不带 `after`：只给 `pending`（与 `cohive_inbox` 同口径、去掉草稿，最多 3 条）与 `cursor`（我的提醒里最大的 `id`，没有为 0），`items` 为空。用于会话开始。
+- 不带 `after`：给 `pending`（与 `cohive_inbox` 同口径、去掉草稿，最多 3 条）与 `cursor`（我的提醒里最大的 `id`，没有为 0）；`items` 是最近 10 秒内写入、编号不大于 `cursor` 的提醒，**只供去重**（它们已算进摘要，本机记为“已提醒”，否则紧接着的提交提示词会因 2.4 的补查再提醒一次）。用于会话开始。（实施时补充，2026-10-17）
 - 带 `after`：`items` 为 `id > after` 的提醒，**另加最近 10 秒内写入的**（防漏，见 2.4），按 `id` 升序最多 20 条，超出时 `more: true`；`cursor` 为返回项里最大的 `id`（不小于 `after`）。
 - **不返回标题、简述、正文、备注**。`actor` 是登录名（字符集 `[a-z0-9_-]`，不可能夹带指令）；`needs` 是服务端固定文案。
 - 只读，不改任何状态（“已读”不在服务端，见 2.4）。

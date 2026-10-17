@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -44,6 +45,7 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 	workspace := fs.String("workspace", "", "工作空间名；你只在一个工作空间时可省略")
 	toolsFlag := fs.String("tools", "", "要配置的编程工具，逗号分隔：claude-code,codex；默认是已登录的工具")
 	command := fs.String("command", "cohive", "编程工具启动转发器时使用的命令，cohive 不在 PATH 里时改成绝对路径")
+	noHooks := fs.Bool("no-hooks", false, "不写会话钩子（有新动态时在会话里提醒），并移除以前写的")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -84,16 +86,23 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 	proxyArgs := func(tool string) []string {
 		return []string{"mcp-proxy", "--server", srv, "--workspace", ws, "--tool", tool}
 	}
+	// 会话钩子的命令；为空表示不写（并移除以前写的）
+	hookCmd := func(tool string) string {
+		if *noHooks {
+			return ""
+		}
+		return shellCommand(append([]string{*command, "hook"}, proxyArgs(tool)[1:]...))
+	}
 	var written []string
 	for _, t := range tools {
 		switch t {
 		case "claude-code":
-			if err := initClaude(*dir, *command, proxyArgs(t)); err != nil {
+			if err := initClaude(*dir, *command, proxyArgs(t), hookCmd(t)); err != nil {
 				return err
 			}
 			written = append(written, "Claude Code：.mcp.json、.claude/settings.json、.claude/skills/cohive/SKILL.md")
 		case "codex":
-			if err := initCodex(*dir, *command, proxyArgs(t)); err != nil {
+			if err := initCodex(*dir, *command, proxyArgs(t), hookCmd(t)); err != nil {
 				return err
 			}
 			written = append(written, "Codex：.codex/config.toml、.agents/skills/cohive/SKILL.md")
@@ -105,6 +114,20 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 		fmt.Fprintf(out, "  %s\n", w)
 	}
 	fmt.Fprintln(out, "\n这些文件不含令牌，可以提交进仓库，团队成员共用。")
+	if !*noHooks {
+		fmt.Fprintln(out, "\n会话内提醒：已写入会话开始、提交提示词两个钩子。有与你有关的新动态时，会在你下一次发消息时插入一行提醒；即时通知仍看 Telegram 群。")
+		for _, t := range tools {
+			switch t {
+			case "claude-code":
+				fmt.Fprintln(out, "  Claude Code：第一次在这个文件夹打开时要选“信任此文件夹”，钩子与 MCP 服务才会生效。")
+			case "codex":
+				fmt.Fprintln(out, "  Codex：第一次打开项目后，在 Codex 里输入 /hooks，信任 cohive 的两条钩子（SessionStart、UserPromptSubmit），否则不会提醒。"+
+					"每台电脑、每个克隆目录各要信任一次；换服务地址或工作空间后要重新信任。"+
+					"在 git 工作树里 Codex 读的是主检出目录的配置，请把这些文件提交。")
+			}
+		}
+		fmt.Fprintf(out, "  没有提醒时可执行 %s 排查。\n", shellCommand(append([]string{*command, "hook", "--check"}, proxyArgs(tools[0])[1:]...)))
+	}
 	// 编程工具按配置里的命令启动转发器：命令不在 PATH 里时它会找不到 cohive
 	if _, err := lookPath(*command); err != nil {
 		fmt.Fprintf(out, "\n注意：当前 PATH 里找不到 %q，编程工具启动时会找不到转发器。"+
@@ -135,7 +158,7 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 		fmt.Fprintf(out, "\n注意：%s 还没有登录，执行：\n  cohive login --tools %s\n", t, t)
 	}
 	fmt.Fprintln(out, "\n下一步：")
-	fmt.Fprintln(out, "  1. 在 Claude Code、Codex 里打开这个项目，第一次会询问是否信任项目、是否启用 cohive 这个 MCP 服务，都选同意。")
+	fmt.Fprintln(out, "  1. 在 Claude Code、Codex 里打开这个项目，第一次会询问是否信任项目、是否启用 cohive 这个 MCP 服务，都选同意（Codex 还要在 /hooks 里信任 cohive 的钩子）。")
 	fmt.Fprintln(out, "  2. Claude Code 里用 /cohive，Codex 里用 $cohive，查看和处理分给你的问题单。")
 	return nil
 }
@@ -334,7 +357,7 @@ func addStrings(m map[string]any, key, path string, items ...string) error {
 	return nil
 }
 
-func initClaude(dir, command string, args []string) error {
+func initClaude(dir, command string, args []string, hookCmd string) error {
 	for _, rel := range []string{".mcp.json", ".claude/settings.json", ".claude/skills/cohive/SKILL.md"} {
 		if err := checkNoSymlinks(dir, rel); err != nil {
 			return err
@@ -380,6 +403,9 @@ func initClaude(dir, command string, args []string) error {
 	if err := addStrings(settings, "enabledMcpjsonServers", ".claude/settings.json 的 enabledMcpjsonServers", "cohive"); err != nil {
 		return err
 	}
+	if err := setClaudeHooks(settings, hookCmd); err != nil {
+		return err
+	}
 	// 全部校验通过后再写，避免只写了一半
 	if err := writeJSON(mcpPath, mcp); err != nil {
 		return err
@@ -409,7 +435,7 @@ func tomlString(s string) string {
 	return b.String()
 }
 
-func codexBlock(command string, args []string) string {
+func codexBlock(command string, args []string, hookCmd string) string {
 	quoted := make([]string, len(args))
 	for i, a := range args {
 		quoted[i] = tomlString(a)
@@ -432,6 +458,12 @@ func codexBlock(command string, args []string) string {
 		}
 		fmt.Fprintf(&b, "\n[mcp_servers.cohive.tools.%s]\napproval_mode = %q\n", t, mode)
 	}
+	if hookCmd != "" {
+		// 会话钩子：每次生成得一模一样，重复执行 init 不会让 /hooks 里的信任失效
+		for _, ev := range hookEvents {
+			fmt.Fprintf(&b, "\n[[hooks.%s]]\n[[hooks.%s.hooks]]\ntype = \"command\"\ncommand = %s\ntimeout = %d\n", ev, ev, tomlString(hookCmd), hookTimeout)
+		}
+	}
 	b.WriteString(blockEnd + "\n")
 	return b.String()
 }
@@ -447,7 +479,7 @@ func hasCohiveServer(path, text string) (bool, error) {
 	return ok, nil
 }
 
-func initCodex(dir, command string, args []string) error {
+func initCodex(dir, command string, args []string, hookCmd string) error {
 	for _, rel := range []string{".codex/config.toml", ".agents/skills/cohive/SKILL.md"} {
 		if err := checkNoSymlinks(dir, rel); err != nil {
 			return err
@@ -479,7 +511,7 @@ func initCodex(dir, command string, args []string) error {
 		return fmt.Errorf("%s 里已经有手写的 mcp_servers.cohive 配置，请先删除它，再执行 cohive init", path)
 	}
 
-	block := codexBlock(command, args)
+	block := codexBlock(command, args, hookCmd)
 	var next string
 	if blockAt >= 0 {
 		next = rest[:blockAt] + block + rest[blockAt:]
@@ -500,4 +532,131 @@ func initCodex(dir, command string, args []string) error {
 		return err
 	}
 	return writeFile(filepath.Join(dir, ".agents", "skills", "cohive", "SKILL.md"), skill.Cohive)
+}
+
+// 会话钩子：两家都用会话开始、提交提示词两个事件；外层超时兜底（cohive hook 自己 2 秒内结束）。
+var hookEvents = []string{"SessionStart", "UserPromptSubmit"}
+
+const hookTimeout = 5
+
+var shellSafe = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)
+
+// shellCommand 把参数拼成一条 shell 命令，必要时加单引号（两家都按 shell 执行钩子命令）。
+func shellCommand(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, a := range argv {
+		if shellSafe.MatchString(a) {
+			parts[i] = a
+		} else {
+			parts[i] = "'" + strings.ReplaceAll(a, "'", `'\''`) + "'"
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// isCohiveHook 判断一条钩子命令是不是 cohive init 写的：第一个词是 cohive（或其路径），第二个词是 hook。
+func isCohiveHook(cmd string) bool {
+	f := shellWords(cmd)
+	if len(f) < 2 || f[1] != "hook" {
+		return false
+	}
+	return filepath.Base(f[0]) == "cohive"
+}
+
+// shellWords 按 shellCommand 的写法拆回参数：空白分隔，单引号内原样，引号外的反斜杠转义下一个字符。
+func shellWords(s string) []string {
+	var out []string
+	var cur strings.Builder
+	inWord, quoted, escaped := false, false, false
+	for _, r := range s {
+		switch {
+		case escaped:
+			cur.WriteRune(r)
+			escaped = false
+		case quoted:
+			if r == '\'' {
+				quoted = false
+			} else {
+				cur.WriteRune(r)
+			}
+		case r == '\'':
+			quoted, inWord = true, true
+		case r == '\\':
+			escaped, inWord = true, true
+		case r == ' ' || r == '\t' || r == '\n':
+			if inWord {
+				out = append(out, cur.String())
+				cur.Reset()
+				inWord = false
+			}
+		default:
+			cur.WriteRune(r)
+			inWord = true
+		}
+	}
+	if inWord {
+		out = append(out, cur.String())
+	}
+	return out
+}
+
+// setClaudeHooks 在 .claude/settings.json 的 hooks 里为两个事件各放一组 cohive 钩子：
+// 先去掉以前写的那组（只含一条 cohive hook 命令的组），用户自己的钩子与顺序不动；hookCmd 为空时只移除。
+func setClaudeHooks(settings map[string]any, hookCmd string) error {
+	_, had := settings["hooks"]
+	if !had && hookCmd == "" {
+		return nil
+	}
+	hooks, err := childObject(settings, "hooks", ".claude/settings.json 的 hooks")
+	if err != nil {
+		return err
+	}
+	for _, ev := range hookEvents {
+		path := ".claude/settings.json 的 hooks." + ev
+		var groups []any
+		if v, exists := hooks[ev]; exists {
+			list, ok := v.([]any)
+			if !ok {
+				return fmt.Errorf("%s 应为数组，实际是 %T，请先修正", path, v)
+			}
+			groups = list
+		}
+		kept := make([]any, 0, len(groups)+1)
+		for _, g := range groups {
+			if !isCohiveGroup(g) {
+				kept = append(kept, g)
+			}
+		}
+		if hookCmd != "" {
+			kept = append(kept, map[string]any{"hooks": []any{
+				map[string]any{"type": "command", "command": hookCmd, "timeout": json.Number(fmt.Sprint(hookTimeout))},
+			}})
+		}
+		if len(kept) == 0 {
+			delete(hooks, ev)
+		} else {
+			hooks[ev] = kept
+		}
+	}
+	if len(hooks) == 0 {
+		delete(settings, "hooks")
+	}
+	return nil
+}
+
+func isCohiveGroup(g any) bool {
+	m, ok := g.(map[string]any)
+	if !ok {
+		return false
+	}
+	list, ok := m["hooks"].([]any)
+	if !ok || len(list) != 1 {
+		return false
+	}
+	h, ok := list[0].(map[string]any)
+	if !ok {
+		return false
+	}
+	cmd, _ := h["command"].(string)
+	return isCohiveHook(cmd)
 }
