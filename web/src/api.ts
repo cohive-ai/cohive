@@ -237,8 +237,26 @@ export interface LinkStart {
   url: string;
 }
 
+// 钉钉：网页给出绑定码，私聊发给机器人，再回网页确认
+export interface CodeStart {
+  id: number;
+  code: string;
+  expires_in: number;
+}
+
 export interface LinkStatus {
+  // pending 等发码；awaiting_confirm 机器人已收到，等本人确认；linked、failed、expired
   status: string;
+  detail?: string;
+  provider?: ChatProvider;
+  candidate_name?: string;
+}
+
+export interface ChannelStatus {
+  provider: ChatProvider;
+  bot_name?: string;
+  app_id?: string;
+  online: boolean;
   detail?: string;
 }
 
@@ -377,6 +395,7 @@ export interface ServerAccount {
   server_admin: boolean;
   disabled: boolean;
   telegram_linked: boolean;
+  dingtalk_linked?: boolean;
   devices: number;
   workspaces: { name: string; role: string; status: string }[] | null;
 }
@@ -480,6 +499,9 @@ export const api = {
   startLink: () => post<LinkStart>("/api/v1/me/links", { provider: "telegram" }),
   linkStatus: (id: number | string) => request<LinkStatus>(`/api/v1/me/links/${seg(id)}`),
   unlinkTelegram: () => del("/api/v1/me/links/telegram"),
+  startDingTalkLink: () => post<CodeStart>("/api/v1/me/links", { provider: "dingtalk" }),
+  confirmLink: (id: number, accept: boolean) => post(`/api/v1/me/links/${seg(id)}/confirm`, { accept }),
+  unlink: (provider: ChatProvider) => del(`/api/v1/me/links/${seg(provider)}`),
 
   // 工作空间管理
   pending: (ws: string) => request<{ signups: PendingSignup[]; devices: PendingDevice[] }>(`${adm(ws)}/pending`),
@@ -496,6 +518,9 @@ export const api = {
   applyHandover: (ws: string, id: number, plan: HandoverPlan, remove: boolean) =>
     post(`${adm(ws)}/members/${seg(id)}/${remove ? "remove" : "handover"}`, plan),
   devices: (ws: string) => request<{ items: Device[] }>(`${adm(ws)}/devices`),
+  startChatBind: (ws: string, provider: ChatProvider) => post<CodeStart>(`${adm(ws)}/chat-binds`, { provider }),
+  chatBindStatus: (ws: string, id: number) => request<LinkStatus>(`${adm(ws)}/chat-binds/${seg(id)}`),
+  unbindChat: (ws: string, provider: ChatProvider) => del(`${adm(ws)}/chats/${seg(provider)}`),
   revokeDevice: (ws: string, id: number) => post(`${adm(ws)}/devices/${seg(id)}/revoke`),
   invites: (ws: string) => request<{ items: Invite[] }>(`${adm(ws)}/invites`),
   createInvite: (ws: string, body: NewInvite) => post<CreatedInvite>(`${adm(ws)}/invites`, body),
@@ -515,9 +540,11 @@ export const api = {
   disableAccount: (name: string) => post(`${srv}/accounts/${seg(name)}/disable`, {}),
   enableAccount: (name: string) => post(`${srv}/accounts/${seg(name)}/enable`, {}),
   serverUnlinkTelegram: (name: string) => del(`${srv}/accounts/${seg(name)}/telegram`),
+  serverUnlink: (name: string, provider: ChatProvider) => del(`${srv}/accounts/${seg(name)}/links/${seg(provider)}`),
   serverPendingDevices: () => request<{ items: PendingDevice[] }>(`${srv}/pending-devices`),
   serverDecideDevice: (id: number, approve: boolean) => post(`${srv}/device-auths/${seg(id)}`, { approve }),
   serverSettings: () => request<ServerSettings>(`${srv}/settings`),
+  serverChannels: () => request<{ channels: ChannelStatus[] }>(`${srv}/channels`),
   saveServerSettings: (external_url: string) => post<ServerSettings>(`${srv}/settings`, { external_url }),
   serverEvents: (f: EventFilter) => request<AdminEventPage>(`${srv}/events${eventQuery(f)}`),
 };

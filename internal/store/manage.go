@@ -159,7 +159,7 @@ func ListWorkspaceSummaries(ctx context.Context, q DBTX) ([]WorkspaceSummary, er
 			&s.Notify.ShowBrief, &s.CreatedAt, &s.Members, &s.Admins, &s.OpenIssues); err != nil {
 			return nil, err
 		}
-		s.TelegramBound = s.Notify.Channel == "telegram" && s.Notify.Target != ""
+		s.TelegramBound = s.Notify.Target != "" // 绑了群（任一种通讯工具）；接口字段名沿用 telegram_bound
 		out = append(out, s)
 	}
 	return out, rows.Err()
