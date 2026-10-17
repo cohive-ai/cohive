@@ -143,13 +143,15 @@ func ListAllMembers(ctx context.Context, q DBTX, wsID int64) ([]Member, error) {
 type Membership struct {
 	MemberID    int64
 	WorkspaceID int64
-	Workspace   string
+	Workspace   string // 路径
+	Label       string // 显示名，没设时为路径
 	Role        string
 }
 
 // AccountMemberships 列出账号在册的全部工作空间。
 func AccountMemberships(ctx context.Context, q DBTX, accountID int64) ([]Membership, error) {
-	rows, err := q.Query(ctx, `SELECT m.id, w.id, w.name, m.role FROM members m JOIN workspaces w ON w.id = m.workspace_id
+	rows, err := q.Query(ctx, `SELECT m.id, w.id, w.name, coalesce(nullif(w.display_name, ''), w.name), m.role
+		FROM members m JOIN workspaces w ON w.id = m.workspace_id
 		WHERE m.account_id = $1 AND m.status = 'active' ORDER BY w.name`, accountID)
 	if err != nil {
 		return nil, err
@@ -158,7 +160,7 @@ func AccountMemberships(ctx context.Context, q DBTX, accountID int64) ([]Members
 	var out []Membership
 	for rows.Next() {
 		var ms Membership
-		if err := rows.Scan(&ms.MemberID, &ms.WorkspaceID, &ms.Workspace, &ms.Role); err != nil {
+		if err := rows.Scan(&ms.MemberID, &ms.WorkspaceID, &ms.Workspace, &ms.Label, &ms.Role); err != nil {
 			return nil, err
 		}
 		out = append(out, ms)

@@ -346,3 +346,47 @@ func jsonNumber(n int64) string {
 	b, _ := json.Marshal(n)
 	return string(b)
 }
+
+// 工作空间显示名：管理页可改；/me、服务器工作空间列表、邀请信息都带显示名，链接仍用路径。
+func TestWorkspaceDisplayNameOverHTTP(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, builtWeb)
+	if err := store.SetServerAdmin(ctx, f.svc.Pool, f.b.AccountID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMemberRole(ctx, f.svc.Pool, f.b.MemberID, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	setPassword(t, f, f.b.AccountID, "root-password-1")
+	b := loginAs(t, f, "lee-codex", "root-password-1")
+	if code, _ := b.do("POST", "/api/v1/w/default/admin/workspace", map[string]any{"display_name": "a\nb"}, ""); code != 400 {
+		t.Fatalf("控制字符应 400：%d", code)
+	}
+	if code, _ := b.do("POST", "/api/v1/w/default/admin/workspace", map[string]any{"display_name": "默认组"}, ""); code != 204 {
+		t.Fatalf("保存显示名：%d", code)
+	}
+	_, ws := b.do("GET", "/api/v1/w/default/admin/workspace", nil, "")
+	if ws["display_name"] != "默认组" || ws["path"] != "default" {
+		t.Fatalf("工作空间设置：%v", ws)
+	}
+	_, me := b.do("GET", "/api/v1/me", nil, "")
+	if w0 := me["workspaces"].([]any)[0].(map[string]any); w0["name"] != "default" || w0["display_name"] != "默认组" {
+		t.Fatalf("/me：%v", me["workspaces"])
+	}
+	_, list := b.do("GET", "/api/v1/server/workspaces", nil, "")
+	if w0 := list["items"].([]any)[0].(map[string]any); w0["name"] != "default" || w0["display_name"] != "默认组" {
+		t.Fatalf("服务器工作空间列表：%v", list)
+	}
+	_, inv := b.do("POST", "/api/v1/w/default/admin/invites", map[string]any{"kind": "personal"}, "")
+	_, info := newBrowser(t, f.url).do("GET", "/api/v1/invites/"+inv["code"].(string), nil, "")
+	if info["workspace"] != "default" || info["workspace_display"] != "默认组" {
+		t.Fatalf("邀请信息：%v", info)
+	}
+	// 不带 display_name 的保存不动显示名
+	if code, _ := b.do("POST", "/api/v1/w/default/admin/workspace", map[string]any{"show_title": true}, ""); code != 204 {
+		t.Fatal("保存设置失败")
+	}
+	if _, ws := b.do("GET", "/api/v1/w/default/admin/workspace", nil, ""); ws["display_name"] != "默认组" {
+		t.Fatalf("不带显示名时不应改动：%v", ws)
+	}
+}

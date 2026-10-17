@@ -45,7 +45,7 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		items := make([]map[string]any, 0, len(list))
 		for _, ws := range list {
-			items = append(items, map[string]any{"name": ws.Name, "created_at": ws.CreatedAt, "members": ws.Members,
+			items = append(items, map[string]any{"name": ws.Name, "display_name": ws.Label(), "created_at": ws.CreatedAt, "members": ws.Members,
 				"admins": ws.Admins, "open_issues": ws.OpenIssues, "telegram_bound": ws.TelegramBound, "i_am_member": mine[ws.ID]})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})

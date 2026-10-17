@@ -222,11 +222,12 @@ func (s *Service) ListInvites(ctx context.Context, actor *store.Account, wsID in
 
 // InviteInfo 是注册页展示的邀请信息。
 type InviteInfo struct {
-	Workspace     string
-	Kind          string
-	Role          string
-	Valid         bool
-	AlreadyMember bool // 查看者（已登录时）已是该工作空间的在册成员
+	Workspace      string // 路径
+	WorkspaceLabel string // 显示名
+	Kind           string
+	Role           string
+	Valid          bool
+	AlreadyMember  bool // 查看者（已登录时）已是该工作空间的在册成员
 }
 
 // LookupInvite 返回邀请信息（不消耗次数）；viewer 为已登录的账号（可为空）。
@@ -245,7 +246,7 @@ func (s *Service) LookupInvite(ctx context.Context, code string, viewer *store.A
 	if err != nil {
 		return InviteInfo{}, err
 	}
-	info := InviteInfo{Workspace: ws.Name, Kind: inv.Kind, Role: inv.Role, Valid: inv.Usable(time.Now())}
+	info := InviteInfo{Workspace: ws.Name, WorkspaceLabel: ws.Label(), Kind: inv.Kind, Role: inv.Role, Valid: inv.Usable(time.Now())}
 	if viewer != nil {
 		if info.AlreadyMember, err = store.IsActiveMemberOf(ctx, s.Pool, viewer.ID, ws.ID); err != nil {
 			return InviteInfo{}, err

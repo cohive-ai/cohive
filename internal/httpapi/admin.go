@@ -331,7 +331,7 @@ func pendingDevicesJSON(ctx context.Context, svc *core.Service, devs []store.Dev
 				return nil, err
 			}
 			for _, m := range ms {
-				wss = append(wss, m.Workspace)
+				wss = append(wss, m.Label)
 			}
 		}
 		if wss == nil {

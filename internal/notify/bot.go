@@ -236,7 +236,7 @@ func (b *Bot) whoamiExtra(ctx context.Context, u Update) string {
 			}
 		}
 	}
-	return text + fmt.Sprintf("\n在本群对应的工作空间 %s 里：%s", html.EscapeString(ws.Name), role)
+	return text + fmt.Sprintf("\n在本群对应的工作空间 %s 里：%s", html.EscapeString(ws.Label()), role)
 }
 
 func roleLabel(role string) string {
@@ -309,7 +309,7 @@ func (b *Bot) AnnounceSignup(ctx context.Context, s store.Signup) error {
 	if err != nil || chat == 0 {
 		return err
 	}
-	text := signupText(s, ws.Name) + "\n请管理员审批（也可以在网页“管理 → 待审”里处理）："
+	text := signupText(s, ws.Label()) + "\n请管理员审批（也可以在网页“管理 → 待审”里处理）："
 	return b.post(ctx, "su", ws.ID, chat, s.ID, text)
 }
 
@@ -324,7 +324,7 @@ func (b *Bot) AnnounceDevice(ctx context.Context, a store.DeviceAuth) error {
 	}
 	var names []string
 	for _, m := range ms {
-		names = append(names, m.Workspace)
+		names = append(names, m.Label)
 	}
 	text := deviceText(a, names) + "\n请任一工作空间的管理员审批（也可以在网页“管理 → 待审”里处理）："
 	var firstErr error
@@ -356,7 +356,7 @@ func (b *Bot) finish(ctx context.Context, kind string, refID int64, text string)
 }
 
 func signupResult(d core.SignupDecision, approve bool) string {
-	return signupText(d.Signup, d.Workspace.Name) + fmt.Sprintf("\n%s（审批人 %s）", verdict(approve), html.EscapeString(d.Decider))
+	return signupText(d.Signup, d.Workspace.Label()) + fmt.Sprintf("\n%s（审批人 %s）", verdict(approve), html.EscapeString(d.Decider))
 }
 
 func deviceResult(d core.DeviceDecision) string {
@@ -381,7 +381,7 @@ func (b *Bot) AnnounceJoined(ctx context.Context, m store.Member) error {
 		return err
 	}
 	return b.api().SendText(ctx, chat, fmt.Sprintf("%s 已加入工作空间 %s。", mention(m.Name, m.DisplayName, m.TelegramUsername),
-		html.EscapeString(ws.Name)))
+		html.EscapeString(ws.Label())))
 }
 
 // handleCallback 处理审批按钮：su（注册与加入申请）、da（添加设备），数据形如 su:工作空间:编号:y。

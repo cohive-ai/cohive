@@ -45,7 +45,7 @@ func accountJSON(a store.Account, hasPassword bool) map[string]any {
 func workspaceRefs(ms []store.Membership) []map[string]string {
 	out := make([]map[string]string, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, map[string]string{"name": m.Workspace, "role": m.Role})
+		out = append(out, map[string]string{"name": m.Workspace, "display_name": m.Label, "role": m.Role})
 	}
 	return out
 }
@@ -77,7 +77,7 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			out["tool"] = c.Token.Tool
 			for _, m := range ms {
 				if m.WorkspaceID == c.Token.WorkspaceID {
-					out["workspace"] = map[string]string{"name": m.Workspace, "role": m.Role}
+					out["workspace"] = map[string]string{"name": m.Workspace, "display_name": m.Label, "role": m.Role}
 				}
 			}
 		}
@@ -263,12 +263,13 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if res.Signup != nil {
 			sg := *res.Signup
 			announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceSignup(ctx, sg) })
-			writeJSON(w, http.StatusOK, map[string]any{"status": "pending", "workspace": map[string]string{"name": res.Workspace.Name}})
+			writeJSON(w, http.StatusOK, map[string]any{"status": "pending", "workspace": map[string]string{"name": res.Workspace.Name,
+				"display_name": res.Workspace.Label()}})
 			return
 		}
 		m := *res.Member
 		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceJoined(ctx, m) })
 		writeJSON(w, http.StatusOK, map[string]any{"status": "active",
-			"workspace": map[string]string{"name": res.Workspace.Name, "role": m.Role}})
+			"workspace": map[string]string{"name": res.Workspace.Name, "display_name": res.Workspace.Label(), "role": m.Role}})
 	})
 }

@@ -57,7 +57,7 @@ type DeviceAuthView struct {
 	CreatedAt   time.Time
 	Status      string
 	FirstDevice bool
-	Workspaces  []string // 批准后这台电脑可用于的工作空间
+	Workspaces  []string // 批准后这台电脑可用于的工作空间（显示名）
 }
 
 func effectiveStatus(a store.DeviceAuth) string {
@@ -68,10 +68,11 @@ func effectiveStatus(a store.DeviceAuth) string {
 	return a.Status
 }
 
+// workspaceNames 返回给人看的工作空间名（显示名，没设时为路径）。
 func workspaceNames(ms []store.Membership) []string {
 	out := make([]string, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, m.Workspace)
+		out = append(out, m.Label)
 	}
 	return out
 }
