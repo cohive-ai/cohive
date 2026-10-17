@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  macOS 常驻运行 Cloudflare 隧道 cohive-test（远程托管，路由在 Cloudflare 控制台里配）。用法见 docs/guides/test-server.md 的“常驻服务”一节：
+  macOS 常驻运行 Cloudflare 隧道（远程托管，路由在 Cloudflare 控制台里配）。用法见 docs/guides/single-host.md 的“常驻服务”一节：
   把 __HOME__、__COHIVE_HOME__ 换成实际路径，保存为 ~/Library/LaunchAgents/com.anormlylee.cohive.tunnel.plist。
   隧道令牌只从 __HOME__/.config/cohive/cf-tunnel-token 读，不写进本文件。
   cloudflared 在 Apple 芯片的 Homebrew 下是 /opt/homebrew/bin/cloudflared，Intel 机器上改成 /usr/local/bin/cloudflared。
-  用 __COHIVE_HOME__/cloudflared.yml（从 scripts/launchd/cloudflared.yml 复制的空配置），不读 ~/.cloudflared/config.yml：那是本机别的项目的配置。
+  用 __COHIVE_HOME__/cloudflared.yml（从 scripts/launchd/cloudflared.yml 复制的空配置），不读 ~/.cloudflared/config.yml：那里可能是本机别的项目的配置。
 -->
 <plist version="1.0">
 <dict>

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 单机运行协作服务（测试服用）：启动、停止、查看状态。
+# 单机运行协作服务（不用 Docker 时）：启动、停止、查看状态。
 #
 # 用法：scripts/cohive-server.sh start|stop|restart|status|run
 #   start    后台启动，写进程号文件，等健康检查通过

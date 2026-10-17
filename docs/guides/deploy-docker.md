@@ -126,4 +126,4 @@ docker compose exec cohive cohive-server audit list
 | `COHIVE_TRUSTED_PROXIES` | 信任哪些地址转发来的来源地址头，缺省为私有网段 |
 | `COHIVE_IMAGE`、`COHIVE_VERSION`、`COHIVE_COMMIT` | 镜像名与构建时写入的版本号、提交号 |
 
-不用 Docker、直接在机器上运行 `cohive-server` 的方式见 [测试服：启动、备份与迁移](test-server.md)。
+不用 Docker、直接在机器上运行 `cohive-server` 的方式见 [不用 Docker 的单机运行](single-host.md)。

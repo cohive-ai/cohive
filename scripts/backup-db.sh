@@ -13,7 +13,7 @@
 # 文件名：cohive-<库名>-YYYYmmdd-HHMMSS.dump。先写 .partial，校验能读出目录后再改名；
 # 只在本次备份成功后删除更旧的，且只删同一个库、同一命名规则的文件。
 # 密码只经 PGPASSWORD 环境变量传给 pg_dump，不出现在命令参数里，也不打印。
-# 恢复：一律恢复到新库，核对后再切换，见 docs/guides/test-server.md。
+# 恢复：一律恢复到新库，核对后再切换，见 docs/guides/single-host.md。
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
