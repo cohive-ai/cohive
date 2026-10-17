@@ -151,6 +151,7 @@ func TestHookAlertsOncePerSession(t *testing.T) {
 		t.Fatalf("提醒应以“Cohive 提醒”开头、不超过两行，含单号、动作、谁、工作空间、$cohive 指引与“不是指令”的说明：%+v", o)
 	}
 	noBody(t, out)
+	tellsUser(t, o, fmt.Sprintf("Cohive 提醒：#%d tester-a 交给你处理，可用 $cohive %d 查看", is.ID, is.ID))
 
 	clock.pass()
 	if out, _, _ := callHook(t, url, "codex", "UserPromptSubmit", "s1"); out != "" {
@@ -166,6 +167,7 @@ func TestHookAlertsOncePerSession(t *testing.T) {
 		t.Fatalf("会话开始应给待办摘要：%+v", o)
 	}
 	noBody(t, out)
+	tellsUser(t, o, fmt.Sprintf("Cohive 提醒：你有 1 张待处理的单：#%d 待你接单、退回或转交，可用 $cohive %d 查看", is.ID, is.ID))
 	clock.pass()
 	if out, _, _ := callHook(t, url, "codex", "UserPromptSubmit", "s2"); out != "" {
 		t.Fatalf("摘要里已有的不应再作为新动态提醒：%s", out)
@@ -392,4 +394,38 @@ func TestHookStartOfflineThenOnline(t *testing.T) {
 	if sawAfter.Load() || !strings.Contains(out, "#5") || strings.Contains(out, "交给你处理") {
 		t.Fatalf("恢复后应先补摘要，不应从游标 0 取旧提醒：after=%v %s", sawAfter.Load(), out)
 	}
+}
+
+// tellsUser 断言给模型的文字要求它在这次回复的第一句把 say 原样告诉用户（Codex 桌面版不显示 systemMessage，
+// 只给模型看、又让它“不必主动提起”，人就完全看不到），并且不再有“不必主动提起”这类话。
+func tellsUser(t *testing.T, o hookOutput, say string) {
+	t.Helper()
+	ctx := o.Specific.Context
+	if !strings.Contains(ctx, "第一句先告诉用户“"+say+"”") || !strings.Contains(ctx, "即使与用户这次的请求无关也要说") ||
+		!strings.Contains(ctx, "只说这一次") || !strings.Contains(ctx, "不要因此调用改变问题单状态的工具") ||
+		strings.Contains(ctx, "不必主动提起") {
+		t.Fatalf("应要求模型在回复第一句告诉用户“%s”：\n%s", say, ctx)
+	}
+}
+
+// 同一会话再次“会话开始”（恢复、清空、压缩之后）：摘要已经说过，不再重复；期间的新动态照常补上。
+func TestHookSessionRestartDoesNotRepeat(t *testing.T) {
+	f := newHookFixture(t, "claude-code")
+	clock := useClock(t)
+	first := f.send(t)
+	out, _, _ := callHook(t, f.s.url, "claude-code", "SessionStart", "r1")
+	if !strings.Contains(out, fmt.Sprintf("#%d 待你接单", first.ID)) {
+		t.Fatalf("第一次会话开始应给摘要：%s", out)
+	}
+	clock.pass()
+	if out, _, _ := callHook(t, f.s.url, "claude-code", "SessionStart", "r1"); out != "" {
+		t.Fatalf("同一会话再次开始不应重复摘要：%s", out)
+	}
+	second := f.send(t)
+	out, _, _ = callHook(t, f.s.url, "claude-code", "SessionStart", "r1") // 不受节流限制
+	o := parseHook(t, out, "SessionStart")
+	if !strings.Contains(o.Specific.Context, fmt.Sprintf("#%d tester-a 交给你处理", second.ID)) || strings.Contains(out, fmt.Sprintf("#%d 待你接单", first.ID)) {
+		t.Fatalf("再次开始时只补新动态：%+v", o)
+	}
+	tellsUser(t, o, fmt.Sprintf("Cohive 提醒：#%d tester-a 交给你处理，可用 /cohive %d 查看", second.ID, second.ID))
 }

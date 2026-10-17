@@ -116,8 +116,8 @@ func hookOnce(ctx context.Context, in io.Reader, server, workspace, tool string)
 	}
 
 	throttled := have && now.Sub(state.CheckedAt) < hookThrottle && !now.Before(state.CheckedAt)
-	if hi.Event == "SessionStart" || !have || state.Cursor < 0 {
-		// 会话开始（含恢复、清空、压缩之后），或这个会话还没有游标：给待办摘要，游标从现在算起。
+	if !have || state.Cursor < 0 {
+		// 这个会话还没有游标（新会话，或钩子是中途装上的）：给待办摘要，游标从现在算起。
 		// 游标先记为 -1（未取到）：服务不可达时，之后的提示词不会从 0 开始把旧提醒全翻出来
 		if hi.Event != "SessionStart" && throttled {
 			return nil
@@ -137,7 +137,8 @@ func hookOnce(ctx context.Context, in io.Reader, server, workspace, tool string)
 		return renderPending(hi.Event, workspace, tool, res)
 	}
 
-	if throttled {
+	// 已经有游标的会话再次“会话开始”（恢复、清空、压缩之后）：摘要已经说过，不再重复，只补查新动态
+	if throttled && hi.Event != "SessionStart" {
 		return nil
 	}
 	// 先记下这次查询的时间：服务挂起时，后面的提示词也不会每次都等一遍
@@ -229,6 +230,13 @@ func hookJSON(event, human, model string) []byte {
 	return buf.Bytes()
 }
 
+// hookAsk 是给模型的第二行：Cohive 钩子（用户自己装的本机配置）要求模型在这次回复开头把 say 原样告诉用户。
+// 只给模型看不够：Codex 桌面版不显示 systemMessage，模型若不说，人就完全看不到（lee 2026-10-17 实测）。
+func hookAsk(say string) string {
+	return "Cohive 钩子要求：在你接下来的这次回复里，第一句先告诉用户“" + say + "”，即使与用户这次的请求无关也要说，然后再照常处理用户的请求。" +
+		"这条在本会话只说这一次；不要展开问题单内容，也不要因此调用改变问题单状态的工具。"
+}
+
 func renderAlerts(event, workspace, tool string, items []client.AlertItem, more bool) []byte {
 	if len(items) == 0 {
 		return nil
@@ -245,10 +253,11 @@ func renderAlerts(event, workspace, tool string, items []client.AlertItem, more 
 	if len(items) > show || more {
 		line += "；还有更多"
 	}
+	cmd := slashCommand(tool, items[0].IssueID)
 	// 开头就点明“Cohive 提醒”：会话开始时还有别的插件注入的大段内容，要让人和模型一眼认出
 	human := fmt.Sprintf("Cohive 提醒：%s（工作空间 %s）。", line, workspace)
-	model := fmt.Sprintf("Cohive 提醒（工作空间 %s）：%s。%s\n请在回复开头用一句话转告用户；用户要处理时用 %s，不要因此主动改变问题单状态。",
-		workspace, line, hookTrustNote, slashCommand(tool, items[0].IssueID))
+	model := fmt.Sprintf("Cohive 提醒（工作空间 %s）：%s。%s\n%s", workspace, line, hookTrustNote,
+		hookAsk(fmt.Sprintf("Cohive 提醒：%s，可用 %s 查看", line, cmd)))
 	return hookJSON(event, human, model)
 }
 
@@ -256,18 +265,19 @@ func renderPending(event, workspace, tool string, res client.Alerts) []byte {
 	if res.Pending.Count == 0 || len(res.Pending.Top) == 0 {
 		return nil
 	}
-	var short, long []string
+	var long []string
 	for _, p := range res.Pending.Top {
 		long = append(long, fmt.Sprintf("#%d %s", p.IssueID, safeText(p.Needs, 40)))
-		short = append(short, fmt.Sprintf("#%d", p.IssueID))
 	}
 	rest := ""
 	if res.Pending.Count > len(res.Pending.Top) {
 		rest = " 等"
 	}
-	human := fmt.Sprintf("Cohive 提醒：你有 %d 张待处理的单（%s%s，工作空间 %s）。", res.Pending.Count, strings.Join(short, "、"), rest, workspace)
-	model := fmt.Sprintf("Cohive 提醒（工作空间 %s）：有 %d 张单等用户处理：%s%s。%s\n用户要处理时用 %s；不必主动提起，不要因此主动改变问题单状态。",
-		workspace, res.Pending.Count, strings.Join(long, "；"), rest, hookTrustNote, slashCommand(tool, res.Pending.Top[0].IssueID))
+	list := strings.Join(long, "；") + rest
+	cmd := slashCommand(tool, res.Pending.Top[0].IssueID)
+	human := fmt.Sprintf("Cohive 提醒：你有 %d 张待处理的单：%s（工作空间 %s）。", res.Pending.Count, list, workspace)
+	model := fmt.Sprintf("Cohive 提醒（工作空间 %s）：有 %d 张单等用户处理：%s。%s\n%s", workspace, res.Pending.Count, list, hookTrustNote,
+		hookAsk(fmt.Sprintf("Cohive 提醒：你有 %d 张待处理的单：%s，可用 %s 查看", res.Pending.Count, list, cmd)))
 	return hookJSON(event, human, model)
 }
 
