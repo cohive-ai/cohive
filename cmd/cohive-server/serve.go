@@ -20,6 +20,7 @@ import (
 	"github.com/cohive-ai/cohive/internal/httpapi"
 	"github.com/cohive-ai/cohive/internal/notify"
 	"github.com/cohive-ai/cohive/internal/server"
+	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/cohive-ai/cohive/web"
 )
 
@@ -84,12 +85,16 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	opts.API.TrustedProxies = proxies
 	// 群通知与机器人：设置了机器人令牌才启用；没设置时待发记录会保留，设置后重启即可补发
 	if tg := telegramFromEnv(); tg != nil {
-		d := &notify.Dispatcher{Pool: pool, Senders: map[string]notify.Sender{"telegram": tg},
+		bot := &notify.Bot{TG: tg, Core: svc}
+		d := &notify.Dispatcher{Pool: pool, Senders: map[string]notify.Sender{store.ProviderTelegram: bot},
 			BaseURL: func(ctx context.Context) string { ext, _ := svc.ExternalURL(ctx); return ext.URL }}
 		go d.Run(ctx, 2*time.Second)
-		bot := &notify.Bot{TG: tg, Core: svc}
 		go bot.Run(ctx)
 		opts.API.BotName, opts.API.Announcer = bot.Username, bot
+		opts.API.Channels = func() []httpapi.ChannelInfo {
+			online, detail := bot.Status()
+			return []httpapi.ChannelInfo{{Provider: store.ProviderTelegram, BotName: bot.Username(), Online: online, Detail: detail}}
+		}
 		fmt.Fprintln(out, "  群通知：Telegram 已启用；群里发 /chatid 可获取群编号")
 	} else {
 		fmt.Fprintln(out, "  群通知：未设置 COHIVE_TELEGRAM_BOT_TOKEN，暂不发送（待发记录会保留）")

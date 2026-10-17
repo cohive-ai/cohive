@@ -42,6 +42,16 @@ func accountJSON(a store.Account, hasPassword bool) map[string]any {
 		"telegram": map[string]any{"username": a.TelegramUsername, "linked": a.TelegramUserID != nil}}
 }
 
+// chatJSON 是账号在各通讯工具上的连接（linked 表示有用户编号，能识别他在群里点的按钮）。
+func chatJSON(ids []store.ChatIdentity) []map[string]any {
+	out := make([]map[string]any, 0, len(ids))
+	for _, c := range ids {
+		out = append(out, map[string]any{"provider": c.Provider, "linked": c.UserID != "", "handle": c.Handle,
+			"display_name": c.DisplayName})
+	}
+	return out
+}
+
 func workspaceRefs(ms []store.Membership) []map[string]string {
 	out := make([]map[string]string, 0, len(ms))
 	for _, m := range ms {
@@ -71,8 +81,14 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeError(w, err)
 			return
 		}
+		chats, err := svc.ChatIdentities(r.Context(), []int64{c.Account.ID})
+		if err != nil {
+			writeError(w, err)
+			return
+		}
 		out := map[string]any{"account": accountJSON(c.Account, pw.Hash != ""), "must_change_password": pw.MustChange,
-			"login_method": loginMethod(c), "tool": "web", "workspaces": workspaceRefs(ms)}
+			"login_method": loginMethod(c), "tool": "web", "workspaces": workspaceRefs(ms),
+			"chat": chatJSON(chats[c.Account.ID]), "channels": enabledProviders(opts)}
 		if c.Token != nil {
 			out["tool"] = c.Token.Tool
 			for _, m := range ms {
@@ -244,9 +260,9 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": l.Status, "detail": l.Detail})
 	})
-	handle(mux, "DELETE /api/v1/me/links/telegram", aSession, func(w http.ResponseWriter, r *http.Request) {
+	handle(mux, "DELETE /api/v1/me/links/{provider}", aSession, func(w http.ResponseWriter, r *http.Request) {
 		a := caller(r).Account
-		if err := svc.UnlinkTelegram(r.Context(), core.WebActor(a), a.ID); err != nil {
+		if err := svc.Unlink(r.Context(), core.WebActor(a), a.ID, r.PathValue("provider")); err != nil {
 			writeError(w, err)
 			return
 		}

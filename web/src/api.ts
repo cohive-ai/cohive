@@ -161,6 +161,18 @@ export interface Me {
   login_method?: "password" | "device" | "token";
   tool: string;
   workspaces: WorkspaceRef[];
+  // 本人在各通讯工具上的连接、服务器启用的通讯工具
+  chat?: ChatIdentity[];
+  channels?: { provider: ChatProvider }[];
+}
+
+export type ChatProvider = "telegram" | "dingtalk";
+
+export interface ChatIdentity {
+  provider: ChatProvider;
+  linked: boolean; // 有用户编号，能识别他在群里点的按钮
+  handle?: string;
+  display_name?: string;
 }
 
 export interface LoginResult {
@@ -329,6 +341,9 @@ export interface WorkspaceSettings {
   // 对外地址是服务器级的：这里只读显示群消息里的链接写法；没设时为空
   external_url_set: boolean;
   issue_link_example: string;
+  // 绑定的群（第一期最多一个）与服务器启用的通讯工具；telegram_chat 只在绑的是 Telegram 群时有值
+  chat?: { provider: ChatProvider; chat_id: string; title?: string } | null;
+  channels?: { provider: ChatProvider }[];
 }
 
 export interface SaveWorkspaceSettings {

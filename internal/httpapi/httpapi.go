@@ -49,10 +49,40 @@ type detailResult struct {
 type Options struct {
 	// BotName 返回 Telegram 机器人用户名；为 nil 或返回空时，通讯工具连接不可用。
 	BotName func() string
+	// Channels 列出服务器启用的通讯工具及其状态；为 nil 时按 BotName 判断是否启用了 Telegram。
+	Channels func() []ChannelInfo
 	// Announcer 在有新的待审申请、新成员加入时通知（例如发到工作空间群里）；可为空。
 	Announcer Announcer
 	// TrustedProxies 是除本机外可信任转发头的来源地址段，例如 Docker 网络里的隧道或反向代理。
 	TrustedProxies []*net.IPNet
+}
+
+// ChannelInfo 是服务器启用的一种通讯工具。
+type ChannelInfo struct {
+	Provider string `json:"provider"`           // telegram、dingtalk
+	BotName  string `json:"bot_name,omitempty"` // Telegram 机器人用户名
+	Online   bool   `json:"online"`             // 收件循环是否在线
+	Detail   string `json:"detail,omitempty"`   // 不在线的原因、配置提示等，给服务器管理员看
+}
+
+// channels 返回服务器启用的通讯工具。
+func channels(opts Options) []ChannelInfo {
+	if opts.Channels != nil {
+		return opts.Channels()
+	}
+	if name := botName(opts); name != "" {
+		return []ChannelInfo{{Provider: core.ProviderTelegram, BotName: name, Online: true}}
+	}
+	return []ChannelInfo{}
+}
+
+// enabledProviders 是给成员看的启用列表（不含状态细节）。
+func enabledProviders(opts Options) []map[string]string {
+	out := []map[string]string{}
+	for _, c := range channels(opts) {
+		out = append(out, map[string]string{"provider": c.Provider})
+	}
+	return out
 }
 
 // Handler 返回 /api/v1 与 /auth/ 下的接口。网页用会话 Cookie，命令行与编程工具用令牌或设备密钥；

@@ -14,7 +14,8 @@ const (
 )
 
 // memberSelect 是读取成员资格的公共列与来源：名字、显示名、Telegram 来自账号。
-const memberColumns = `m.id, m.workspace_id, a.name, a.display_name, a.telegram_username, a.telegram_user_id, m.role,
+const memberColumns = `m.id, m.workspace_id, a.name, a.display_name, coalesce((SELECT ci.handle FROM chat_identities ci WHERE ci.account_id = a.id AND ci.provider = 'telegram'), ''),
+	(SELECT nullif(ci.user_id, '')::bigint FROM chat_identities ci WHERE ci.account_id = a.id AND ci.provider = 'telegram'), m.role,
 	m.account_id, m.status, a.disabled_at IS NOT NULL`
 
 const memberFrom = ` FROM members m JOIN accounts a ON a.id = m.account_id `

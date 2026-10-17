@@ -103,12 +103,12 @@ func TestRateLimitNotCounted(t *testing.T) {
 
 type migratingSender struct{ fakeSender }
 
-func (m *migratingSender) Send(ctx context.Context, target, text string) error {
+func (m *migratingSender) Send(ctx context.Context, target string, msg notify.Rendered) error {
 	if target == "-100" {
 		m.calls++
 		return &notify.ChatMigratedError{NewChatID: "-1009999"}
 	}
-	return m.fakeSender.Send(ctx, target, text)
+	return m.fakeSender.Send(ctx, target, msg)
 }
 
 // 群升级为超级群后，自动改用新编号并补发。

@@ -132,16 +132,30 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
-	srv("DELETE "+p+"/accounts/{name}/telegram", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
+	unlink := func(w http.ResponseWriter, r *http.Request, actor *store.Account, provider string) {
 		t, ok := target(w, r)
 		if !ok {
 			return
 		}
-		if err := svc.UnlinkTelegram(r.Context(), core.WebActor(*actor), t.ID); err != nil {
+		if err := svc.Unlink(r.Context(), core.WebActor(*actor), t.ID, provider); err != nil {
 			writeError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+	// 旧地址保留：网页旧版本还在用
+	srv("DELETE "+p+"/accounts/{name}/telegram", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
+		unlink(w, r, actor, core.ProviderTelegram)
+	})
+	srv("DELETE "+p+"/accounts/{name}/links/{provider}", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
+		unlink(w, r, actor, r.PathValue("provider"))
+	})
+	srv("GET "+p+"/channels", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
+		if err := requireServerAdminHTTP(r.Context(), svc, actor); err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"channels": channels(opts)})
 	})
 
 	srv("GET "+p+"/pending-devices", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {

@@ -70,7 +70,7 @@ func migratedM5(t *testing.T) *pgxpool.Pool {
 	if _, err := pool.Exec(ctx, m5Fixture); err != nil {
 		t.Fatalf("写入 M5 数据失败：%v", err)
 	}
-	if err := db.Migrate(ctx, pool); err != nil {
+	if err := db.MigrateUpTo(ctx, pool, "0007"); err != nil {
 		t.Fatalf("第七号迁移失败：%v", err)
 	}
 	return pool

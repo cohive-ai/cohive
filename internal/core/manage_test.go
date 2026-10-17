@@ -421,6 +421,58 @@ func TestGroupBoundOnce(t *testing.T) {
 	}
 }
 
+// 第一期一个工作空间只绑一个群：已绑钉钉群时，管理页的 Telegram 群编号留空不解除它，填了则要求先解绑。
+func TestOneChatPerWorkspace(t *testing.T) {
+	ctx := context.Background()
+	p := newPeople(t)
+	svc := p.e.svc
+	if err := store.SetWorkspaceChat(ctx, svc.Pool, store.WorkspaceChat{WorkspaceID: p.pay, Provider: store.ProviderDingTalk,
+		Tenant: "corp", ChatID: "cid-pay"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UpdateWorkspace(ctx, core.WebActor(p.payAdmin), p.pay, core.WorkspaceSettings{ShowTitle: true}); err != nil {
+		t.Fatal(err)
+	}
+	if ws, err := svc.WorkspaceByChat(ctx, store.ProviderDingTalk, "corp", "cid-pay"); err != nil || ws.ID != p.pay || !ws.Notify.ShowTitle {
+		t.Fatalf("改开关不应解除钉钉群：%+v %v", ws, err)
+	}
+	var se *core.StateError
+	if err := svc.UpdateWorkspace(ctx, core.WebActor(p.payAdmin), p.pay, core.WorkspaceSettings{TelegramChat: "-1001"}); !errors.As(err, &se) ||
+		!strings.Contains(err.Error(), "钉钉") {
+		t.Fatalf("已绑钉钉群时绑 Telegram 群应要求先解绑：%v", err)
+	}
+	if _, err := svc.WorkspaceByGroup(ctx, -1001); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("被拒时不应绑上 Telegram 群")
+	}
+}
+
+// 断开通讯工具连接：本人或服务器管理员；不支持的通讯工具报输入错误；没有连接时不写记录。
+func TestUnlinkProvider(t *testing.T) {
+	ctx := context.Background()
+	p := newPeople(t)
+	svc := p.e.svc
+	var ie *core.InputError
+	if err := svc.Unlink(ctx, core.WebActor(p.ann), p.ann.ID, "slack"); !errors.As(err, &ie) {
+		t.Fatalf("不支持的通讯工具：%v", err)
+	}
+	id := int64(4242)
+	if err := store.SetAccountTelegram(ctx, svc.Pool, p.ann.ID, &id, "anntg"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Unlink(ctx, core.WebActor(p.payAdmin), p.ann.ID, core.ProviderTelegram); err == nil {
+		t.Fatal("不是本人也不是服务器管理员，不能断开别人的连接")
+	}
+	if err := svc.Unlink(ctx, core.WebActor(p.ann), p.ann.ID, core.ProviderTelegram); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ChatIdentityOf(ctx, svc.Pool, p.ann.ID, store.ProviderTelegram); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("应已断开：%v", err)
+	}
+	if err := svc.Unlink(ctx, core.WebActor(p.ann), p.ann.ID, core.ProviderTelegram); err != nil {
+		t.Fatalf("没有连接时什么也不做：%v", err)
+	}
+}
+
 // 两名管理员同时互相移出：恰好一个成功，至少保留一名管理员，另一个得到明确的拒绝而不是内部错误。
 func TestConcurrentMutualRemoval(t *testing.T) {
 	ctx := context.Background()

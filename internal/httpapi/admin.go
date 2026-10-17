@@ -297,8 +297,9 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			example = core.WorkspaceLink(ext.URL, ws.Name) + "/issues/编号"
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"name": ws.Name, "path": ws.Name, "display_name": ws.Label(),
-			"telegram_chat": ws.Notify.Target, "show_title": ws.Notify.ShowTitle, "show_brief": ws.Notify.ShowBrief,
-			"bot_enabled": botName(opts) != "", "external_url_set": ext.URL != "", "issue_link_example": example})
+			"telegram_chat": telegramChat(ws), "show_title": ws.Notify.ShowTitle, "show_brief": ws.Notify.ShowBrief,
+			"bot_enabled": botName(opts) != "", "external_url_set": ext.URL != "", "issue_link_example": example,
+			"chat": workspaceChatJSON(ws), "channels": enabledProviders(opts)})
 	})
 	adm("POST "+p+"/workspace", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
 		// 旧页面还会带 public_url：对外地址已改为服务器级，忽略它
@@ -318,6 +319,22 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// telegramChat 是工作空间绑定的 Telegram 群编号；绑的是别的通讯工具的群时为空。
+func telegramChat(ws store.Workspace) string {
+	if ws.Notify.Channel != store.ProviderTelegram {
+		return ""
+	}
+	return ws.Notify.Target
+}
+
+// workspaceChatJSON 是工作空间绑定的群；没绑时为 nil。
+func workspaceChatJSON(ws store.Workspace) map[string]string {
+	if ws.Notify.Channel == "" || ws.Notify.Target == "" {
+		return nil
+	}
+	return map[string]string{"provider": ws.Notify.Channel, "chat_id": ws.Notify.Target}
 }
 
 // pendingDevicesJSON 是待批设备列表，每条列出申请人全部在册工作空间（批准后可用于这些）。

@@ -5,22 +5,33 @@ package notify
 import (
 	"fmt"
 	"html"
+	"strconv"
 	"strings"
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
-// Render 生成一条群消息（Telegram HTML 格式，所有用户输入都已转义）。base 是服务器级对外地址，
-// 末尾的问题单链接为“对外地址 + /w/路径/issues/编号”；没设对外地址时不带链接。
+// Render 生成一条 Telegram 群消息（HTML 格式，所有用户输入都已转义），见 RenderFor。
 func Render(base string, ws store.Workspace, is store.Issue, n store.Notification, members map[int64]store.Member) string {
-	esc := html.EscapeString
+	people := make(map[int64]Person, len(members))
+	for id, m := range members {
+		people[id] = personOf(m, nil)
+	}
+	return RenderFor(TelegramFormat{}, store.ProviderTelegram, base, ws, is, n, people).Text
+}
+
+// RenderFor 按某种通讯工具的格式生成一条问题单群消息，所有用户输入都已转义。base 是服务器级对外地址，
+// 末尾的问题单链接为“对外地址 + /w/路径/issues/编号”；没设对外地址时不带链接。people 按成员资格编号给出。
+func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.Issue, n store.Notification, people map[int64]Person) Rendered {
+	w := newWriter(f, provider)
+	esc := w.esc
 	mention := func(id int64) string {
-		m, ok := members[id]
+		p, ok := people[id]
 		if !ok {
 			return "（未知成员）"
 		}
-		return tgMention(m.TelegramUserID, m.TelegramUsername, esc(m.Name), false)
+		return w.mention(p, esc(p.Name), false)
 	}
 	mentions := func(ids []int64) string {
 		parts := make([]string, 0, len(ids))
@@ -33,7 +44,7 @@ func Render(base string, ws store.Workspace, is store.Issue, n store.Notificatio
 		}
 		return strings.Join(parts, " ")
 	}
-	actor := esc(members[n.ActorMemberID].Name)
+	actor := esc(people[n.ActorMemberID].Name)
 	tool := esc(toolLabel(n.ActorTool))
 
 	var head, via string
@@ -79,8 +90,45 @@ func Render(base string, ws store.Workspace, is store.Issue, n store.Notificatio
 	if link := core.IssueLink(base, ws.Name, is.ID); link != "" {
 		lines = append(lines, esc(link))
 	}
-	return strings.Join(lines, "\n")
+	return w.done(fmt.Sprintf("#%d %s", is.ID, eventTitle(n.Event)), lines...)
 }
+
+// eventTitle 是钉钉卡片标题与会话列表摘要里的事件名。
+func eventTitle(event string) string {
+	switch event {
+	case "assigned":
+		return "新单"
+	case "declined":
+		return "被退回"
+	case "verify":
+		return "请验证"
+	case "reopened":
+		return "已重开"
+	case "escalated":
+		return "需要人介入"
+	}
+	return "有新动态"
+}
+
+// TelegramFormat 是 Telegram 的 HTML 消息格式。
+type TelegramFormat struct{}
+
+func (TelegramFormat) Esc(s string) string  { return html.EscapeString(s) }
+func (TelegramFormat) Code(s string) string { return "<code>" + html.EscapeString(s) + "</code>" }
+
+// Mention 见 tgMention；只登记了用户名、没有编号的旧数据退回 @用户名。
+func (TelegramFormat) Mention(label string, id *store.ChatIdentity, withLabel bool) string {
+	if id == nil {
+		return label
+	}
+	var uid *int64
+	if n, err := strconv.ParseInt(id.UserID, 10, 64); err == nil {
+		uid = &n
+	}
+	return tgMention(uid, id.Handle, label, withLabel)
+}
+
+func int64String(n int64) string { return strconv.FormatInt(n, 10) }
 
 // tgMention 是群消息里提到一个人。连接了 Telegram 的按用户编号提到（tg://user?id= 链接，不依赖用户名，
 // 对方没设或改了用户名都能通知到）；只有用户名没有编号的旧数据退回 @用户名；都没有时只写 label。

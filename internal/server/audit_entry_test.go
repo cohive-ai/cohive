@@ -233,7 +233,15 @@ func webCases() []webCase {
 			code, _ := w.admin.do("DELETE", "/api/v1/server/accounts/lee-claude/telegram", nil, "")
 			return code
 		}, core.ActTelegramUnlink, core.ViaWeb, "", "lee-codex"},
-		{"DELETE /api/v1/me/links/telegram", "个人中心断开 Telegram", func(t *testing.T, w *auditWeb) int {
+		{"DELETE /api/v1/server/accounts/{name}/links/{provider}", "服务器管理页断开通讯工具", func(t *testing.T, w *auditWeb) int {
+			tg := int64(78)
+			if err := store.SetAccountTelegram(ctx, w.f.svc.Pool, w.claude.ID, &tg, "claudetg"); err != nil {
+				t.Fatal(err)
+			}
+			code, _ := w.admin.do("DELETE", "/api/v1/server/accounts/lee-claude/links/telegram", nil, "")
+			return code
+		}, core.ActTelegramUnlink, core.ViaWeb, "", "lee-codex"},
+		{"DELETE /api/v1/me/links/{provider}", "个人中心断开 Telegram", func(t *testing.T, w *auditWeb) int {
 			tg := int64(77)
 			if err := store.SetAccountTelegram(ctx, w.f.svc.Pool, w.claude.ID, &tg, "claudetg"); err != nil {
 				t.Fatal(err)

@@ -111,6 +111,18 @@ func (s *Service) CompleteTelegramLink(ctx context.Context, startParam string, t
 
 // UnlinkTelegram 断开账号的 Telegram 连接：本人或服务器管理员可操作。
 func (s *Service) UnlinkTelegram(ctx context.Context, act Actor, accountID int64) error {
+	return s.Unlink(ctx, act, accountID, ProviderTelegram)
+}
+
+// unlinkActions 是各通讯工具“断开连接”的管理操作。
+var unlinkActions = map[string]string{ProviderTelegram: ActTelegramUnlink}
+
+// Unlink 断开账号在某种通讯工具上的连接：本人或服务器管理员可操作；没有连接时什么也不做。
+func (s *Service) Unlink(ctx context.Context, act Actor, accountID int64, provider string) error {
+	action, ok := unlinkActions[provider]
+	if !ok {
+		return inputErr("不支持的通讯工具 %q", provider)
+	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		self := act.Account != nil && act.Account.ID == accountID
 		if !self {
@@ -122,13 +134,15 @@ func (s *Service) UnlinkTelegram(ctx context.Context, act Actor, accountID int64
 		if err != nil {
 			return err
 		}
-		if a.TelegramUserID == nil && a.TelegramUsername == "" {
+		if _, err := store.ChatIdentityOf(ctx, tx, accountID, provider); errors.Is(err, store.ErrNotFound) {
 			return nil
-		}
-		if err := store.SetAccountTelegram(ctx, tx, accountID, nil, ""); err != nil {
+		} else if err != nil {
 			return err
 		}
-		return record(ctx, tx, act, store.AdminEvent{Action: ActTelegramUnlink, TargetKind: "account", TargetID: idp(a.ID),
+		if err := store.DeleteChatIdentity(ctx, tx, accountID, provider); err != nil {
+			return err
+		}
+		return record(ctx, tx, act, store.AdminEvent{Action: action, TargetKind: "account", TargetID: idp(a.ID),
 			TargetName: a.Name, Detail: map[string]any{"self": self}})
 	})
 }

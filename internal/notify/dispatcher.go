@@ -12,9 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Sender 是一个通知通道（目前只有 Telegram）。
+// Sender 是投递问题单通知用到的通道能力，由 Channel 实现。
 type Sender interface {
-	Send(ctx context.Context, target, text string) error
+	Format() Formatter
+	Send(ctx context.Context, chat string, m Rendered) error
 }
 
 // MaxAttempts 是一条通知最多尝试发送的次数（通道整体不可用和限流不计入）。
@@ -32,7 +33,7 @@ var errStopBatch = errors.New("本轮暂停投递")
 // Dispatcher 把待发通知投递到各工作空间的群里。
 type Dispatcher struct {
 	Pool    *pgxpool.Pool
-	Senders map[string]Sender // 按通道名
+	Senders map[string]Sender // 按通讯工具
 	Logf    func(format string, args ...any)
 	// BaseURL 返回服务器级对外地址，用于拼问题单链接（服务端传入 core.Service 的，环境变量优先）；
 	// 为空时直接读数据库里的设置。
@@ -143,14 +144,23 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 	if err != nil {
 		return err
 	}
-	members := make(map[int64]store.Member, len(list))
+	accounts := make([]int64, 0, len(list))
 	for _, m := range list {
-		members[m.ID] = m
+		accounts = append(accounts, m.AccountID)
+	}
+	chats, err := store.ChatIdentitiesOf(ctx, tx, accounts)
+	if err != nil {
+		return err
+	}
+	people := make(map[int64]Person, len(list))
+	for _, m := range list {
+		people[m.ID] = personOf(m, chats[m.AccountID])
 	}
 
 	sendCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	sendErr := sender.Send(sendCtx, ws.Notify.Target, Render(d.baseURL(ctx), ws, is, n, members))
+	msg := RenderFor(sender.Format(), ws.Notify.Channel, d.baseURL(ctx), ws, is, n, people)
+	sendErr := sender.Send(sendCtx, ws.Notify.Target, msg)
 	if sendErr == nil {
 		if d.downMsg != "" {
 			d.logf("群通知已恢复投递")
