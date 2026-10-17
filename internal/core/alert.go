@@ -113,7 +113,7 @@ type AlertsResult struct {
 	PendingTop   []PendingItem
 }
 
-// Alerts 返回会话钩子要的东西。after 为空（会话开始）：待办摘要与当前游标；
+// Alerts 返回会话钩子要的东西。after 为空（会话开始）：待办摘要、当前游标，以及最近写入、已算进摘要的提醒（只供去重）；
 // 否则：编号大于 after 的提醒（另加最近写入的，调用方去重），游标为其中最大的编号。
 func (s *Service) Alerts(ctx context.Context, who store.Identity, after *int64) (AlertsResult, error) {
 	var out AlertsResult
@@ -131,8 +131,20 @@ func (s *Service) Alerts(ctx context.Context, who store.Identity, after *int64) 
 				out.PendingTop = append(out.PendingTop, PendingItem{IssueID: is.ID, Needs: needsMe(who, is)})
 			}
 		}
-		out.Cursor, err = store.LastAlertID(ctx, s.Pool, who.MemberID)
-		return out, err
+		if out.Cursor, err = store.LastAlertID(ctx, s.Pool, who.MemberID); err != nil {
+			return out, err
+		}
+		// 附上刚写入、已算进摘要的提醒，调用方记为“已提醒”：之后按编号补查最近写入的提醒时不再重复
+		recent, err := store.AlertsAfter(ctx, s.Pool, who.MemberID, out.Cursor, alertGrace, alertLimit)
+		if err != nil {
+			return out, err
+		}
+		for _, a := range recent {
+			if a.ID <= out.Cursor && a.WorkspaceID == who.WorkspaceID {
+				out.Items = append(out.Items, AlertItem{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, Actor: a.ActorName, At: a.CreatedAt})
+			}
+		}
+		return out, nil
 	}
 	list, err := store.AlertsAfter(ctx, s.Pool, who.MemberID, *after, alertGrace, alertLimit+1)
 	if err != nil {

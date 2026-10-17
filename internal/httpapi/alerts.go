@@ -32,6 +32,8 @@ type alertsResult struct {
 }
 
 // alertRoutes 提供编程工具会话钩子拉取“与我有关的新动态”的接口。只读；不返回标题、简述、正文、备注。
+// 不带 after：待办摘要与当前游标，items 是最近写入、已算进摘要的提醒（只供去重，不必再提醒）；
+// 带 after：编号大于 after 的提醒，另加最近写入的（编号小的可能后提交），由调用方按编号去重。
 func alertRoutes(mux *http.ServeMux, svc *core.Service) {
 	handle(mux, "GET /api/v1/w/{ws}/alerts", aSession|aToken, func(w http.ResponseWriter, r *http.Request) {
 		who, ok := memberScope(w, r, svc)

@@ -46,8 +46,8 @@ func TestAlertsAPI(t *testing.T) {
 		} `json:"pending"`
 	}
 	if err := json.Unmarshal([]byte(body), &start); err != nil || start.Pending.Count != 1 ||
-		start.Pending.Top[0].IssueID != d.ID || start.Cursor == 0 || start.Items == nil || len(start.Items) != 0 {
-		t.Fatalf("会话开始应给摘要与游标、不给逐条提醒：%s %v", body, err)
+		start.Pending.Top[0].IssueID != d.ID || start.Cursor == 0 || len(start.Items) != 1 {
+		t.Fatalf("会话开始应给摘要与游标，并附上刚写入的提醒供去重：%s %v", body, err)
 	}
 
 	code, _, body = get(t, base+"?after=0", f.tokenB)

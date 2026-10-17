@@ -152,8 +152,8 @@ func TestAlertsPendingSummary(t *testing.T) {
 	e.draft(t) // a 的草稿不算
 
 	res, err := e.svc.Alerts(ctx, e.b, nil)
-	if err != nil || res.PendingCount != 4 || len(res.PendingTop) != 3 || len(res.Items) != 0 {
-		t.Fatalf("b 有 4 张待接单，摘要列 3 张：%+v %v", res, err)
+	if err != nil || res.PendingCount != 4 || len(res.PendingTop) != 3 || len(res.Items) != 5 {
+		t.Fatalf("b 有 4 张待接单，摘要列 3 张；刚写入的 5 条提醒附上供去重：%+v %v", res, err)
 	}
 	last, _ := store.LastAlertID(ctx, e.svc.Pool, e.b.MemberID)
 	if res.Cursor != last || last == 0 {
