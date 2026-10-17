@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS 常驻运行 Cloudflare 隧道 cohive-test（远程托管，路由在 Cloudflare 控制台里配）。用法见 docs/guides/test-server.md 的“常驻服务”一节：
+  把 __HOME__、__COHIVE_HOME__ 换成实际路径，保存为 ~/Library/LaunchAgents/com.anormlylee.cohive.tunnel.plist。
+  隧道令牌只从 __HOME__/.config/cohive/cf-tunnel-token 读，不写进本文件。
+  cloudflared 在 Apple 芯片的 Homebrew 下是 /opt/homebrew/bin/cloudflared，Intel 机器上改成 /usr/local/bin/cloudflared。
+  用 __COHIVE_HOME__/cloudflared.yml（从 scripts/launchd/cloudflared.yml 复制的空配置），不读 ~/.cloudflared/config.yml：那是本机别的项目的配置。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.anormlylee.cohive.tunnel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/cloudflared</string>
+    <string>tunnel</string>
+    <string>--config</string>
+    <string>__COHIVE_HOME__/cloudflared.yml</string>
+    <string>--protocol</string>
+    <string>http2</string>
+    <string>run</string>
+    <string>--token-file</string>
+    <string>__HOME__/.config/cohive/cf-tunnel-token</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>__COHIVE_HOME__/logs/tunnel.log</string>
+  <key>StandardErrorPath</key>
+  <string>__COHIVE_HOME__/logs/tunnel.log</string>
+</dict>
+</plist>

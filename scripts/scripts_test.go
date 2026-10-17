@@ -345,4 +345,118 @@ func TestServerScriptLifecycle(t *testing.T) {
 	}
 }
 
+// 装了 launchd 常驻服务后，start/stop/restart 改走 launchctl：先停掉之前后台起的那份，任何时候只跑一个服务。
+// 用假的 launchctl 模拟装载、拉起、kickstart -k 与卸下，不碰本机真实的 launchd。
+func TestServerScriptHandsOverToLaunchd(t *testing.T) {
+	needBash(t)
+	if _, err := exec.LookPath("lsof"); err != nil {
+		t.Skip("需要 lsof")
+	}
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "cohive-home")
+	ld := filepath.Join(tmp, "launchd")
+	fakeBin := filepath.Join(tmp, "fakebin")
+	for _, d := range []string{home, ld, fakeBin} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	port := freePort(t)
+	conf := fmt.Sprintf("COHIVE_DATABASE_URL=postgres://u:p@localhost:1/demo\nCOHIVE_ADDR=127.0.0.1:%d\n", port)
+	if err := os.WriteFile(filepath.Join(home, "server.env"), []byte(conf), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	self, err := filepath.Abs("cohive-server.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := `#!/bin/bash
+d="$FAKE_LD_DIR"; echo "$*" >> "$d/calls"
+alive() { [ -f "$d/pid" ] && kill -0 "$(cat "$d/pid")" 2>/dev/null; }
+spawn() { bash "$FAKE_LD_SCRIPT" run >> "$d/server.log" 2>&1 < /dev/null & echo $! > "$d/pid"; }
+halt() {
+  if alive; then p="$(cat "$d/pid")"; kill "$p"; while kill -0 "$p" 2>/dev/null; do sleep 0.1; done; fi
+  rm -f "$d/pid"
+}
+case "$1" in
+  print) [ -f "$d/loaded" ] || exit 113; echo "state = running"; if alive; then printf '\tpid = %s\n' "$(cat "$d/pid")"; fi ;;
+  bootstrap) touch "$d/loaded"; spawn ;;
+  kickstart) [ -f "$d/loaded" ] || exit 113; if [ "$2" = -k ]; then halt; spawn; elif ! alive; then spawn; fi ;;
+  bootout) halt; rm -f "$d/loaded" ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(fakeBin, "launchctl"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plist := filepath.Join(tmp, "server.plist")
+	env := map[string]string{
+		"HOME": tmp, "COHIVE_HOME": home, "COHIVE_BIN": fakeServer(t, tmp),
+		"COHIVE_TELEGRAM_ENV": filepath.Join(tmp, "none"), "COHIVE_LAUNCHD_PLIST": plist,
+		"FAKE_LD_DIR": ld, "FAKE_LD_SCRIPT": self, "PATH": fakeBin + ":" + os.Getenv("PATH"),
+	}
+	pidOf := func() string {
+		b, _ := os.ReadFile(filepath.Join(ld, "pid"))
+		return strings.TrimSpace(string(b))
+	}
+	alive := func(pid string) bool { return pid != "" && exec.Command("kill", "-0", pid).Run() == nil }
+	t.Cleanup(func() { _, _ = script(t, "cohive-server.sh", env, "stop") })
+
+	// 还没装 plist：照旧后台启动
+	if out, err := script(t, "cohive-server.sh", env, "start"); err != nil {
+		t.Fatalf("后台启动应成功：%v\n%s", err, out)
+	}
+	b, _ := os.ReadFile(filepath.Join(home, "run", "server.pid"))
+	oldPid := strings.TrimSpace(string(b))
+
+	// 装上 plist 后 start：先停掉后台那份，再交给 launchd
+	if err := os.WriteFile(plist, []byte("<plist/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := script(t, "cohive-server.sh", env, "start")
+	if err != nil || !strings.Contains(out, "不是 launchd 拉起的") || !strings.Contains(out, "已由 launchd 启动") {
+		t.Fatalf("应先停后台进程再由 launchd 拉起：%v\n%s", err, out)
+	}
+	if alive(oldPid) {
+		t.Fatal("后台起的旧进程应已停止")
+	}
+	first := pidOf()
+	if !alive(first) {
+		t.Fatalf("launchd 应已拉起服务：%s", out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, "run", "server.pid")); strings.TrimSpace(string(b)) != first {
+		t.Fatalf("run 应把自己的进程号写进进程号文件：%q，launchd 记录 %q", b, first)
+	}
+
+	// 再 start：不会多起一份
+	if out, err := script(t, "cohive-server.sh", env, "start"); err != nil || pidOf() != first {
+		t.Fatalf("重复 start 不应换进程：%v\n%s", err, out)
+	}
+	if out, err := script(t, "cohive-server.sh", env, "status"); err != nil || !strings.Contains(out, "由 launchd 托管") {
+		t.Fatalf("状态应说明由 launchd 托管：%v\n%s", err, out)
+	}
+
+	// restart 即 kickstart -k：换成新进程，旧的退出
+	if out, err := script(t, "cohive-server.sh", env, "restart"); err != nil {
+		t.Fatalf("重启应成功：%v\n%s", err, out)
+	}
+	second := pidOf()
+	if second == first || !alive(second) || alive(first) {
+		t.Fatalf("重启后应换成新进程：旧 %s，新 %s", first, second)
+	}
+
+	// stop 即从 launchd 卸下
+	if out, err := script(t, "cohive-server.sh", env, "stop"); err != nil || !strings.Contains(out, "从 launchd 卸下") {
+		t.Fatalf("停止应卸下 launchd 服务：%v\n%s", err, out)
+	}
+	if alive(second) {
+		t.Fatal("停止后服务进程应已退出")
+	}
+	calls, _ := os.ReadFile(filepath.Join(ld, "calls"))
+	for _, want := range []string{"bootstrap", "kickstart -k", "bootout"} {
+		if !strings.Contains(string(calls), want) {
+			t.Fatalf("应调用 launchctl %s：\n%s", want, calls)
+		}
+	}
+}
+
 func syscallZero() os.Signal { return syscall.Signal(0) }

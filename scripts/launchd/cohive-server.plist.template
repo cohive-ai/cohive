@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS 常驻运行 Cohive 协作服务（登录后启动，退出后自动拉起）。用法见 docs/guides/test-server.md 的“常驻服务”一节：
+  把 __REPO__ 换成仓库绝对路径、__HOME__ 换成用户目录、__COHIVE_HOME__ 换成数据根目录，
+  保存为 ~/Library/LaunchAgents/com.anormlylee.cohive.server.plist。
+  用 env -i 清空环境再启动：配置一律以 server.env 为准，launchctl setenv 等残留的 COHIVE_DATABASE_URL 带不进来。
+  机器人令牌由 cohive-server.sh 只在服务进程里加载，不进本文件、不进日志。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.anormlylee.cohive.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>-i</string>
+    <string>HOME=__HOME__</string>
+    <string>COHIVE_HOME=__COHIVE_HOME__</string>
+    <string>PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>LANG=en_US.UTF-8</string>
+    <string>/bin/bash</string>
+    <string>__REPO__/scripts/cohive-server.sh</string>
+    <string>run</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__COHIVE_HOME__</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <!-- 数据库没起来时服务会退出，launchd 每 10 秒重试一次 -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>__COHIVE_HOME__/logs/server.log</string>
+  <key>StandardErrorPath</key>
+  <string>__COHIVE_HOME__/logs/server.log</string>
+</dict>
+</plist>
