@@ -97,7 +97,11 @@ func (s *Service) CompleteTelegramLink(ctx context.Context, startParam string, t
 		if username == "" {
 			detail = fmt.Sprintf("已连接 Telegram 账号（编号 %d，没有设置用户名，群通知无法 @ 到你）", tgUserID)
 		}
-		return store.FinishLinkRequest(ctx, tx, l.ID, store.LinkLinked, detail)
+		if err := store.FinishLinkRequest(ctx, tx, l.ID, store.LinkLinked, detail); err != nil {
+			return err
+		}
+		return record(ctx, tx, BotActor(a), store.AdminEvent{Action: ActTelegramLink, TargetKind: "account", TargetID: idp(a.ID),
+			TargetName: a.Name, Detail: map[string]any{"telegram_username": username}})
 	})
 	if err != nil {
 		return LinkResult{}, err
@@ -106,16 +110,25 @@ func (s *Service) CompleteTelegramLink(ctx context.Context, startParam string, t
 }
 
 // UnlinkTelegram 断开账号的 Telegram 连接：本人或服务器管理员可操作。
-func (s *Service) UnlinkTelegram(ctx context.Context, actor store.Account, accountID int64) error {
+func (s *Service) UnlinkTelegram(ctx context.Context, act Actor, accountID int64) error {
 	return s.inTx(ctx, func(tx pgx.Tx) error {
-		if actor.ID != accountID {
-			if err := requireServerAdmin(ctx, tx, &actor); err != nil {
+		self := act.Account != nil && act.Account.ID == accountID
+		if !self {
+			if err := requireServerAdmin(ctx, tx, act.Account); err != nil {
 				return err
 			}
 		}
-		if _, err := store.LockAccount(ctx, tx, accountID); err != nil {
+		a, err := store.LockAccount(ctx, tx, accountID)
+		if err != nil {
 			return err
 		}
-		return store.SetAccountTelegram(ctx, tx, accountID, nil, "")
+		if a.TelegramUserID == nil && a.TelegramUsername == "" {
+			return nil
+		}
+		if err := store.SetAccountTelegram(ctx, tx, accountID, nil, ""); err != nil {
+			return err
+		}
+		return record(ctx, tx, act, store.AdminEvent{Action: ActTelegramUnlink, TargetKind: "account", TargetID: idp(a.ID),
+			TargetName: a.Name, Detail: map[string]any{"self": self}})
 	})
 }

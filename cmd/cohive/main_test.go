@@ -90,7 +90,7 @@ func (s testServer) adminApprove(t *testing.T) {
 	if err := s.svc.Pool.QueryRow(context.Background(), `SELECT id FROM device_auths WHERE status = 'awaiting_admin'`).Scan(&id); err != nil {
 		t.Fatalf("没有等待批准的设备：%v", err)
 	}
-	if _, err := s.svc.DecideDeviceAuth(context.Background(), nil, 0, id, true); err != nil {
+	if _, err := s.svc.DecideDeviceAuth(context.Background(), core.ServerCLI(), 0, id, true); err != nil {
 		t.Fatal(err)
 	}
 }

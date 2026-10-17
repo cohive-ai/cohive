@@ -165,7 +165,7 @@ func TestConcurrentReassignAndAccept(t *testing.T) {
 			return err
 		}
 		reassign := func() error {
-			return svc.ApplyHandover(ctx, &p.payAdmin, p.pay, p.annPay.ID, h.fullPlan(h.bob.ID), false)
+			return svc.ApplyHandover(ctx, core.WebActor(p.payAdmin), p.pay, p.annPay.ID, h.fullPlan(h.bob.ID), false)
 		}
 		if ok, c := race(t, accept, reassign); ok != 1 || c != 1 {
 			t.Fatalf("改派与接单同时发起应一成功一冲突：成功 %d 冲突 %d", ok, c)

@@ -27,17 +27,17 @@ func TestCannotDemoteLastAdmin(t *testing.T) {
 	e := newEnv(t)
 	admin := adminOf(t, e)
 	var ie *core.InputError
-	if err := e.svc.SetRole(ctx, &admin, 0, e.b.MemberID, store.RoleMember); !errors.As(err, &ie) {
+	if err := e.svc.SetRole(ctx, core.WebActor(admin), 0, e.b.MemberID, store.RoleMember); !errors.As(err, &ie) {
 		t.Fatalf("降级最后一名管理员应被拒：%v", err)
 	}
 	if n := countAdmins(t, e); n != 1 {
 		t.Fatalf("应仍有 1 名管理员，实际 %d", n)
 	}
 	// 有两名管理员时可以降级其中一名
-	if err := e.svc.SetRole(ctx, &admin, 0, e.a.MemberID, store.RoleAdmin); err != nil {
+	if err := e.svc.SetRole(ctx, core.WebActor(admin), 0, e.a.MemberID, store.RoleAdmin); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.SetRole(ctx, &admin, 0, e.a.MemberID, store.RoleMember); err != nil {
+	if err := e.svc.SetRole(ctx, core.WebActor(admin), 0, e.a.MemberID, store.RoleMember); err != nil {
 		t.Fatalf("还有别的管理员时可以降级：%v", err)
 	}
 }
@@ -47,7 +47,7 @@ func TestConcurrentMutualDemotion(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
 	a := adminOf(t, e)
-	if err := e.svc.SetRole(ctx, &a, 0, e.a.MemberID, store.RoleAdmin); err != nil {
+	if err := e.svc.SetRole(ctx, core.WebActor(a), 0, e.a.MemberID, store.RoleAdmin); err != nil {
 		t.Fatal(err)
 	}
 	b := acct(t, e, e.a)
@@ -66,7 +66,7 @@ func TestConcurrentMutualDemotion(t *testing.T) {
 		wg.Add(1)
 		go func(actor, target store.Account) {
 			defer wg.Done()
-			_ = e.svc.SetRole(ctx, &actor, 0, memberOf[target.ID], store.RoleMember)
+			_ = e.svc.SetRole(ctx, core.WebActor(actor), 0, memberOf[target.ID], store.RoleMember)
 		}(pair[0], pair[1])
 	}
 	time.Sleep(300 * time.Millisecond)

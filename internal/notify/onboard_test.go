@@ -65,7 +65,8 @@ func (f *fakeCore) CompleteTelegramLink(_ context.Context, p string, uid int64, 
 	f.calls = append(f.calls, "link", p, uid, name)
 	return f.link, f.err
 }
-func (f *fakeCore) DecideSignup(_ context.Context, a *store.Account, ws, id int64, ok bool) (core.SignupDecision, error) {
+func (f *fakeCore) DecideSignup(_ context.Context, act core.Actor, ws, id int64, ok bool) (core.SignupDecision, error) {
+	a := act.Account
 	f.calls = append(f.calls, "signup", a.ID, ws, id, ok)
 	d := core.SignupDecision{Signup: store.Signup{ID: id, Name: "ann", DisplayName: "Ann", Status: store.SignupRejected},
 		Workspace: f.workspace, Decider: a.Name}
@@ -75,7 +76,8 @@ func (f *fakeCore) DecideSignup(_ context.Context, a *store.Account, ws, id int6
 	}
 	return d, f.err
 }
-func (f *fakeCore) DecideDeviceAuth(_ context.Context, a *store.Account, ws, id int64, ok bool) (core.DeviceDecision, error) {
+func (f *fakeCore) DecideDeviceAuth(_ context.Context, act core.Actor, ws, id int64, ok bool) (core.DeviceDecision, error) {
+	a := act.Account
 	f.calls = append(f.calls, "device", a.ID, ws, id, ok)
 	st := store.AuthDenied
 	if ok {

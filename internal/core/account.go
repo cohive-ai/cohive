@@ -145,7 +145,11 @@ func (s *Service) ChangePassword(ctx context.Context, a store.Account, currentSe
 		if currentSession != "" {
 			keep = hashSecret("session", currentSession)
 		}
-		return store.DeleteAccountSessions(ctx, tx, a.ID, keep)
+		if err := store.DeleteAccountSessions(ctx, tx, a.ID, keep); err != nil {
+			return err
+		}
+		return record(ctx, tx, WebActor(a), store.AdminEvent{Action: ActPasswordChange, TargetKind: "account",
+			TargetID: idp(a.ID), TargetName: a.Name})
 	})
 	if err == nil && pw.MustChange {
 		s.removeInitialPasswordFile(a)
@@ -230,6 +234,10 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context) (string, error) {
 		if _, err := store.AddMembership(ctx, tx, acc.ID, wsID, store.RoleAdmin, nil); err != nil {
 			return err
 		}
+		if err := record(ctx, tx, systemActor(), store.AdminEvent{Action: ActAccountCreate, TargetKind: "account",
+			TargetID: idp(acc.ID), TargetName: acc.Name, Detail: map[string]any{"initial_admin": true}}); err != nil {
+			return err
+		}
 		if err := os.MkdirAll(s.DataDir, 0o700); err != nil {
 			return fmt.Errorf("创建数据目录：%w", err)
 		}
@@ -242,7 +250,7 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context) (string, error) {
 }
 
 // ResetPassword 由服务器管理员在命令行重置账号密码，返回新的随机密码；下次登录必须修改，其他会话全部失效。
-func (s *Service) ResetPassword(ctx context.Context, name string) (string, error) {
+func (s *Service) ResetPassword(ctx context.Context, act Actor, name string) (string, error) {
 	a, err := store.AccountByName(ctx, s.Pool, name)
 	if err != nil {
 		return "", err
@@ -256,12 +264,23 @@ func (s *Service) ResetPassword(ctx context.Context, name string) (string, error
 		return "", err
 	}
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := requireServerAdmin(ctx, tx, act.Account); err != nil {
+			return err
+		}
 		if err := store.SetAccountPassword(ctx, tx, a.ID, h, true); err != nil {
 			return err
 		}
-		return store.DeleteAccountSessions(ctx, tx, a.ID, nil)
+		if err := store.DeleteAccountSessions(ctx, tx, a.ID, nil); err != nil {
+			return err
+		}
+		// 新密码绝不进记录
+		return record(ctx, tx, act, store.AdminEvent{Action: ActResetPassword, TargetKind: "account",
+			TargetID: idp(a.ID), TargetName: a.Name})
 	})
-	return pw, err
+	if err != nil {
+		return "", err
+	}
+	return pw, nil
 }
 
 // CreateWebLoginCode 为已配对电脑的账号换一个一次性网页登录码（cohive web）。

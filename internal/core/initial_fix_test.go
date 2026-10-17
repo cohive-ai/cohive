@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -19,7 +20,7 @@ func TestInitialPasswordFileOnlyRemovedByInitialAdmin(t *testing.T) {
 		t.Fatalf("初始管理员：%q %v", path, err)
 	}
 	other, _ := store.AccountByID(ctx, e.svc.Pool, e.a.AccountID)
-	tmp, err := e.svc.ResetPassword(ctx, other.Name)
+	tmp, err := e.svc.ResetPassword(ctx, core.ServerCLI(), other.Name)
 	if err != nil {
 		t.Fatal(err)
 	}

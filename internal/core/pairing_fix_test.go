@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -19,7 +20,7 @@ func TestFirstDeviceIgnoresRevoked(t *testing.T) {
 		t.Fatalf("首台应免审：%+v %v", a, err)
 	}
 	p, _ := e.svc.PollDeviceAuth(ctx, st.RequestID, st.PollSecret)
-	if err := e.svc.RevokeDevice(ctx, me, 0, p.DeviceID); err != nil {
+	if err := e.svc.RevokeDevice(ctx, core.WebActor(me), 0, p.DeviceID); err != nil {
 		t.Fatal(err)
 	}
 	st2, _ := e.svc.StartDeviceAuth(ctx, []string{"codex"}, "b")

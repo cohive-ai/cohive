@@ -62,8 +62,8 @@ type chatAPI interface {
 // Core 是机器人用到的业务操作，由 core.Service 实现。
 type Core interface {
 	CompleteTelegramLink(ctx context.Context, startParam string, tgUserID int64, username string) (core.LinkResult, error)
-	DecideSignup(ctx context.Context, actor *store.Account, wsID, id int64, approve bool) (core.SignupDecision, error)
-	DecideDeviceAuth(ctx context.Context, actor *store.Account, wsID, id int64, approve bool) (core.DeviceDecision, error)
+	DecideSignup(ctx context.Context, act core.Actor, wsID, id int64, approve bool) (core.SignupDecision, error)
+	DecideDeviceAuth(ctx context.Context, act core.Actor, wsID, id int64, approve bool) (core.DeviceDecision, error)
 	Workspace(ctx context.Context, id int64) (store.Workspace, error)
 	WorkspaceByGroup(ctx context.Context, chatID int64) (store.Workspace, error)
 	AccountByTelegram(ctx context.Context, tgUserID int64) (store.Account, error)
@@ -428,7 +428,7 @@ func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
 	var text string
 	switch parts[0] {
 	case "su":
-		d, err := b.Core.DecideSignup(ctx, &actor, ws.ID, id, approve)
+		d, err := b.Core.DecideSignup(ctx, core.BotActor(actor), ws.ID, id, approve)
 		if err != nil {
 			b.failCallback(err, answer)
 			return
@@ -442,7 +442,7 @@ func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
 			}()
 		}
 	case "da":
-		d, err := b.Core.DecideDeviceAuth(ctx, &actor, ws.ID, id, approve)
+		d, err := b.Core.DecideDeviceAuth(ctx, core.BotActor(actor), ws.ID, id, approve)
 		if err != nil {
 			b.failCallback(err, answer)
 			return

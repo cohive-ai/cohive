@@ -46,6 +46,7 @@ func InsertAdminEvent(ctx context.Context, tx pgx.Tx, e AdminEvent) error {
 // AdminEventFilter 是查看记录的条件；零值字段不参与筛选。
 type AdminEventFilter struct {
 	WorkspaceID    *int64
+	WorkspaceName  string // 按名字快照筛选（已删除的工作空间）
 	ActorAccountID *int64
 	Actions        []string
 	Via            string
@@ -63,6 +64,9 @@ func ListAdminEvents(ctx context.Context, q DBTX, f AdminEventFilter) ([]AdminEv
 	}
 	if f.WorkspaceID != nil {
 		add("workspace_id = $%d", *f.WorkspaceID)
+	}
+	if f.WorkspaceName != "" {
+		add("workspace_name = $%d", f.WorkspaceName)
 	}
 	if f.ActorAccountID != nil {
 		add("actor_account_id = $%d", *f.ActorAccountID)
