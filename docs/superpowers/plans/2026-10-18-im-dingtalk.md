@@ -25,7 +25,7 @@
 - Telegram 连接存在账号表上：`accounts.telegram_user_id`、`accounts.telegram_username`（第 7 号迁移），全服务器唯一。命令行 `account set --telegram/--telegram-id` 可以只设其中一个。
 - 群存在工作空间表上：`workspaces.notify_channel/notify_target`，`(channel, target)` 唯一。审批消息记在 `bot_posts` 表里，`chat_id` 和 `message_id` 都是 `bigint`。连接请求在 `link_requests` 表里（有 `provider` 列）。
 - 管理操作记录的 `via` 有检查约束，取值里有 `telegram`；动作 `account.telegram_link/unlink`。
-- 机器人令牌走环境变量 `COHIVE_TELEGRAM_BOT_TOKEN`，由 `scripts/set-telegram-token.sh` 写入 `~/.config/cohive/telegram.env`，`scripts/run-server.sh` 只在服务进程里加载。
+- 机器人令牌走环境变量 `COHIVE_TELEGRAM_BOT_TOKEN`。单机运行时由 `scripts/set-telegram-token.sh` 写入 `~/.config/cohive/telegram.env`，`scripts/cohive-server.sh` 只在服务进程里加载，不打印、不进 `server.env`（测试服由 launchd 常驻，见 `docs/guides/single-host.md`）。Docker 部署时写在 `deploy/.env` 里，见 `docs/guides/deploy-docker.md`。
 
 **不在本次：**
 - 钉钉国际版：先按国内版写，接口基础地址可配；国际版能否使用等实测。
@@ -34,7 +34,6 @@
 - 一个工作空间同时绑多个群：表结构允许，界面和业务层第一期只允许一个。
 - 私聊通知。
 - Telegram 改用绑定码绑群（见待拍板 5）。
-- Docker 部署（M6-b）。
 
 ## 全局约束
 
@@ -255,9 +254,11 @@ type ChatUser struct{ Provider, Tenant, UserID, Handle, Name string }
 | `COHIVE_DINGTALK_APPROVAL_TEMPLATE` | 否 | 审批卡片模板编号；不填时审批消息不带按钮 |
 | `COHIVE_DINGTALK_API_BASE` | 否 | 接口基础地址，默认 `https://api.dingtalk.com`；测试和以后的国际版用 |
 
-- `scripts/set-dingtalk-credentials.sh`：交互输入，密钥不回显，写 `~/.config/cohive/dingtalk.env`，权限 600。
-- `scripts/run-server.sh`：像加载 `telegram.env` 一样加载 `dingtalk.env`。
-- `server.env.example`：注明密钥不要放在这里。
+- 单机运行：
+  - `scripts/set-dingtalk-credentials.sh`：交互输入，密钥不回显，写 `~/.config/cohive/dingtalk.env`，权限 600；
+  - `scripts/cohive-server.sh` 像处理 `telegram.env` 一样，只在服务进程里加载 `dingtalk.env`（可用 `COHIVE_DINGTALK_ENV` 指定别的文件），不打印、不进 `server.env`；
+  - `scripts/run-server.sh` 同步加载；`server.env.example` 注明密钥不要放在这里。
+- Docker：`deploy/docker-compose.yml` 透传这六个变量，`deploy/.env.example` 加注释，`docs/guides/deploy-docker.md` 的变量表补上。
 - 启动日志：“钉钉：已启用（Client ID 尾号 …1a2b），Stream 连接中”；连上后打印“已连接”。
 - Client ID 和 Secret 只配了一个时，服务拒绝启动，并说明缺哪个。
 
@@ -423,7 +424,7 @@ type ChatUser struct{ Provider, Tenant, UserID, Handle, Name string }
   - `sessionWebhook` 主机名校验；
   - 配置只给一半时启动报错；
   - 日志和错误里不出现 Secret 与令牌（断言输出里不含假密钥字符串）。
-- [ ] `scripts/set-dingtalk-credentials.sh` 与 `run-server.sh` 加载；`scripts_test` 补用例。
+- [ ] `scripts/set-dingtalk-credentials.sh`，`cohive-server.sh` 与 `run-server.sh` 加载，Docker 编排透传；`scripts_test` 补用例。
 - [ ] commit：`feat(im-T4): 钉钉开放接口客户端与凭据配置`
 
 #### T5：Stream 收件、绑群、账号绑定
@@ -476,11 +477,11 @@ type ChatUser struct{ Provider, Tenant, UserID, Handle, Name string }
 | # | 问题 | 选项 | 建议 |
 |---|---|---|---|
 | 1 | **Stream 长连接用不用官方依赖包** | A 用 `open-dingtalk/dingtalk-stream-sdk-go`（MIT，带进 `gorilla/websocket`、`google/uuid` 两个小依赖）；B 自己实现协议（还是要引一个 WebSocket 库） | **A**。协议细节（心跳、断线、应答帧）官方维护，代码量小；它还停在 0.x 版本，锁定版本号，写进依赖说明 |
-| 2 | **朋友的这一轮实测，Cohive 跑在哪** | A 朋友自己部署一套（要装 Postgres 和服务端程序；Docker 镜像 M6-b 还没做）；B 钉钉应用凭据配到 lee 的测试服，朋友的钉钉群绑到测试服上的一个工作空间，问题直接报到同一台服务器上 lee 新建群对应的工作空间 | **B 先行**。朋友只需做钉钉侧准备，零部署；同一台服务器同时开 Telegram 和钉钉，本次设计支持。代价：朋友要把 Client Secret 交给 lee，要走私密渠道；测试服由 lee 或主脑配置，本会话不碰。A 留到 M6-b 做完后，作为第二轮验证部署文档 |
+| 2 | **朋友的这一轮实测，Cohive 跑在哪**（2026-10-18 主脑：由 lee 定） | A 朋友自己按 `docs/guides/deploy-docker.md` 用 Docker 部署一套，钉钉凭据写进 `deploy/.env`；B 钉钉应用凭据配到 lee 的测试服，朋友的钉钉群绑到测试服上的一个工作空间，问题直接报到同一台服务器上 lee 新建群对应的工作空间 | **B 先行**。朋友只需做钉钉侧准备，零部署；同一台服务器同时开 Telegram 和钉钉，本次设计支持。代价：朋友要把 Client Secret 交给 lee，要走私密渠道；测试服由 lee 或主脑配置，本会话不碰。A 作为第二轮，同时验证 Docker 部署文档 |
 | 3 | **卡片模板编号放哪** | A 环境变量（与凭据同一个文件）；B 网页“服务器管理 → 设置” | **A**。第一期改动最小；模板编号不是秘密，以后要网页改再挪 |
 | 4 | **没建模板时允不允许启用钉钉** | A 允许：通知不 @，审批只发文字加网页链接；B 必须两个模板都配好才启用 | **A**。朋友可以先只配凭据，看到最基本的通知，再逐步加模板，排查问题更容易 |
 | 5 | **Telegram 也改成“绑定码绑群”吗** | A 这次不改，保留 `/chatid` 手填；B 一起改 | **A**。不在决策范围内，Telegram 现在能用；以后想统一再做 |
 | 6 | **账号绑定码出现在群里怎么办** | A 立即作废并在群里提醒；B 忽略 | **A**。码可能被别人抢先使用；作废的代价只是本人重新生成一次 |
 | 7 | **`accounts.telegram_*`、`workspaces.notify_*` 删列还是保留** | A 本迁移删；B 保留一个版本 | **A**。与 M6-d 删 `public_url` 一致；回退本来就要用迁移前的备份，留着反而容易被误读 |
 
-除非主脑另行指示，待拍板全部按建议做。
+**主脑批复（2026-10-18）**：1、3、4、5、6、7 按建议；2 由 lee 定，不影响第 0 步。先做第 0 步（T1–T3），完成后回报再进钉钉部分。

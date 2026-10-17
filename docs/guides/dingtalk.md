@@ -92,13 +92,17 @@ Cohive 不读通讯录，不需要通讯录权限。成员连接钉钉时，机�
 Cohive 跑在哪台服务器上，由 lee 和你商量决定。两种情况：
 
 - **用 lee 的测试服**：把 Client ID、Client Secret 和两个模板编号**私下**发给 lee（不要发到群里），由 lee 配置。
-- **你自己部署 Cohive**：在服务器上执行：
+- **你自己部署 Cohive（推荐 Docker）**：按 [Docker 部署](deploy-docker.md) 把 Cohive 跑起来，然后在 `deploy/.env` 里填这几项：
 
-  ```bash
-  bash scripts/set-dingtalk-credentials.sh
+  ```
+  COHIVE_DINGTALK_CLIENT_ID=dingxxxxxxxx
+  COHIVE_DINGTALK_CLIENT_SECRET=（Client Secret）
+  COHIVE_DINGTALK_NOTICE_TEMPLATE=（通知模板编号）
+  COHIVE_DINGTALK_APPROVAL_TEMPLATE=（审批模板编号）
   ```
 
-  按提示依次输入 Client ID、Client Secret（输入时不显示）、通知模板编号、审批模板编号。配置写入 `~/.config/cohive/dingtalk.env`，只有你自己能读。然后用 `scripts/run-server.sh` 重启服务。
+  然后执行 `docker compose up -d`。改了 `.env` 要用 `up -d` 重建容器，`restart` 不会读到新值。`.env` 里有密钥，不要提交到任何仓库。
+- **不用 Docker、单机运行**（见 [单机运行](single-host.md)）：执行 `bash scripts/set-dingtalk-credentials.sh`，按提示输入以上四项，Client Secret 输入时不显示。配置写入 `~/.config/cohive/dingtalk.env`，只有你自己能读，并且只在服务进程里加载。然后执行 `scripts/cohive-server.sh restart`。
 
 启动日志里看到下面两行，就表示接通了：
 
