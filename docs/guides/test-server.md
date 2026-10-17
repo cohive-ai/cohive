@@ -36,7 +36,9 @@
    chmod 600 ~/.local/share/cohive-server/server.env
    ```
 
-   按实际修改 `COHIVE_DATABASE_URL`、`COHIVE_ADDR`、`COHIVE_ALLOWED_HOSTS`。环境变量里已有的值优先于文件。
+   按实际修改 `COHIVE_DATABASE_URL`、`COHIVE_ADDR`。对外地址可以在网页“服务器管理 → 设置”里填，也可以写 `COHIVE_EXTERNAL_URL` 锁定；它的主机名自动加入 MCP 白名单，`COHIVE_ALLOWED_HOSTS` 只在还要用别的域名访问时才需要。环境变量里已有的值优先于文件。
+
+   **升级到第九号迁移（M6-d）时**：迁移会把编号最小的、能认出来的工作空间公网地址提升为服务器级对外地址，然后删掉工作空间上的这一列。启动后先在“服务器管理 → 设置”里核对一下（迁移日志里的 NOTICE 会说明丢弃或去掉路径的值）。这一步之后旧程序不能再连这个库，要回退只能用迁移前的备份。
 3. Telegram 机器人令牌：用 `scripts/set-telegram-token.sh` 保存到 `~/.config/cohive/telegram.env`。启动脚本只在服务进程里加载它，不打印、不写日志、不进 `server.env`。要换文件用 `COHIVE_TELEGRAM_ENV` 指定。
 
 **同一个机器人令牌同时只能有一个程序收消息。** 本机另起调试服务时，用 `COHIVE_TELEGRAM_ENV=/不存在的路径` 让它不加载令牌，否则会和测试服抢消息，审批按钮时灵时不灵。
