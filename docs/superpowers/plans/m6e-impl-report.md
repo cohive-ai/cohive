@@ -51,3 +51,11 @@ lee 在 Codex 桌面版实测：钩子执行了、模型上下文里有提醒，
 | Codex 命令行（`codex exec --ephemeral`，真实模型，只读沙箱，`-c` 临时信任项目与钩子） | “检查下项目目录”：回复第一句为“Cohive 提醒：你有 1 张待处理的单：#1 待你接单、退回或转交，可用 $cohive 1 查看”，然后才检查目录 |
 
 Codex 这次用的是 lee 本机的登录；`~/.codex/config.toml` 与 `auth.json` 未变（修改时间、大小前后一致），`--ephemeral` 不留会话记录，只更新了 Codex 自己的 `logs_2.sqlite` 与 `models_cache.json`。走查库 `cohive_m6e2_walk` 未删，服务进程已停。
+
+### 再返工：提醒要写在最终答复里（lee 复测，2026-10-17）
+
+lee 在 Codex 桌面版复测：模型确实先说了“Cohive 提醒：……#3……”，但写在中途的进度说明里（会话记录 `phase: commentary`），本轮结束后桌面版折叠进度说明，只留最终答复（`phase: final_answer`），提醒被隐去。要求改为“在你这次的最终答复（本轮结束时给用户的那条消息，不是中途的进度说明）开头，先用一句话告诉用户……”。
+
+复测（库 `cohive_m6e3_walk`，用户请求“检查文件目录”）：Codex 命令行版（`--ephemeral`、真实模型）进度说明里不再出现提醒，最终答复开头为“Cohive 提醒：你有 1 张待处理的单：#1 待你接单、退回或转交，可用 $cohive 1 查看”；Claude Code 命令行版最终答复开头同样是这句（`/cohive 1`）。
+
+另：前一次桌面版“没有提示”的原因不是没重启客户端，而是 lee 本机 `~/.local/bin/cohive` 还是 main 版 a14ca58（旧文案）。经 lee 同意，本机已换成分支版，旧版备份在 `~/.local/bin/cohive.a14ca58.bak`；合入、测试服更新后要用安装脚本重装一次。
