@@ -131,7 +131,9 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 	if err != nil {
 		return err
 	}
-	if time.Since(n.CreatedAt) > MaxAge {
+	if expired, err := store.NotificationExpired(ctx, tx, n.ID, MaxAge); err != nil {
+		return err
+	} else if expired {
 		return store.MarkNotificationSkipped(ctx, tx, n.ID, "超过 24 小时未送达，已过期")
 	}
 	if stale(n, is) {
@@ -167,12 +169,12 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 			d.logf("群通知暂停投递，通知会保留：%v", sendErr)
 			d.downMsg = down.Msg
 		}
-		if err := store.DelayNotification(ctx, tx, n.ID, time.Now().Add(time.Minute), sendErr.Error()); err != nil {
+		if err := store.DelayNotification(ctx, tx, n.ID, time.Minute, sendErr.Error()); err != nil {
 			return err
 		}
 		return errStopBatch
 	case errors.As(sendErr, &ra):
-		if err := store.DelayNotification(ctx, tx, n.ID, time.Now().Add(time.Duration(ra.Seconds)*time.Second), sendErr.Error()); err != nil {
+		if err := store.DelayNotification(ctx, tx, n.ID, time.Duration(ra.Seconds)*time.Second, sendErr.Error()); err != nil {
 			return err
 		}
 		return errStopBatch
@@ -181,7 +183,7 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 		if err := store.SetWorkspaceNotifyTarget(ctx, tx, ws.ID, mig.NewChatID); err != nil {
 			return err
 		}
-		return store.DelayNotification(ctx, tx, n.ID, time.Now(), sendErr.Error())
+		return store.DelayNotification(ctx, tx, n.ID, 0, sendErr.Error())
 	case IsPermanent(sendErr):
 		d.logf("群通知 #%d 发送失败，不再重试：%v", n.ID, sendErr)
 		return store.MarkNotificationFailed(ctx, tx, n.ID, sendErr.Error())
@@ -189,7 +191,7 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 		d.logf("群通知 #%d 已失败 %d 次，放弃：%v", n.ID, attempt, sendErr)
 		return store.MarkNotificationFailed(ctx, tx, n.ID, sendErr.Error())
 	default:
-		return store.MarkNotificationRetry(ctx, tx, n.ID, time.Now().Add(backoff[attempt-1]), sendErr.Error())
+		return store.MarkNotificationRetry(ctx, tx, n.ID, backoff[attempt-1], sendErr.Error())
 	}
 }
 

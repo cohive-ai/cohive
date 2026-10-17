@@ -1,5 +1,11 @@
 // Package core 实现问题单的业务操作：每个操作在一个事务里完成
 // 身份与可见性校验、版本校验、状态迁移、写事件与幂等记录。
+//
+// 加锁顺序：一个事务要锁多类行时，一律按 问题单（编号升序）→ 管理员行 → 成员行 的顺序。
+// 问题单动作（Act）先锁问题单，写事件、通知时再按外键隐式引用成员行（FOR KEY SHARE），
+// 所以凡是既锁成员行又要锁问题单的操作（转交、移出）都必须先把问题单锁齐。
+// 成员行与管理员行用 FOR NO KEY UPDATE（见 store.LockMember），不挡外键引用。
+// 万一仍被数据库判为死锁或串行化失败，inTx 会转成 RetryError，按版本冲突处理。
 package core
 
 import (
@@ -55,6 +61,25 @@ func (e *ConflictError) Error() string {
 
 func (e *ConflictError) Is(target error) bool { return target == store.ErrVersionConflict }
 
+// RetryError 表示事务因并发被数据库中止（死锁 40P01、串行化失败 40001），本次操作没有生效。
+// 与版本冲突一样处理：调用方重读最新内容后再决定是否重试。
+type RetryError struct{ Code string }
+
+func (e *RetryError) Error() string {
+	return "有其他操作同时在改同一批数据，本次操作没有生效：请先读取最新内容再决定是否重试。"
+}
+
+func (e *RetryError) Is(target error) bool { return target == store.ErrVersionConflict }
+
+// retryable 把数据库因并发中止事务的错误转成 RetryError，其余原样返回。
+func retryable(err error) error {
+	var pe *pgconn.PgError
+	if errors.As(err, &pe) && (pe.Code == "40P01" || pe.Code == "40001") {
+		return &RetryError{Code: pe.Code}
+	}
+	return err
+}
+
 func notFoundIssue(id int64) error {
 	return fmt.Errorf("问题单 #%d 不存在或你无权查看：%w", id, store.ErrNotFound)
 }
@@ -95,9 +120,9 @@ func (s *Service) inTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
 	}
 	defer tx.Rollback(ctx)
 	if err := fn(tx); err != nil {
-		return err
+		return retryable(err)
 	}
-	return tx.Commit(ctx)
+	return retryable(tx.Commit(ctx))
 }
 
 func isUniqueViolation(err error) bool {

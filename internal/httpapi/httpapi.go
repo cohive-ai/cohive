@@ -221,7 +221,8 @@ func writeError(w http.ResponseWriter, err error) {
 	case errors.Is(err, core.ErrNotAdmin), errors.Is(err, core.ErrNotServerAdmin), errors.Is(err, core.ErrNotManager),
 		errors.Is(err, store.ErrAccountDisabled):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
-	case errors.As(err, &se), errors.Is(err, store.ErrAlreadyMember), errors.Is(err, core.ErrJoinPending):
+	case errors.As(err, &se), errors.Is(err, store.ErrAlreadyMember), errors.Is(err, core.ErrJoinPending),
+		errors.Is(err, store.ErrVersionConflict): // 含版本冲突与事务被数据库并发中止（core.RetryError）
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 	case errors.Is(err, core.ErrNotMember):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})

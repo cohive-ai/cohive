@@ -271,6 +271,17 @@ func GetIssue(ctx context.Context, q DBTX, id int64) (Issue, error) {
 	return scanIssue(q.QueryRow(ctx, `SELECT `+issueColumns+issueFrom+` WHERE i.id = $1`, id))
 }
 
+// LockIssues 在事务内按编号升序锁住工作空间里的这些问题单（不存在或不属于该空间的编号忽略）。
+// 一次锁多张单时必须走这里，按固定顺序加锁，免得两个事务各锁一半互等。
+func LockIssues(ctx context.Context, q DBTX, wsID int64, ids []int64) error {
+	rows, err := q.Query(ctx, `SELECT id FROM issues WHERE workspace_id = $1 AND id = ANY($2) ORDER BY id FOR UPDATE`, wsID, ids)
+	if err != nil {
+		return err
+	}
+	rows.Close()
+	return rows.Err()
+}
+
 // GetIssueForUpdate 在事务内读取并锁定问题单。
 func GetIssueForUpdate(ctx context.Context, q DBTX, id int64) (Issue, error) {
 	return scanIssue(q.QueryRow(ctx, `SELECT `+issueColumns+issueFrom+` WHERE i.id = $1 FOR UPDATE OF i`, id))

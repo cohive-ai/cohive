@@ -109,7 +109,11 @@ func race(t *testing.T, fns ...func() error) (ok, conflict int) {
 	wg.Wait()
 	for _, err := range errs {
 		var he *core.HandoverError
+		var re *core.RetryError
 		switch {
+		case errors.As(err, &re):
+			// 对用户而言等同版本冲突，但出现就说明加锁顺序不一致：并发用例里一律算失败
+			t.Errorf("事务被数据库中止（%s），说明加锁顺序不一致：%v", re.Code, err)
 		case err == nil:
 			ok++
 		case errors.Is(err, store.ErrVersionConflict), errors.As(err, &he):

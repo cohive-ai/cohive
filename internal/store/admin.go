@@ -45,9 +45,10 @@ func CountAdmins(ctx context.Context, q DBTX, wsID int64) (int, error) {
 	return n, err
 }
 
-// LockAdmins 在事务内锁住工作空间的全部在册管理员行。
+// LockAdmins 在事务内锁住工作空间的全部在册管理员行（按编号升序；锁的强度同 LockMember）。
 func LockAdmins(ctx context.Context, q DBTX, wsID int64) error {
-	rows, err := q.Query(ctx, `SELECT id FROM members WHERE workspace_id = $1 AND role = 'admin' AND status = 'active' FOR UPDATE`, wsID)
+	rows, err := q.Query(ctx, `SELECT id FROM members WHERE workspace_id = $1 AND role = 'admin' AND status = 'active'
+		ORDER BY id FOR NO KEY UPDATE`, wsID)
 	if err != nil {
 		return err
 	}

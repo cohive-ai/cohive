@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/issue"
@@ -156,5 +157,52 @@ func TestRequeueFailed(t *testing.T) {
 	}
 	if got := e.notification(t, is.ID); got.Status != "sent" {
 		t.Fatalf("重新排队后应发送成功：%+v", got)
+	}
+}
+
+// 排期按数据库时钟算：判断到期用的是数据库的 now()，排期若用投递进程的时钟，
+// 两边差几毫秒，“立即重发”的通知就可能被当成未到期（群升级后改发新群曾因此偶发失败）。
+// 事务开始后先等一会儿，让进程时钟明显晚于事务的 now()，两种算法的结果就必然不同。
+func TestNotificationScheduleUsesDBClock(t *testing.T) {
+	ctx := context.Background()
+	e := newDispatchEnv(t)
+	is := e.submitOne(t)
+	id := e.notification(t, is.ID).ID
+	tx, err := e.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	time.Sleep(20 * time.Millisecond)
+	check := func(what, want string) {
+		t.Helper()
+		var ok bool
+		if err := tx.QueryRow(ctx, `SELECT next_attempt_at = `+want+` FROM notifications WHERE id = $1`, id).Scan(&ok); err != nil || !ok {
+			t.Fatalf("%s：下次投递时间应为数据库时间 %s（%v）", what, want, err)
+		}
+	}
+	if err := store.DelayNotification(ctx, tx, id, 0, "群编号已更新"); err != nil {
+		t.Fatal(err)
+	}
+	check("立即重发", "now()")
+	if err := store.DelayNotification(ctx, tx, id, time.Minute, "通道不可用"); err != nil {
+		t.Fatal(err)
+	}
+	check("推迟一分钟", "now() + interval '1 minute'")
+	if err := store.MarkNotificationRetry(ctx, tx, id, 10*time.Second, "失败"); err != nil {
+		t.Fatal(err)
+	}
+	check("失败重试", "now() + interval '10 seconds'")
+
+	for _, c := range []struct {
+		age     string
+		expired bool
+	}{{"23 hours 59 minutes", false}, {"24 hours 1 minute", true}} {
+		if _, err := tx.Exec(ctx, `UPDATE notifications SET created_at = now() - $2::interval WHERE id = $1`, id, c.age); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := store.NotificationExpired(ctx, tx, id, notify.MaxAge); err != nil || got != c.expired {
+			t.Fatalf("写入 %s 前的通知：过期应为 %v，得到 %v %v", c.age, c.expired, got, err)
+		}
 	}
 }

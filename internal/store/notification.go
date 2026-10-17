@@ -81,11 +81,23 @@ func MarkNotificationSent(ctx context.Context, q DBTX, id int64) error {
 	return err
 }
 
-// MarkNotificationRetry 记录一次失败，并安排在 retryAt 重试。
-func MarkNotificationRetry(ctx context.Context, q DBTX, id int64, retryAt time.Time, errText string) error {
-	_, err := q.Exec(ctx, `UPDATE notifications SET attempts = attempts + 1, next_attempt_at = $2, last_error = $3
-		WHERE id = $1`, id, retryAt, errText)
+// 通知的排期与到期一律用数据库时间（now()）计算：判断到期的 ClaimDueNotification 用的是数据库时钟，
+// 若排期用投递进程的时钟，两边哪怕差几毫秒，“立即重发”的通知也会被当成未到期。
+
+// MarkNotificationRetry 记录一次失败，并安排在 after 之后（按数据库时间）重试。
+func MarkNotificationRetry(ctx context.Context, q DBTX, id int64, after time.Duration, errText string) error {
+	_, err := q.Exec(ctx, `UPDATE notifications SET attempts = attempts + 1,
+		next_attempt_at = now() + $2 * interval '1 microsecond', last_error = $3
+		WHERE id = $1`, id, after.Microseconds(), errText)
 	return err
+}
+
+// NotificationExpired 判断通知写入至今（按数据库时间）是否已超过 maxAge。
+func NotificationExpired(ctx context.Context, q DBTX, id int64, maxAge time.Duration) (bool, error) {
+	var expired bool
+	err := q.QueryRow(ctx, `SELECT created_at < now() - $2 * interval '1 microsecond' FROM notifications WHERE id = $1`,
+		id, maxAge.Microseconds()).Scan(&expired)
+	return expired, notFound(err)
 }
 
 // MarkNotificationFailed 放弃投递。
@@ -101,9 +113,11 @@ func MarkNotificationSkipped(ctx context.Context, q DBTX, id int64, reason strin
 	return err
 }
 
-// DelayNotification 推迟发送但不计失败次数（通道暂不可用、限流、群编号已更新）。
-func DelayNotification(ctx context.Context, q DBTX, id int64, at time.Time, reason string) error {
-	_, err := q.Exec(ctx, `UPDATE notifications SET next_attempt_at = $2, last_error = $3 WHERE id = $1`, id, at, reason)
+// DelayNotification 推迟 after（按数据库时间；0 表示立即可重发）发送，但不计失败次数
+// （通道暂不可用、限流、群编号已更新）。
+func DelayNotification(ctx context.Context, q DBTX, id int64, after time.Duration, reason string) error {
+	_, err := q.Exec(ctx, `UPDATE notifications SET next_attempt_at = now() + $2 * interval '1 microsecond', last_error = $3
+		WHERE id = $1`, id, after.Microseconds(), reason)
 	return err
 }
 

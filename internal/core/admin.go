@@ -411,6 +411,15 @@ func (s *Service) GetHandover(ctx context.Context, actor *store.Account, wsID, m
 func (s *Service) ApplyHandover(ctx context.Context, act Actor, wsID, memberID int64, plan HandoverPlan, remove bool) error {
 	actor := act.Account
 	return s.inTx(ctx, func(tx pgx.Tx) error {
+		// 按包说明的加锁顺序：先按编号升序锁齐清单里的问题单，再锁管理员行与成员行。
+		// 负责人接单等动作先锁问题单、写事件时再引用成员行；这里若先锁成员行再等问题单，就会与之互等。
+		ids := make([]int64, 0, len(plan.Issues))
+		for _, p := range plan.Issues {
+			ids = append(ids, p.IssueID)
+		}
+		if err := store.LockIssues(ctx, tx, wsID, ids); err != nil {
+			return err
+		}
 		if remove {
 			// 先锁本空间的管理员行再锁被移出的人，与并发降级、互相移出排队（顺序一致，不会互相等待）
 			if err := store.LockAdmins(ctx, tx, wsID); err != nil {

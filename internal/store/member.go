@@ -61,8 +61,11 @@ func MemberOf(ctx context.Context, q DBTX, accountID, wsID int64) (Member, error
 }
 
 // LockMember 在事务内锁住成员资格行并返回最新内容。
+// 用 FOR NO KEY UPDATE 而不是 FOR UPDATE：成员行从不删除、主键不变，这把锁只为让管理操作互相排队；
+// FOR UPDATE 会挡住其他事务按外键引用这一行（写问题单事件、通知等要的 FOR KEY SHARE），
+// 而那些事务往往已持有问题单行锁，两边互等就是死锁。加锁顺序见 core 包的说明。
 func LockMember(ctx context.Context, q DBTX, memberID int64) (Member, error) {
-	return scanMember(q.QueryRow(ctx, `SELECT `+memberColumns+memberFrom+`WHERE m.id = $1 FOR UPDATE OF m`, memberID))
+	return scanMember(q.QueryRow(ctx, `SELECT `+memberColumns+memberFrom+`WHERE m.id = $1 FOR NO KEY UPDATE OF m`, memberID))
 }
 
 // ErrAlreadyMember 表示账号已经是该工作空间的在册成员。
