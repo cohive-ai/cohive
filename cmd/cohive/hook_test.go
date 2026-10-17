@@ -353,3 +353,40 @@ func TestHookCheck(t *testing.T) {
 		t.Fatalf("没有登录时应说明：%s", out)
 	}
 }
+
+// 会话开始时服务不可达：之后恢复了，第一次提交提示词给摘要，不从 0 开始把旧提醒全翻出来。
+func TestHookStartOfflineThenOnline(t *testing.T) {
+	hookEnv(t)
+	clock := useClock(t)
+	var down atomic.Bool
+	down.Store(true)
+	var sawAfter atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			http.Error(w, `{"error":"down"}`, http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Has("after") {
+			sawAfter.Store(true)
+			fmt.Fprint(w, `{"cursor":9,"items":[{"id":3,"issue_id":1,"kind":"assigned","actor":"old"}],"pending":{"count":0,"top":[]}}`)
+			return
+		}
+		fmt.Fprint(w, `{"cursor":9,"items":[],"pending":{"count":1,"top":[{"issue_id":5,"needs":"待你接单、退回或转交"}]}}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := &client.Credentials{}
+	c.Upsert(client.Login{Server: srv.URL, Workspace: "default", Member: "lee", Tool: "codex", Token: "cohive_x"})
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if out, _, _ := callHook(t, srv.URL, "codex", "SessionStart", "o1"); out != "" {
+		t.Fatalf("不可达时静默：%s", out)
+	}
+	down.Store(false)
+	clock.pass()
+	out, _, _ := callHook(t, srv.URL, "codex", "UserPromptSubmit", "o1")
+	if sawAfter.Load() || !strings.Contains(out, "#5") || strings.Contains(out, "交给你处理") {
+		t.Fatalf("恢复后应先补摘要，不应从游标 0 取旧提醒：after=%v %s", sawAfter.Load(), out)
+	}
+}
