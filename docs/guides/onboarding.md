@@ -16,6 +16,8 @@
 
 服务首次启动时，如果还没有任何服务器管理员，会建一个账号 `admin`：它是服务器管理员，也是 `default` 工作空间的管理员。随机密码写在数据目录下的文件里（缺省为运行目录下的 `data/initial_admin_password`，可用环境变量 `COHIVE_DATA_DIR` 指定数据目录），只有服务器上能读。启动日志里只提示文件位置，不打印密码。
 
+用 Docker 部署时文件在数据卷里，执行 `docker compose exec cohive cat /data/initial_admin_password` 查看；下文的服务器命令也都在容器里执行，例如 `docker compose exec cohive cohive-server admin reset-password --name admin`（见 [用 Docker 部署](deploy-docker.md)）。
+
 1. 在服务器上查看这个文件，用里面的登录名和密码登录网页。
 2. 第一次登录必须修改密码，改完这个文件自动删除。
 3. 忘记密码时，在服务器上执行（不会清空任何数据）：
@@ -55,21 +57,15 @@
 
 **1. 打开邀请链接**：新人填登录名、显示名、密码（至少 10 位）注册；团队邀请要等管理员批准后才能登录。已经有账号的人先登录，再点“以 X 身份加入”。
 
-**2. 配对自己的电脑**（每台电脑只做一次）：先安装 cohive 命令行。不需要装 Go，也不需要能读代码仓库：命令行由团队自己的协作服务提供，版本与服务端一致（详见 [install-cli.md](install-cli.md)）。网页“个人中心 → 绑定新电脑”里有带服务器地址的命令，一键复制：
+**2. 安装命令行并配对自己的电脑**（每台电脑只做一次）：不需要装 Go，也不需要能读代码仓库：命令行由团队自己的协作服务提供，版本与服务端一致（详见 [install-cli.md](install-cli.md)）。网页“个人中心 → 绑定新电脑”里有带服务器地址的命令，一键复制，装完会接着配对：
 
 ```bash
-curl -fsSL https://cohive.example.com/install.sh | sh
+curl -fsSL https://cohive.example.com/install.sh | sh -s -- --login
 ```
 
-Windows 在 PowerShell 里执行 `irm https://cohive.example.com/install.ps1 | iex`。默认装在 `~/.local/bin`；提示不在 PATH 里时按提示加上，并从终端重新启动编程工具（它要能在 PATH 里找到 `cohive`）。开发者在仓库里也可以 `make install-cli`。
+Windows 在 PowerShell 里执行 `$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex`。默认装在 `~/.local/bin`；提示不在 PATH 里时按提示加上，并从终端重新启动编程工具（它要能在 PATH 里找到 `cohive`）。开发者在仓库里也可以 `make install-cli`。已经装好命令行的电脑只需执行 `cohive login --server https://cohive.example.com`。
 
-然后在终端执行（网页“个人中心”里有带服务器地址的完整命令，一键复制）：
-
-```bash
-cohive login --server https://cohive.example.com
-```
-
-终端会自动打开浏览器授权页（同时显示链接和二维码）。用账号密码登录网页，核对设备名、工具和“批准后可用于”的工作空间后点“授权”，终端随即显示“已登录”，并列出每个工作空间拿到的工具。
+配对时终端会自动打开浏览器授权页（同时显示链接和二维码）。用账号密码登录网页，核对设备名、工具和“批准后可用于”的工作空间后点“授权”，终端随即显示“已登录”，并列出每个工作空间拿到的工具。
 
 - **第一台电脑授权后立即生效；之后再加电脑需要你所在任一工作空间的管理员批准**（批准后这台电脑可用于你全部的工作空间）。等待期间终端会一直等，也可以随时按 Ctrl+C 或合上电脑：进度保存在本机，批准后执行 `cohive login --resume` 领取（24 小时内有效）。
 - 仓库里已有 `cohive init` 生成的配置时，服务地址和要登录的工具从配置读取（在子目录里执行也行）。第一次登录某个地址时，终端会先显示地址请你按回车确认。

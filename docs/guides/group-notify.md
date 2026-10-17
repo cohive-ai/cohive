@@ -19,6 +19,8 @@ Cohive 的群通知是“群里敲门，客户端开门”：问题单轮到谁�
 
    不要在交互终端里 `source` 这个文件：那样之后从这个终端启动的所有程序（包括 AI 编程工具）都能读到机器人令牌。
 
+   用 Docker 部署时，把令牌写进 `deploy/.env` 的 `COHIVE_TELEGRAM_BOT_TOKEN`，再 `docker compose up -d`（见 [用 Docker 部署](deploy-docker.md)）。
+
 3. 把机器人拉进工作空间对应的群。机器人只需要普通成员身份；设成管理员后它能收到群里所有消息（Cohive 会直接丢弃非命令消息，不存储）。
 
 ## 2. 配置工作空间
@@ -96,6 +98,8 @@ Cohive 的群通知是“群里敲门，客户端开门”：问题单轮到谁�
    ```bash
    COHIVE_ALLOWED_HOSTS=other.example.com scripts/run-server.sh
    ```
+
+用 Docker 部署时可以直接用 compose 里的可选隧道服务（`docker compose --profile tunnel up -d`，见 [用 Docker 部署](deploy-docker.md) 第 4 节）。
 
 隧道令牌建议用 `--token-file` 从文件读取，不要写在启动参数里（启动参数对本机所有用户可见）：
 
