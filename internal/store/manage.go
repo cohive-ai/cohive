@@ -167,7 +167,7 @@ func ListWorkspaceSummaries(ctx context.Context, q DBTX) ([]WorkspaceSummary, er
 
 // LockWorkspace 在事务内锁住工作空间行。
 func LockWorkspace(ctx context.Context, q DBTX, wsID int64) (Workspace, error) {
-	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces WHERE id = $1 FOR UPDATE`, wsID))
+	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces w WHERE w.id = $1 FOR UPDATE OF w`, wsID))
 }
 
 // CountIssues 返回工作空间的问题单数（含草稿）。
@@ -182,6 +182,8 @@ func CountIssues(ctx context.Context, q DBTX, wsID int64) (int, error) {
 func DeleteEmptyWorkspace(ctx context.Context, q DBTX, wsID int64) error {
 	for _, sql := range []string{
 		`DELETE FROM bot_posts WHERE workspace_id = $1`,
+		`DELETE FROM workspace_chats WHERE workspace_id = $1`,
+		`DELETE FROM chat_bind_requests WHERE workspace_id = $1`,
 		`DELETE FROM signups WHERE workspace_id = $1`,
 		`DELETE FROM invites WHERE workspace_id = $1`,
 		`DELETE FROM services WHERE workspace_id = $1`,

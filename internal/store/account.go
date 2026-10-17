@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -23,7 +24,10 @@ type Account struct {
 // Disabled 判断账号是否已停用。
 func (a Account) Disabled() bool { return a.DisabledAt != nil }
 
-const accountColumns = `a.id, a.name, a.display_name, a.telegram_username, a.telegram_user_id, a.is_server_admin, a.disabled_at, a.created_at`
+// Telegram 用户名与编号取自通讯账号表（第十一号迁移前在账号表上）。
+const accountColumns = `a.id, a.name, a.display_name, coalesce((SELECT ci.handle FROM chat_identities ci WHERE ci.account_id = a.id AND ci.provider = 'telegram'), ''),
+	(SELECT nullif(ci.user_id, '')::bigint FROM chat_identities ci WHERE ci.account_id = a.id AND ci.provider = 'telegram'),
+	a.is_server_admin, a.disabled_at, a.created_at`
 
 func scanAccount(row interface{ Scan(...any) error }) (Account, error) {
 	var a Account
@@ -65,7 +69,8 @@ func AccountByName(ctx context.Context, q DBTX, name string) (Account, error) {
 
 // AccountByTelegramUserID 返回连接到该 Telegram 账号的 Cohive 账号。
 func AccountByTelegramUserID(ctx context.Context, q DBTX, tgUserID int64) (Account, error) {
-	return scanAccount(q.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts a WHERE a.telegram_user_id = $1`, tgUserID))
+	return scanAccount(q.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts a
+		WHERE a.id = (SELECT account_id FROM chat_identities WHERE provider = 'telegram' AND tenant = '' AND user_id = $1)`, strconv.FormatInt(tgUserID, 10)))
 }
 
 // LockAccount 在事务内锁住账号行并返回最新内容，让同一账号的并发操作排队执行。
@@ -100,20 +105,47 @@ func SetAccountPassword(ctx context.Context, q DBTX, accountID int64, hash strin
 		accountID, hash, mustChange)
 }
 
-// SetAccountTelegram 连接（或以 nil 断开）账号的 Telegram 账号。
+// SetAccountTelegram 连接（userID 为 nil 且 username 为空时断开）账号的 Telegram 账号。
 func SetAccountTelegram(ctx context.Context, q DBTX, accountID int64, userID *int64, username string) error {
-	return execOne(ctx, q, `UPDATE accounts SET telegram_user_id = $2, telegram_username = $3 WHERE id = $1`,
-		accountID, userID, username)
+	return setTelegram(ctx, q, accountID, func(string, string) (string, string) { return int64Text(userID), username })
 }
 
 // SetAccountTelegramUsername 只改 Telegram 用户名（命令行兜底：只用于 @）。
 func SetAccountTelegramUsername(ctx context.Context, q DBTX, accountID int64, username string) error {
-	return execOne(ctx, q, `UPDATE accounts SET telegram_username = $2 WHERE id = $1`, accountID, username)
+	return setTelegram(ctx, q, accountID, func(id, _ string) (string, string) { return id, username })
 }
 
 // SetAccountTelegramUserID 只改 Telegram 用户编号（命令行兜底）。
 func SetAccountTelegramUserID(ctx context.Context, q DBTX, accountID int64, userID *int64) error {
-	return execOne(ctx, q, `UPDATE accounts SET telegram_user_id = $2 WHERE id = $1`, accountID, userID)
+	return setTelegram(ctx, q, accountID, func(_, handle string) (string, string) { return int64Text(userID), handle })
+}
+
+func int64Text(p *int64) string {
+	if p == nil {
+		return ""
+	}
+	return strconv.FormatInt(*p, 10)
+}
+
+// setTelegram 按 update 算出新的 Telegram 用户编号与用户名写回通讯账号表；两者都为空时删掉这一行。
+// 账号不存在时返回 ErrNotFound；同一 Telegram 账号已连接别的账号时返回唯一约束错误。
+func setTelegram(ctx context.Context, q DBTX, accountID int64, update func(userID, handle string) (string, string)) error {
+	var exists bool
+	if err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM accounts WHERE id = $1)`, accountID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrNotFound
+	}
+	cur, err := ChatIdentityOf(ctx, q, accountID, ProviderTelegram)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	userID, handle := update(cur.UserID, cur.Handle)
+	if userID == "" && handle == "" {
+		return DeleteChatIdentity(ctx, q, accountID, ProviderTelegram)
+	}
+	return UpsertChatIdentity(ctx, q, ChatIdentity{AccountID: accountID, Provider: ProviderTelegram, UserID: userID, Handle: handle})
 }
 
 // SetAccountDisplayName 修改显示名。

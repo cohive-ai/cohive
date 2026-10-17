@@ -281,7 +281,8 @@ func (b *Bot) post(ctx context.Context, kind string, wsID, chat, refID int64, te
 	if err != nil {
 		return err
 	}
-	return b.Core.RecordBotPost(ctx, store.BotPost{Kind: kind, RefID: refID, WorkspaceID: wsID, ChatID: chat, MessageID: msgID})
+	return b.Core.RecordBotPost(ctx, store.BotPost{Kind: kind, RefID: refID, WorkspaceID: wsID,
+		Provider: store.ProviderTelegram, ChatID: strconv.FormatInt(chat, 10), MessageID: strconv.FormatInt(msgID, 10)})
 }
 
 func signupText(s store.Signup, wsName string) string {
@@ -342,7 +343,15 @@ func (b *Bot) finish(ctx context.Context, kind string, refID int64, text string)
 	}
 	var firstErr error
 	for _, p := range posts {
-		if err := b.api().EditMessage(ctx, p.ChatID, p.MessageID, text, nil); err != nil && firstErr == nil {
+		if p.Provider != store.ProviderTelegram {
+			continue
+		}
+		chat, err1 := strconv.ParseInt(p.ChatID, 10, 64)
+		msg, err2 := strconv.ParseInt(p.MessageID, 10, 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		if err := b.api().EditMessage(ctx, chat, msg, text, nil); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

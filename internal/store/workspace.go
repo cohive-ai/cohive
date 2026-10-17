@@ -22,14 +22,18 @@ func (w Workspace) Label() string {
 }
 
 // NotifyConfig 是工作空间的群通知配置。Channel 为空表示不发群通知。
+// Channel 与 Target 取自工作空间群表里的第一个群（第一期一个工作空间只允许一个群）。
 type NotifyConfig struct {
-	Channel   string // "telegram"
-	Target    string // 群聊编号
+	Channel   string // 通讯工具：telegram、dingtalk
+	Target    string // 群编号
 	ShowTitle bool
 	ShowBrief bool
 }
 
-const workspaceColumns = `id, name, display_name, notify_channel, notify_target, notify_show_title, notify_show_brief`
+const workspaceColumns = `w.id, w.name, w.display_name,
+	coalesce((SELECT wc.provider FROM workspace_chats wc WHERE wc.workspace_id = w.id ORDER BY wc.id LIMIT 1), ''),
+	coalesce((SELECT wc.chat_id FROM workspace_chats wc WHERE wc.workspace_id = w.id ORDER BY wc.id LIMIT 1), ''),
+	w.notify_show_title, w.notify_show_brief`
 
 func scanWorkspace(row interface{ Scan(...any) error }) (Workspace, error) {
 	var w Workspace
@@ -38,19 +42,19 @@ func scanWorkspace(row interface{ Scan(...any) error }) (Workspace, error) {
 }
 
 func CreateWorkspace(ctx context.Context, q DBTX, name string) (Workspace, error) {
-	return scanWorkspace(q.QueryRow(ctx, `INSERT INTO workspaces (name) VALUES ($1) RETURNING `+workspaceColumns, name))
+	return scanWorkspace(q.QueryRow(ctx, `INSERT INTO workspaces AS w (name) VALUES ($1) RETURNING `+workspaceColumns, name))
 }
 
 func GetWorkspace(ctx context.Context, q DBTX, id int64) (Workspace, error) {
-	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces WHERE id = $1`, id))
+	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces w WHERE w.id = $1`, id))
 }
 
 func WorkspaceByName(ctx context.Context, q DBTX, name string) (Workspace, error) {
-	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces WHERE name = $1`, name))
+	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces w WHERE w.name = $1`, name))
 }
 
 func ListWorkspaces(ctx context.Context, q DBTX) ([]Workspace, error) {
-	rows, err := q.Query(ctx, `SELECT `+workspaceColumns+` FROM workspaces ORDER BY id`)
+	rows, err := q.Query(ctx, `SELECT `+workspaceColumns+` FROM workspaces w ORDER BY w.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -66,23 +70,32 @@ func ListWorkspaces(ctx context.Context, q DBTX) ([]Workspace, error) {
 	return out, rows.Err()
 }
 
+// SetWorkspaceNotify 保存群通知配置：显示开关写在工作空间上；Channel 为空时解除全部群，否则把该通讯工具的群设为 Target
+// 并解除其他通讯工具的群（第一期一个工作空间只允许一个群）。
 func SetWorkspaceNotify(ctx context.Context, q DBTX, wsID int64, cfg NotifyConfig) error {
-	tag, err := q.Exec(ctx, `UPDATE workspaces SET notify_channel = $2, notify_target = $3,
-		notify_show_title = $4, notify_show_brief = $5 WHERE id = $1`,
-		wsID, cfg.Channel, cfg.Target, cfg.ShowTitle, cfg.ShowBrief)
+	if err := execOne(ctx, q, `UPDATE workspaces SET notify_show_title = $2, notify_show_brief = $3 WHERE id = $1`,
+		wsID, cfg.ShowTitle, cfg.ShowBrief); err != nil {
+		return err
+	}
+	if cfg.Channel == "" || cfg.Target == "" {
+		return DeleteWorkspaceChats(ctx, q, wsID, "")
+	}
+	if _, err := q.Exec(ctx, `DELETE FROM workspace_chats WHERE workspace_id = $1 AND provider <> $2`, wsID, cfg.Channel); err != nil {
+		return err
+	}
+	cur, err := WorkspaceChats(ctx, q, wsID)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+	if len(cur) == 1 && cur[0].ChatID == cfg.Target {
+		return nil
 	}
-	return nil
+	return SetWorkspaceChat(ctx, q, WorkspaceChat{WorkspaceID: wsID, Provider: cfg.Channel, ChatID: cfg.Target})
 }
 
-// SetWorkspaceNotifyTarget 只更新群编号（例如群升级为超级群后编号变化）。
+// SetWorkspaceNotifyTarget 只更新 Telegram 群编号（例如群升级为超级群后编号变化）。
 func SetWorkspaceNotifyTarget(ctx context.Context, q DBTX, wsID int64, target string) error {
-	_, err := q.Exec(ctx, `UPDATE workspaces SET notify_target = $2 WHERE id = $1`, wsID, target)
-	return err
+	return UpdateWorkspaceChatID(ctx, q, wsID, ProviderTelegram, target)
 }
 
 // SetMemberRole 设置成员角色。
@@ -92,8 +105,8 @@ func SetMemberRole(ctx context.Context, q DBTX, memberID int64, role string) err
 
 // WorkspaceByNotifyTarget 返回绑定了该群的工作空间（一个群只绑一个工作空间）。
 func WorkspaceByNotifyTarget(ctx context.Context, q DBTX, channel, target string) (Workspace, error) {
-	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces
-		WHERE notify_channel = $1 AND notify_target = $2 AND notify_target <> ''`, channel, target))
+	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces w
+		WHERE w.id = (SELECT workspace_id FROM workspace_chats WHERE provider = $1 AND tenant = '' AND chat_id = $2)`, channel, target))
 }
 
 // SetWorkspaceCreator 记下建工作空间的账号。

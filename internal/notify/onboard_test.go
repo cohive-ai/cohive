@@ -179,7 +179,7 @@ func TestAnnounceAndApprove(t *testing.T) {
 	if len(api.chats) != 1 || api.chats[0] != -1001 || !strings.Contains(api.buttons[0], "&lt;Ann&gt;") || api.btnData[0][0].Data != "su:3:5:y" {
 		t.Fatalf("应在群里发审批消息：%v %v %+v", api.chats, api.buttons, api.btnData)
 	}
-	if len(c.posts) != 1 || c.posts[0].ChatID != -1001 || c.posts[0].RefID != 5 {
+	if len(c.posts) != 1 || c.posts[0].ChatID != "-1001" || c.posts[0].RefID != 5 {
 		t.Fatalf("应记下审批消息：%+v", c.posts)
 	}
 

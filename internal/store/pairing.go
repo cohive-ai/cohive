@@ -529,21 +529,22 @@ type BotPost struct {
 	Kind        string
 	RefID       int64
 	WorkspaceID int64
-	ChatID      int64
-	MessageID   int64
+	Provider    string
+	ChatID      string // Telegram 群编号；钉钉 openConversationId
+	MessageID   string // Telegram 消息编号；钉钉卡片的 outTrackId
 }
+
+const botPostColumns = `kind, ref_id, workspace_id, provider, chat_id, message_id`
 
 // InsertBotPost 记下审批消息，处理后据此把各群里的消息改成结果。
 func InsertBotPost(ctx context.Context, q DBTX, p BotPost) error {
-	_, err := q.Exec(ctx, `INSERT INTO bot_posts (kind, ref_id, workspace_id, chat_id, message_id) VALUES ($1, $2, $3, $4, $5)`,
-		p.Kind, p.RefID, p.WorkspaceID, p.ChatID, p.MessageID)
+	_, err := q.Exec(ctx, `INSERT INTO bot_posts (kind, ref_id, workspace_id, provider, chat_id, message_id)
+		VALUES ($1, $2, $3, $4, $5, $6)`, p.Kind, p.RefID, p.WorkspaceID, p.Provider, p.ChatID, p.MessageID)
 	return err
 }
 
-// ListBotPosts 列出某条申请的审批消息。
-func ListBotPosts(ctx context.Context, q DBTX, kind string, refID int64) ([]BotPost, error) {
-	rows, err := q.Query(ctx, `SELECT kind, ref_id, workspace_id, chat_id, message_id FROM bot_posts
-		WHERE kind = $1 AND ref_id = $2 ORDER BY id`, kind, refID)
+func collectBotPosts(ctx context.Context, q DBTX, sql string, args ...any) ([]BotPost, error) {
+	rows, err := q.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -551,10 +552,28 @@ func ListBotPosts(ctx context.Context, q DBTX, kind string, refID int64) ([]BotP
 	var out []BotPost
 	for rows.Next() {
 		var p BotPost
-		if err := rows.Scan(&p.Kind, &p.RefID, &p.WorkspaceID, &p.ChatID, &p.MessageID); err != nil {
+		if err := rows.Scan(&p.Kind, &p.RefID, &p.WorkspaceID, &p.Provider, &p.ChatID, &p.MessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// ListBotPosts 列出某条申请的审批消息。
+func ListBotPosts(ctx context.Context, q DBTX, kind string, refID int64) ([]BotPost, error) {
+	return collectBotPosts(ctx, q, `SELECT `+botPostColumns+` FROM bot_posts WHERE kind = $1 AND ref_id = $2 ORDER BY id`, kind, refID)
+}
+
+// BotPostByMessage 按消息编号找审批消息（钉钉卡片回调只带 outTrackId）。
+func BotPostByMessage(ctx context.Context, q DBTX, provider, messageID string) (BotPost, error) {
+	ps, err := collectBotPosts(ctx, q, `SELECT `+botPostColumns+` FROM bot_posts
+		WHERE provider = $1 AND message_id = $2 ORDER BY id LIMIT 1`, provider, messageID)
+	if err != nil {
+		return BotPost{}, err
+	}
+	if len(ps) == 0 {
+		return BotPost{}, ErrNotFound
+	}
+	return ps[0], nil
 }
