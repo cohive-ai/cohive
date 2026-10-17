@@ -38,6 +38,10 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
+	proxies, err := httpapi.ParseTrustedProxies(os.Getenv("COHIVE_TRUSTED_PROXIES"))
+	if err != nil {
+		return fmt.Errorf("COHIVE_TRUSTED_PROXIES：%w", err)
+	}
 	pool, err := openDB(ctx)
 	if err != nil {
 		return err
@@ -77,6 +81,7 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		fmt.Fprintf(out, "  警告：命令行安装包版本 %s 与服务端版本 %s 不一致，请用 make build 重新构建\n", m.Version, buildinfo.Version)
 	}
 	opts := server.Options{AllowedHosts: hosts, CLI: dist}
+	opts.API.TrustedProxies = proxies
 	// 群通知与机器人：设置了机器人令牌才启用；没设置时待发记录会保留，设置后重启即可补发
 	if tg := telegramFromEnv(); tg != nil {
 		d := &notify.Dispatcher{Pool: pool, Senders: map[string]notify.Sender{"telegram": tg},
@@ -84,7 +89,7 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		go d.Run(ctx, 2*time.Second)
 		bot := &notify.Bot{TG: tg, Core: svc}
 		go bot.Run(ctx)
-		opts.API = httpapi.Options{BotName: bot.Username, Announcer: bot}
+		opts.API.BotName, opts.API.Announcer = bot.Username, bot
 		fmt.Fprintln(out, "  群通知：Telegram 已启用；群里发 /chatid 可获取群编号")
 	} else {
 		fmt.Fprintln(out, "  群通知：未设置 COHIVE_TELEGRAM_BOT_TOKEN，暂不发送（待发记录会保留）")
@@ -100,6 +105,9 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	fmt.Fprintf(out, "  网页：http://%[1]s/\n  MCP： http://%[1]s/mcp\n", displayAddr(*addr))
 	if len(hosts) > 0 {
 		fmt.Fprintf(out, "  允许经这些域名访问 MCP：%s\n", strings.Join(hosts, "、"))
+	}
+	if len(proxies) > 0 {
+		fmt.Fprintf(out, "  信任这些地址转发来的来源地址头：%s\n", os.Getenv("COHIVE_TRUSTED_PROXIES"))
 	}
 
 	select {

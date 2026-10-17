@@ -24,6 +24,18 @@ irm https://cohive.example.com/install.ps1 | iex
 cohive login --server https://cohive.example.com
 ```
 
+**一条命令装好并配对**（个人中心里给的就是这一条）：装完接着执行 `cohive login`，在打开的浏览器里点“授权”即可。
+
+```bash
+curl -fsSL https://cohive.example.com/install.sh | sh -s -- --login
+```
+
+```powershell
+$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex
+```
+
+没有可交互的终端时（例如在脚本里执行），只安装，并提示手动执行 `cohive login`。
+
 升级：再执行一次安装命令即可，会原地替换。`cohive version` 查看本机版本；`cohive login`、`cohive status` 发现本机版本与服务端不一致时会提醒，并给出重装命令（只提醒，不影响使用）。
 
 ## 装到哪里

@@ -1,0 +1,13 @@
+.git
+.claude
+.superpowers
+bin
+data
+**/node_modules
+web/dist/*
+!web/dist/.gitkeep
+internal/clidist/files/*
+!internal/clidist/files/.gitkeep
+deploy/.env
+docs
+graphify-out

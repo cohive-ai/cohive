@@ -1,0 +1,62 @@
+# Cohive 协作服务 + Postgres 17。用法（在 deploy/ 目录）：
+#   cp .env.example .env   # 至少填 POSTGRES_PASSWORD
+#   docker compose up -d --build
+#   docker compose exec cohive cat /data/initial_admin_password   # 初始管理员的登录名与密码
+# 详见 docs/guides/deploy-docker.md（对外地址、机器人、隧道、备份与恢复、升级）。
+name: cohive
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cohive
+      POSTGRES_USER: cohive
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 deploy/.env 里设置 POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cohive -d cohive"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  cohive:
+    image: ${COHIVE_IMAGE:-cohive:local}
+    build:
+      context: ..
+      args:
+        VERSION: ${COHIVE_VERSION:-dev}
+        COMMIT: ${COHIVE_COMMIT:-}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      COHIVE_DATABASE_URL: postgres://cohive:${POSTGRES_PASSWORD}@postgres:5432/cohive?sslmode=disable
+      COHIVE_EXTERNAL_URL: ${COHIVE_EXTERNAL_URL:-}
+      COHIVE_ALLOWED_HOSTS: ${COHIVE_ALLOWED_HOSTS:-}
+      COHIVE_TELEGRAM_BOT_TOKEN: ${COHIVE_TELEGRAM_BOT_TOKEN:-}
+      # 隧道或反向代理经 Docker 网络转发进来，来源地址是容器网关；信任私有网段转发的来源地址头，限频才能按真实来源计
+      COHIVE_TRUSTED_PROXIES: ${COHIVE_TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+    ports:
+      # 缺省只监听本机，由本机的隧道或反向代理对外；内网直接访问时把 COHIVE_BIND 改成 0.0.0.0
+      - "${COHIVE_BIND:-127.0.0.1}:${COHIVE_PORT:-8787}:8787"
+    volumes:
+      - data:/data
+
+  # 可选：Cloudflare 隧道。在 Cloudflare 后台建隧道，公网主机名指向 http://cohive:8787，
+  # 把隧道令牌填进 CLOUDFLARE_TUNNEL_TOKEN，然后 docker compose --profile tunnel up -d
+  tunnel:
+    image: cloudflare/cloudflared:2025.9.1
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - cohive
+
+volumes:
+  pgdata:
+  data:

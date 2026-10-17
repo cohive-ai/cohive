@@ -201,7 +201,7 @@ func TestScriptUsesRequestOriginOnly(t *testing.T) {
 	}
 }
 
-func runInstall(t *testing.T, srv *httptest.Server) (dir, out string, err error) {
+func runInstall(t *testing.T, srv *httptest.Server, args ...string) (dir, out string, err error) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("安装脚本只用于 macOS、Linux")
@@ -211,7 +211,7 @@ func runInstall(t *testing.T, srv *httptest.Server) (dir, out string, err error)
 	}
 	home := t.TempDir()
 	dir = filepath.Join(home, "bin")
-	cmd := exec.Command("sh", "-c", "curl -fsSL "+srv.URL+"/install.sh | sh")
+	cmd := exec.Command("sh", "-c", "curl -fsSL "+srv.URL+"/install.sh | sh -s -- "+strings.Join(args, " "))
 	cmd.Env = []string{"HOME=" + home, "COHIVE_INSTALL_DIR=" + dir, "PATH=/usr/bin:/bin:/usr/sbin:/sbin"}
 	b, err := cmd.CombinedOutput()
 	return dir, string(b), err
@@ -249,12 +249,36 @@ func TestInstallScriptEndToEnd(t *testing.T) {
 	}
 }
 
+// 装完接着配对：有终端时用装好的程序执行 cohive login，没有终端时提示手动执行；不认识的参数直接报错。
+func TestInstallScriptLogin(t *testing.T) {
+	srv := serve(t, fakeDist(t, false))
+	dir, out, err := runInstall(t, srv, "--login")
+	if err != nil {
+		t.Fatalf("安装应成功：%v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "cohive")); err != nil {
+		t.Fatalf("应先装好：%v", err)
+	}
+	// 测试进程不一定有终端：有就接着执行装好的程序（假程序会再打印一次版本），没有就提示手动执行
+	tty := strings.Contains(out, "接着配对这台电脑") && strings.Count(out, "cohive 9.9.9-test") == 2
+	noTTY := strings.Contains(out, "没有可交互的终端") && strings.Contains(out, "cohive login --server "+srv.URL)
+	if !tty && !noTTY {
+		t.Fatalf("--login 应接着配对或提示手动配对：\n%s", out)
+	}
+
+	_, out, err = runInstall(t, srv, "--bogus")
+	if err == nil || !strings.Contains(out, "不认识的参数 --bogus") {
+		t.Fatalf("不认识的参数应报错：%v\n%s", err, out)
+	}
+}
+
 func TestPowerShellScriptContent(t *testing.T) {
 	srv := serve(t, fakeDist(t, false))
 	_, ps := get(t, srv.URL+"/install.ps1")
 	s := string(ps)
 	for _, want := range []string{"$server = '" + srv.URL + "'", "$want = '" + sum([]byte(fakeBinary)) + "'",
-		"Get-FileHash -Algorithm SHA256", "/dl/cohive/windows-amd64", "SetEnvironmentVariable('Path', $newPath, 'User')"} {
+		"Get-FileHash -Algorithm SHA256", "/dl/cohive/windows-amd64", "SetEnvironmentVariable('Path', $newPath, 'User')",
+		"if ($env:COHIVE_LOGIN -eq '1')", "login --server $server"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("PowerShell 脚本应包含 %q", want)
 		}

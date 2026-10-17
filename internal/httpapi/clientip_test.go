@@ -17,19 +17,52 @@ func TestKeyedLimiter(t *testing.T) {
 }
 
 func TestClientIP(t *testing.T) {
+	var o Options
 	r := httptest.NewRequest("POST", "/", nil)
 	r.RemoteAddr = "127.0.0.1:5000"
 	r.Header.Set("CF-Connecting-IP", "203.0.113.7")
-	if got := clientIP(r); got != "203.0.113.7" {
+	if got := o.clientIP(r); got != "203.0.113.7" {
 		t.Fatalf("经本机隧道转发时应取真实地址：%s", got)
 	}
 	r.RemoteAddr = "198.51.100.9:5000"
-	if got := clientIP(r); got != "198.51.100.9" {
+	if got := o.clientIP(r); got != "198.51.100.9" {
 		t.Fatalf("非本机来源不信任转发头：%s", got)
 	}
 	r.RemoteAddr = "[::1]:5000"
 	r.Header.Set("CF-Connecting-IP", "not-an-ip")
-	if got := clientIP(r); got != "::1" {
+	if got := o.clientIP(r); got != "::1" {
 		t.Fatalf("转发头不是地址时忽略：%s", got)
+	}
+}
+
+func TestClientIPTrustedProxies(t *testing.T) {
+	nets, err := ParseTrustedProxies(" 172.16.0.0/12, 10.0.0.5 ")
+	if err != nil || len(nets) != 2 {
+		t.Fatalf("解析可信代理：%v %v", nets, err)
+	}
+	o := Options{TrustedProxies: nets}
+	r := httptest.NewRequest("POST", "/", nil)
+	r.RemoteAddr = "172.18.0.1:40000"
+	r.Header.Set("CF-Connecting-IP", "203.0.113.7")
+	if got := o.clientIP(r); got != "203.0.113.7" {
+		t.Fatalf("可信代理转发时应取 CF-Connecting-IP：%s", got)
+	}
+	r.Header.Del("CF-Connecting-IP")
+	r.Header.Add("X-Forwarded-For", "1.2.3.4, 198.51.100.20")
+	if got := o.clientIP(r); got != "198.51.100.20" {
+		t.Fatalf("没有 CF 头时取 X-Forwarded-For 最后一项：%s", got)
+	}
+	r.RemoteAddr = "10.0.0.5:1"
+	if got := o.clientIP(r); got != "198.51.100.20" {
+		t.Fatalf("单个地址也可信任：%s", got)
+	}
+	r.RemoteAddr = "10.0.0.6:1"
+	if got := o.clientIP(r); got != "10.0.0.6" {
+		t.Fatalf("不在可信列表里时不信任转发头：%s", got)
+	}
+	for _, bad := range []string{"cohive.example.com", "10.0.0.0/33", "https://10.0.0.1"} {
+		if _, err := ParseTrustedProxies(bad); err == nil {
+			t.Fatalf("%q 应报错", bad)
+		}
 	}
 }
