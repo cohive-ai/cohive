@@ -7,6 +7,9 @@
 #   restart  stop 后 start
 #   status   是否在运行、版本、数据目录与日志位置
 #   run      前台运行（交给 launchd、systemd 等托管时用）
+# 装了 launchd 常驻服务（~/Library/LaunchAgents/com.anormlylee.cohive.server.plist）后，
+#   start/stop/restart 改用 launchctl 操作那个服务，不再自己后台拉起，免得同时跑两份：
+#   start 装载或拉起，stop 从 launchd 卸下（下次登录自动装回），restart 即 kickstart -k。
 #
 # 目录（可用环境变量覆盖）：
 #   COHIVE_HOME      缺省 ~/.local/share/cohive-server
@@ -32,7 +35,21 @@ pid_file="$run_dir/server.pid"
 log_file="$log_dir/server.log"
 tg_env="${COHIVE_TELEGRAM_ENV:-$HOME/.config/cohive/telegram.env}"
 
+label="${COHIVE_LAUNCHD_LABEL:-com.anormlylee.cohive.server}"
+plist="${COHIVE_LAUNCHD_PLIST:-$HOME/Library/LaunchAgents/$label.plist}"
+domain="gui/$(id -u)"
+
 fail() { echo "错误：$*" >&2; exit 1; }
+
+# 装了 launchd 常驻服务就交给它管：以 plist 文件是否存在为准（launchd 只在 macOS 上有）
+launchd_managed() { [ -f "$plist" ] && command -v launchctl >/dev/null 2>&1; }
+launchd_loaded() { launchctl print "$domain/$label" >/dev/null 2>&1; }
+# launchd_pid 输出 launchd 记录的服务进程号；没装载或没有进程时输出空
+launchd_pid() {
+  local out
+  out="$(launchctl print "$domain/$label" 2>/dev/null)" || return 0
+  printf '%s\n' "$out" | awk '$1 == "pid" && $2 == "=" && !n++ { print $3 }'
+}
 
 # 健康检查用的地址：“:8787”这类只写端口的监听地址按本机访问
 probe="$addr"
@@ -74,6 +91,50 @@ port_owner() {
   p="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1)"
   [ -n "$p" ] || return 1
   printf '%s（%s）' "$p" "$(ps -p "$p" -o comm= 2>/dev/null || echo 未知)"
+}
+
+# wait_healthy 等健康检查通过（最多 15 秒）；进程号变成 old 以外的值才算新进程起来了
+wait_healthy() {
+  local old="${1:-}" pid
+  for _ in $(seq 1 30); do
+    pid="$(launchd_pid)"
+    if [ -n "$pid" ] && [ "$pid" != "$old" ] && curl -fsS "http://$probe/healthz" >/dev/null 2>&1; then
+      echo "已由 launchd 启动，进程号 $pid，监听 $addr"
+      echo "  日志：$log_file"
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "15 秒内健康检查没有通过，launchd 会每 10 秒重试；日志最后 20 行：" >&2
+  tail -n 20 "$log_file" >&2
+  exit 1
+}
+
+launchd_start() {
+  if launchd_loaded; then
+    launchctl kickstart "$domain/$label" >/dev/null
+  else
+    launchctl bootstrap "$domain" "$plist"
+  fi
+  wait_healthy
+}
+
+launchd_stop() {
+  if ! launchd_loaded; then
+    echo "没有在运行（launchd 服务 $label 未装载）"
+    return 0
+  fi
+  launchctl bootout "$domain/$label"
+  rm -f "$pid_file"
+  echo "已停止并从 launchd 卸下 $label；下次登录会自动装回，要现在恢复执行 $0 start"
+}
+
+launchd_restart() {
+  launchd_loaded || { launchd_start; return; }
+  local old
+  old="$(launchd_pid)"
+  launchctl kickstart -k "$domain/$label"
+  wait_healthy "$old"
 }
 
 start() {
@@ -142,6 +203,21 @@ stop() {
 status() {
   local pid rc=0
   pid="$(running)" || rc=$?
+  if launchd_managed; then
+    if launchd_loaded; then
+      # 以 launchd 记录的进程号为准（进程号文件可能是旧版脚本留下的或缺失）
+      pid="$(launchd_pid)"
+      if [ -n "$pid" ]; then
+        rc=0
+        echo "由 launchd 托管：$label"
+      else
+        rc=1
+        echo "由 launchd 托管：$label，当前没有进程（launchd 会每 10 秒重试，看日志 $log_file）"
+      fi
+    else
+      echo "装了 launchd 服务 $label 但未装载（执行 $0 start 装载）"
+    fi
+  fi
   if [ "$rc" -eq 0 ]; then
     echo "运行中，进程号 $pid，监听 $addr"
     local v
@@ -157,6 +233,22 @@ status() {
   [ "$rc" -eq 0 ]
 }
 
+# 交给 launchd 时 start/stop/restart 只用 launchctl。之前用 start 后台起的那份要先按进程号停掉，
+# 否则 launchd 拉起的新进程会因端口被占而反复退出。
+if launchd_managed; then
+  case "${1:-}" in
+    start|stop|restart)
+      old_pid="$(running 2>/dev/null)" || old_pid=""
+      if [ -n "$old_pid" ] && [ "$old_pid" != "$(launchd_pid)" ]; then
+        echo "进程号 $old_pid 不是 launchd 拉起的（多半是之前用 start 后台起的），先停掉它"
+        stop
+      fi
+      "launchd_$1"
+      exit
+      ;;
+  esac
+fi
+
 case "${1:-}" in
   start) start ;;
   stop) stop ;;
@@ -164,11 +256,15 @@ case "${1:-}" in
   status) status ;;
   run)
     need_config
-    mkdir -p "$COHIVE_DATA_DIR"
+    mkdir -p "$COHIVE_DATA_DIR" "$run_dir"
+    echo
+    echo "==== $(date '+%Y-%m-%d %H:%M:%S') 前台启动（库 $(cohive_db_name "$COHIVE_DATABASE_URL")，监听 $addr）===="
+    # exec 不换进程号：记下来，status 与 stop 照样能认出它
+    echo "$$" > "$pid_file"
     exec_server
     ;;
   *)
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac
