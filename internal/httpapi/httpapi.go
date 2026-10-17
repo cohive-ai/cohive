@@ -4,10 +4,12 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,6 +51,8 @@ type Options struct {
 	BotName func() string
 	// Announcer 在有新的待审申请、新成员加入时通知（例如发到工作空间群里）；可为空。
 	Announcer Announcer
+	// TrustedProxies 是除本机外可信任转发头的来源地址段，例如 Docker 网络里的隧道或反向代理。
+	TrustedProxies []*net.IPNet
 }
 
 // Handler 返回 /api/v1 与 /auth/ 下的接口。网页用会话 Cookie，命令行与编程工具用令牌或设备密钥；
@@ -261,17 +265,64 @@ func (l *keyedLimiter) allow(key string) bool {
 	return true
 }
 
-// clientIP 返回请求的来源地址。来自本机（例如 Cloudflare 隧道的 cloudflared）且带 CF-Connecting-IP 时，
-// 用这个头里的真实地址；其余情况不信任转发头，避免被伪造来绕过限频。
-func clientIP(r *http.Request) string {
+// clientIP 返回请求的来源地址。来自本机或 TrustedProxies 里的地址（例如 Cloudflare 隧道的 cloudflared、
+// 反向代理）时，取 CF-Connecting-IP，没有则取 X-Forwarded-For 的最后一项；其余情况不信任转发头，
+// 避免被伪造来绕过限频。
+func (o Options) clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
 	}
-	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
-		if cf := net.ParseIP(r.Header.Get("CF-Connecting-IP")); cf != nil {
-			return cf.String()
+	ip := net.ParseIP(host)
+	if ip == nil || !(ip.IsLoopback() || o.trusted(ip)) {
+		return host
+	}
+	if cf := net.ParseIP(strings.TrimSpace(r.Header.Get("CF-Connecting-IP"))); cf != nil {
+		return cf.String()
+	}
+	if xff := r.Header.Values("X-Forwarded-For"); len(xff) > 0 {
+		parts := strings.Split(xff[len(xff)-1], ",")
+		if fwd := net.ParseIP(strings.TrimSpace(parts[len(parts)-1])); fwd != nil {
+			return fwd.String()
 		}
 	}
 	return host
+}
+
+func (o Options) trusted(ip net.IP) bool {
+	for _, n := range o.TrustedProxies {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseTrustedProxies 解析逗号分隔的地址段（如 172.16.0.0/12）或单个地址。
+func ParseTrustedProxies(s string) ([]*net.IPNet, error) {
+	var out []*net.IPNet
+	for _, item := range strings.Split(s, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if !strings.Contains(item, "/") {
+			ip := net.ParseIP(item)
+			if ip == nil {
+				return nil, fmt.Errorf("%q 不是地址或地址段，例如 172.16.0.0/12", item)
+			}
+			bits := 128
+			if ip.To4() != nil {
+				ip, bits = ip.To4(), 32
+			}
+			out = append(out, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+		_, n, err := net.ParseCIDR(item)
+		if err != nil {
+			return nil, fmt.Errorf("%q 不是地址或地址段，例如 172.16.0.0/12", item)
+		}
+		out = append(out, n)
+	}
+	return out, nil
 }

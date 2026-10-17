@@ -51,7 +51,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	guard := newLoginGuard()
 
 	handlePublic(mux, "POST /api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
-		if !logins.allow(limitKey(clientIP(r))) {
+		if !logins.allow(limitKey(opts.clientIP(r))) {
 			tooMany(w)
 			return
 		}
@@ -131,7 +131,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 
 	handlePublic(mux, "GET /api/v1/invites/{code}", func(w http.ResponseWriter, r *http.Request) {
-		if !lookups.allow(limitKey(clientIP(r))) {
+		if !lookups.allow(limitKey(opts.clientIP(r))) {
 			tooMany(w)
 			return
 		}
@@ -159,7 +159,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 
 	handlePublic(mux, "POST /api/v1/register", func(w http.ResponseWriter, r *http.Request) {
-		if !registers.allow(limitKey(clientIP(r))) {
+		if !registers.allow(limitKey(opts.clientIP(r))) {
 			tooMany(w)
 			return
 		}
@@ -196,7 +196,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 
 	handlePublic(mux, "POST /api/v1/device/start", func(w http.ResponseWriter, r *http.Request) {
-		if !starts.allow(limitKey(clientIP(r))) {
+		if !starts.allow(limitKey(opts.clientIP(r))) {
 			tooMany(w)
 			return
 		}
@@ -217,7 +217,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	})
 
 	handlePublic(mux, "POST /api/v1/device/poll", func(w http.ResponseWriter, r *http.Request) {
-		if !polls.allow(limitKey(clientIP(r))) {
+		if !polls.allow(limitKey(opts.clientIP(r))) {
 			tooMany(w)
 			return
 		}
