@@ -108,6 +108,16 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 		if err != nil {
 			return err
 		}
+		// 这里只管 Telegram 群：绑的是别的通讯工具的群（钉钉用群绑定码绑定）时，Telegram 群编号留空不解除它
+		oldTG := ""
+		if old.Notify.Channel == store.ProviderTelegram {
+			oldTG = old.Notify.Target
+		} else if old.Notify.Channel != "" {
+			if chat != "" { // 第一期一个工作空间只绑一个群
+				return stateErr("工作空间已绑定%s群，请先解绑再绑 Telegram 群", providerName(old.Notify.Channel))
+			}
+			cfg.Channel, cfg.Target = old.Notify.Channel, old.Notify.Target
+		}
 		err = store.SetWorkspaceNotify(ctx, tx, wsID, cfg)
 		if isUniqueViolation(err) {
 			return stateErr("这个群已经绑定了别的工作空间：一个群只能对应一个工作空间")
@@ -121,7 +131,7 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 				changes[k] = map[string]any{"from": from, "to": to}
 			}
 		}
-		diff("telegram_chat", old.Notify.Target, chat)
+		diff("telegram_chat", oldTG, chat)
 		diff("show_title", old.Notify.ShowTitle, in.ShowTitle)
 		diff("show_brief", old.Notify.ShowBrief, in.ShowBrief)
 		if len(changes) > 0 {
@@ -135,6 +145,17 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 		}
 		return setDisplayName(ctx, tx, act, old, display)
 	})
+}
+
+// providerName 是通讯工具的中文名。
+func providerName(provider string) string {
+	switch provider {
+	case store.ProviderTelegram:
+		return " Telegram "
+	case store.ProviderDingTalk:
+		return "钉钉"
+	}
+	return provider
 }
 
 // MaxWorkspaceDisplayName 是工作空间显示名的最大字符数。

@@ -173,6 +173,21 @@ func TestWebAccountFlow(t *testing.T) {
 	if code, _ := ann1.do("GET", "/api/v1/w/default/admin/members", nil, ""); code != 403 {
 		t.Fatal("普通成员不能访问管理接口")
 	}
+	// 通讯工具：成员看到启用了哪些（不含状态细节），状态只给服务器管理员
+	_, me := ann1.do("GET", "/api/v1/me", nil, "")
+	if chs, _ := me["channels"].([]any); len(chs) != 1 || chs[0].(map[string]any)["provider"] != "telegram" {
+		t.Fatalf("个人信息里应列出启用的通讯工具：%v", me["channels"])
+	}
+	if chats, ok := me["chat"].([]any); !ok || len(chats) != 0 {
+		t.Fatalf("还没连接任何通讯工具：%v", me["chat"])
+	}
+	if code, _ := ann1.do("GET", "/api/v1/server/channels", nil, ""); code != 403 {
+		t.Fatalf("普通成员不能看通讯工具状态：%d", code)
+	}
+	if code, out := adminB.do("GET", "/api/v1/server/channels", nil, ""); code != 200 ||
+		out["channels"].([]any)[0].(map[string]any)["bot_name"] != "CohiveBot" {
+		t.Fatalf("服务器管理员看通讯工具状态：%d %v", code, out)
+	}
 
 	// 终端发起设备授权，浏览器授权（首台免审），终端领令牌
 	term := newBrowser(t, srv.URL)

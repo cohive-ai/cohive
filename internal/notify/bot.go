@@ -72,6 +72,7 @@ type Bot struct {
 	Hub *Hub
 
 	fetched atomic.Pointer[string] // 向 Telegram 查到的用户名
+	lastErr atomic.Pointer[string] // 最近一次接收消息失败的原因；成功后清空
 	hubOnce sync.Once
 	ownHub  *Hub
 }
@@ -84,6 +85,14 @@ func (b *Bot) hub() *Hub {
 		b.ownHub = &Hub{Core: b.Core, Channels: map[string]Channel{store.ProviderTelegram: b}, Logf: b.Logf}
 	})
 	return b.ownHub
+}
+
+// Status 返回收件循环是否在线与最近一次失败的原因。可在其他协程调用。
+func (b *Bot) Status() (online bool, detail string) {
+	if p := b.lastErr.Load(); p != nil {
+		return false, *p
+	}
+	return true, ""
 }
 
 // Username 返回机器人用户名；还不知道时返回空。可在其他协程调用。
@@ -136,10 +145,13 @@ func (b *Bot) Run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
+			msg := err.Error()
+			b.lastErr.Store(&msg)
 			b.logf("接收 Telegram 消息失败：%v", err)
 			sleep(ctx, 10*time.Second)
 			continue
 		}
+		b.lastErr.Store(nil)
 		for _, u := range ups {
 			offset = u.UpdateID + 1
 			b.Handle(ctx, u)

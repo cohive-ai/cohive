@@ -91,6 +91,10 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		go d.Run(ctx, 2*time.Second)
 		go bot.Run(ctx)
 		opts.API.BotName, opts.API.Announcer = bot.Username, bot
+		opts.API.Channels = func() []httpapi.ChannelInfo {
+			online, detail := bot.Status()
+			return []httpapi.ChannelInfo{{Provider: store.ProviderTelegram, BotName: bot.Username(), Online: online, Detail: detail}}
+		}
 		fmt.Fprintln(out, "  群通知：Telegram 已启用；群里发 /chatid 可获取群编号")
 	} else {
 		fmt.Fprintln(out, "  群通知：未设置 COHIVE_TELEGRAM_BOT_TOKEN，暂不发送（待发记录会保留）")
