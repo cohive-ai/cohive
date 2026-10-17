@@ -101,9 +101,9 @@ func TestViewAdminEvents(t *testing.T) {
 	// 服务器管理员：全部，可按工作空间筛选（含已删除的）
 	_, out = root.do("GET", "/api/v1/server/events", nil, "")
 	all := eventItems(t, out)
-	// 三人设密码 3 条 + 上面造的 8 条
-	if len(all) != 11 {
-		t.Fatalf("服务器管理员应看到全部 11 条：%v", actions(all))
+	// 三人设密码 3 条 + 上面造的 8 条 + 两次被拒（lee-claude 看服务器记录、ann 看工作空间记录）；看别的工作空间 404 不记
+	if len(all) != 13 {
+		t.Fatalf("服务器管理员应看到全部 13 条：%v", actions(all))
 	}
 	_, out = root.do("GET", "/api/v1/server/events?workspace=ops", nil, "")
 	if got := actions(eventItems(t, out)); len(got) != 1 || got[0] != core.ActWorkspaceCreate {
@@ -119,7 +119,7 @@ func TestViewAdminEvents(t *testing.T) {
 		query string
 		want  int
 	}{
-		{"type=role", 2}, {"type=account", 5}, {"type=workspace", 3}, {"actor=lee-claude", 3}, {"actor=nobody", 0},
+		{"type=role", 2}, {"type=account", 5}, {"type=workspace", 3}, {"type=denied", 2}, {"actor=lee-claude", 4}, {"actor=nobody", 0},
 		{"via=server_cli", 3}, {"via=web&actor=lee-codex", 4},
 	} {
 		_, out := root.do("GET", "/api/v1/server/events?"+c.query, nil, "")
@@ -162,7 +162,7 @@ func TestViewAdminEvents(t *testing.T) {
 	// 操作人停用后：他的记录照常显示，他本人不能再查看
 	must(f.svc.DisableAccount(ctx, core.WebActor(rootAcc), wsAcc.ID))
 	_, out = root.do("GET", "/api/v1/server/events?actor=lee-claude", nil, "")
-	if got := eventItems(t, out); len(got) != 3 {
+	if got := eventItems(t, out); len(got) != 4 {
 		t.Fatalf("停用后记录应保留：%v", got)
 	}
 	if code, _ := wsAdmin.do("GET", "/api/v1/w/default/admin/events", nil, ""); code < 400 {

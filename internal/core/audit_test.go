@@ -333,6 +333,11 @@ func auditCases() []auditCase {
 			f.keep(plain)
 			return f.svc.RevokeToken(ctx, core.ServerCLI(), f.p.pay, id)
 		}, wantEvent{core.ActTokenRevoke, core.ViaServerCLI, "pay", "token", "ann", "", map[string]any{"member": "ann", "tool": "codex"}}},
+		{"被拒的管理请求", func(t *testing.T, f *afix) error {
+			return f.svc.RecordDenied(ctx, core.AgentActor(f.p.ann), core.DeniedAttempt{Workspace: "pay",
+				Route: "POST /api/v1/w/{ws}/admin/invites", Reason: core.DenyNeedPassword, Credential: core.CredToken})
+		}, wantEvent{core.ActAccessDenied, core.ViaAgent, "pay", "route", "POST /api/v1/w/{ws}/admin/invites", "ann",
+			map[string]any{"reason": "need_password_login", "credential": "token"}}},
 		{"命令行登记服务负责人", func(t *testing.T, f *afix) error {
 			_, err := f.svc.SetServiceOwner(ctx, core.ServerCLI(), f.p.pay, "api", "bob")
 			return err
@@ -584,6 +589,11 @@ func TestRecordRejectsUnknownVia(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "入口") {
 		t.Fatalf("应报缺少入口：%v", err)
 	}
+	// 编程工具令牌的身份不能做任何管理操作，只能出现在被拒的请求里
+	err = f.svc.SetRole(ctx, core.AgentActor(f.p.payAdmin), f.p.pay, f.p.annPay.ID, store.RoleAdmin)
+	if err == nil || !strings.Contains(err.Error(), "编程工具令牌") {
+		t.Fatalf("编程工具令牌应被拒：%v", err)
+	}
 	m, err := store.MemberByID(ctx, f.svc.Pool, f.p.annPay.ID)
 	if err != nil || m.Role != store.RoleMember {
 		t.Fatalf("角色不应改变：%+v %v", m, err)
@@ -696,6 +706,11 @@ func TestEventTextCoversEveryAction(t *testing.T) {
 	}
 	e := store.AdminEvent{Action: core.ActSignupApprove, Via: core.ViaTelegram, ActorName: "lee", Detail: map[string]any{"applicant": "tester-d"}}
 	if got := core.EventText(e); got != "lee 在群里批准了 tester-d 的注册申请" {
+		t.Errorf("人话：%q", got)
+	}
+	e = store.AdminEvent{Action: core.ActAccessDenied, Via: core.ViaAgent, ActorName: "lee", TargetName: "POST /api/v1/w/{ws}/admin/invites",
+		Detail: map[string]any{"reason": core.DenyNeedPassword}}
+	if got := core.EventText(e); got != "lee 用编程工具令牌调用管理接口 POST /api/v1/w/{ws}/admin/invites，被拒绝：管理操作只认账号密码登录的网页" {
 		t.Errorf("人话：%q", got)
 	}
 	e = store.AdminEvent{Action: core.ActResetPassword, Via: core.ViaServerCLI, TargetName: "tester-a"}

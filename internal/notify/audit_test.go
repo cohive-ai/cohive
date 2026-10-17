@@ -130,6 +130,30 @@ func TestGroupButtonsRecord(t *testing.T) {
 		})
 	}
 
+	t.Run("没有权限的人点审批按钮", func(t *testing.T) {
+		s := newSetup(t)
+		id := signup(t, s)
+		tg := int64(901)
+		if err := store.SetAccountTelegram(ctx, s.svc.Pool, s.ann.ID, &tg, "anntg"); err != nil {
+			t.Fatal(err)
+		}
+		api := &fakeAPI{}
+		(&notify.Bot{Core: s.svc, API: api, Name: "CohiveBot"}).Handle(ctx, callbackIn(fmt.Sprintf("su:%d:%d:y", s.ws, id), 901, -1001))
+		es, err := store.ListAdminEvents(ctx, s.svc.Pool, store.AdminEventFilter{})
+		if err != nil || len(es) != 1 {
+			t.Fatalf("应留一条被拒记录：%+v %v", es, err)
+		}
+		e := es[0]
+		if e.Action != core.ActAccessDenied || e.Via != core.ViaTelegram || e.ActorName != "ann" || e.WorkspaceName != "pay" ||
+			e.Detail["reason"] != core.DenyNoPermission {
+			t.Fatalf("记录：%+v（%s）", e, core.EventText(e))
+		}
+		sg, err := store.GetSignupForUpdate(ctx, s.svc.Pool, id)
+		if err != nil || sg.Status != store.SignupPending {
+			t.Fatalf("申请不应被处理：%+v %v", sg, err)
+		}
+	})
+
 	t.Run("私聊连接 Telegram", func(t *testing.T) {
 		s := newSetup(t)
 		l, err := s.svc.StartLink(ctx, s.ann.ID, core.ProviderTelegram)

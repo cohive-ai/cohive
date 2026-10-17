@@ -23,6 +23,7 @@ const (
 	ViaTelegram  = "telegram"
 	ViaServerCLI = "server_cli"
 	ViaMemberCLI = "member_cli"
+	ViaAgent     = "agent" // 编程工具令牌：只会出现在被拒的管理请求里
 	ViaSystem    = "system"
 	ViaUnknown   = "unknown" // 只用于补历史
 )
@@ -33,6 +34,7 @@ var ViaLabels = map[string]string{
 	ViaTelegram:  "群按钮",
 	ViaServerCLI: "服务器命令行",
 	ViaMemberCLI: "成员本机命令行",
+	ViaAgent:     "编程工具令牌",
 	ViaSystem:    "服务器自动",
 	ViaUnknown:   "未知（功能上线前）",
 }
@@ -51,6 +53,9 @@ func BotActor(a store.Account) Actor { return Actor{Account: &a, Via: ViaTelegra
 
 // MemberCLIActor 是用设备密钥在本机命令行操作的人。
 func MemberCLIActor(a store.Account) Actor { return Actor{Account: &a, Via: ViaMemberCLI} }
+
+// AgentActor 是用编程工具令牌调用接口的人（管理接口一律拒绝，只用于记下被拒的请求）。
+func AgentActor(a store.Account) Actor { return Actor{Account: &a, Via: ViaAgent} }
 
 // ServerCLI 是服务器命令行。
 func ServerCLI() Actor { return Actor{Via: ViaServerCLI} }
@@ -90,6 +95,7 @@ const (
 	ActTokenIssue        = "token.issue"
 	ActTokenRevoke       = "token.revoke"
 	ActServiceOwner      = "service.owner"
+	ActAccessDenied      = "access.denied"
 )
 
 // 动作类别（查看时按类别筛选）。
@@ -102,6 +108,7 @@ const (
 	CatAccount      = "account"
 	CatWorkspace    = "workspace"
 	CatTokenService = "token_service"
+	CatDenied       = "denied"
 )
 
 // Category 是一个动作类别。
@@ -113,7 +120,7 @@ type Category struct {
 // Categories 按显示顺序列出动作类别。
 var Categories = []Category{
 	{CatApproval, "审批"}, {CatRole, "角色"}, {CatInvite, "邀请"}, {CatDevice, "设备"}, {CatMember, "成员"},
-	{CatAccount, "账号"}, {CatWorkspace, "工作空间"}, {CatTokenService, "令牌与服务"},
+	{CatAccount, "账号"}, {CatWorkspace, "工作空间"}, {CatTokenService, "令牌与服务"}, {CatDenied, "被拒的请求"},
 }
 
 type actionInfo struct {
@@ -251,6 +258,66 @@ var actions = map[string]actionInfo{
 		}
 		return fmt.Sprintf("登记了服务 %s，负责人 %s", e.TargetName, str(e, "to"))
 	}},
+	ActAccessDenied: {"被拒的管理请求", CatDenied, func(e store.AdminEvent) string {
+		what := "调用管理接口 " + e.TargetName
+		if e.Via == ViaTelegram {
+			what = "点了" + e.TargetName
+		}
+		return what + "，被拒绝：" + deniedReasons[str(e, "reason")]
+	}},
+}
+
+// 被拒的原因。
+const (
+	DenyNeedPassword = "need_password_login" // 编程工具令牌、设备密钥、cohive web 免密会话调只认密码会话的接口
+	DenyNoPermission = "no_permission"       // 密码会话或群按钮，但不是管理员
+)
+
+var deniedReasons = map[string]string{
+	DenyNeedPassword: "管理操作只认账号密码登录的网页",
+	DenyNoPermission: "没有权限",
+}
+
+// 被拒请求用的凭据。
+const (
+	CredPassword  = "password"   // 账号密码登录的网页会话
+	CredDeviceWeb = "device_web" // cohive web 免密会话
+	CredToken     = "token"      // 编程工具令牌
+	CredDevice    = "device"     // 设备密钥
+	CredTelegram  = "telegram"   // 群按钮
+)
+
+var credentialNames = map[string]string{
+	CredPassword: "账号密码登录的网页", CredDeviceWeb: "cohive web 免密网页", CredToken: "编程工具令牌",
+	CredDevice: "设备密钥", CredTelegram: "Telegram 群按钮",
+}
+
+// DeniedAttempt 是一次被拒的管理请求。Route 是接口模板（不含路径里的邀请码、授权参数等实际值）。
+type DeniedAttempt struct {
+	Workspace  string // 请求里的工作空间名；不存在时忽略
+	Route      string
+	Reason     string
+	Credential string
+}
+
+// RecordDenied 记下已认证的身份调管理接口被拒（台账 D7 的威胁模型：智能体能读本机令牌、会被提示注入）。
+// 业务事务已回滚或根本没开始，所以单独开一个事务写。未认证的请求不记。
+func (s *Service) RecordDenied(ctx context.Context, act Actor, d DeniedAttempt) error {
+	if act.Account == nil {
+		return nil
+	}
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		ev := store.AdminEvent{Action: ActAccessDenied, TargetKind: "route", TargetName: d.Route,
+			Detail: map[string]any{"reason": d.Reason, "credential": d.Credential}}
+		if d.Workspace != "" {
+			if ws, err := store.WorkspaceByName(ctx, tx, d.Workspace); err == nil {
+				ev.WorkspaceID, ev.WorkspaceName = &ws.ID, ws.Name
+			} else if !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+		}
+		return record(ctx, tx, act, ev)
+	})
 }
 
 // Actions 按名字列出全部动作。
@@ -284,6 +351,10 @@ func CategoryActions(cat string) []string {
 func record(ctx context.Context, tx pgx.Tx, act Actor, e store.AdminEvent) error {
 	switch act.Via {
 	case ViaWeb, ViaTelegram, ViaServerCLI, ViaMemberCLI, ViaSystem:
+	case ViaAgent:
+		if e.Action != ActAccessDenied {
+			return fmt.Errorf("编程工具令牌不能做管理操作（%s）", e.Action)
+		}
 	default:
 		return fmt.Errorf("管理操作缺少入口（%q）", act.Via)
 	}
@@ -332,6 +403,8 @@ func EventText(e store.AdminEvent) string {
 		return who + " 在群里" + verb
 	case ViaMemberCLI:
 		return who + " 在本机命令行" + verb
+	case ViaAgent:
+		return who + " 用编程工具令牌" + verb
 	case ViaServerCLI:
 		if who != "" {
 			return who + " 在服务器命令行" + verb
@@ -362,6 +435,7 @@ var detailLabels = map[string]string{
 	"admin": "首位管理员", "public_url": "公网地址", "telegram_chat": "Telegram 群", "show_title": "群消息显示标题",
 	"show_brief": "群消息显示简述", "member": "成员", "tool": "工具", "as": "命令行记作", "invite_id": "邀请编号",
 	"initial_admin": "初始管理员", "backfilled": "上线前补记", "time_approx": "时间为近似值",
+	"credential": "凭据",
 }
 
 // EventDetail 把附加信息转成中文名与文本值，按键名排序。
@@ -399,6 +473,14 @@ func detailValue(key string, v any) string {
 			}
 		case "kind":
 			return inviteKindName(x)
+		case "reason":
+			if r, ok := deniedReasons[x]; ok {
+				return r
+			}
+		case "credential":
+			if c, ok := credentialNames[x]; ok {
+				return c
+			}
 		case "expires_at":
 			if t, err := time.Parse(time.RFC3339, x); err == nil {
 				return t.Local().Format("2006-01-02 15:04")

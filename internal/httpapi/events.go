@@ -96,7 +96,7 @@ func eventMeta() map[string]any {
 		cats = append(cats, map[string]string{"id": c.ID, "label": c.Label})
 	}
 	vias := make([]map[string]string, 0, len(core.ViaLabels))
-	for _, v := range []string{core.ViaWeb, core.ViaTelegram, core.ViaServerCLI, core.ViaMemberCLI, core.ViaSystem, core.ViaUnknown} {
+	for _, v := range []string{core.ViaWeb, core.ViaTelegram, core.ViaServerCLI, core.ViaMemberCLI, core.ViaAgent, core.ViaSystem, core.ViaUnknown} {
 		vias = append(vias, map[string]string{"id": v, "label": core.ViaLabels[v]})
 	}
 	return map[string]any{"types": cats, "vias": vias}

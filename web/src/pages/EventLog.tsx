@@ -34,7 +34,7 @@ export function EventLog({ scope }: { scope: { ws: string } | { server: true } }
     <div className="space-y-4">
       <p className="text-sm text-muted">
         {server
-          ? "服务器上全部管理操作：审批、角色、邀请、设备、成员、账号、工作空间。只追加，不能修改或删除。"
+          ? "服务器上全部管理操作：审批、角色、邀请、设备、成员、账号、工作空间，以及被拒的管理请求。只追加，不能修改或删除。"
           : "本工作空间的管理操作：审批、角色、邀请、设备、成员与设置。停用账号、在服务器管理页批准设备等服务器级操作不在这里，请问服务器管理员。只追加，不能修改或删除。"}
       </p>
       <form

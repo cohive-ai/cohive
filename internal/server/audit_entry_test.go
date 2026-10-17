@@ -325,3 +325,96 @@ func TestNoUnlistedWriteEndpoint(t *testing.T) {
 		}
 	}
 }
+
+// 已认证的身份调管理接口被拒要记（台账 D7 的威胁模型）：编程工具令牌、设备密钥、cohive web 免密会话被挡，
+// 密码会话但没有权限；记接口模板，不记路径里的实际值；未认证的不记；同一账号限频。
+func TestDeniedAdminRequestsRecorded(t *testing.T) {
+	ctx := context.Background()
+	w := newAuditWeb(t)
+	f := w.f
+	_, before := lastEvent(t, f.svc)
+	expect := func(name, via, cred, reason, route, ws, actor string) {
+		t.Helper()
+		e, n := lastEvent(t, f.svc)
+		if n != before+1 {
+			t.Fatalf("%s：应新增一条记录，得到 %d 条", name, n-before)
+		}
+		before = n
+		if e.Action != core.ActAccessDenied || e.Via != via || e.Detail["credential"] != cred || e.Detail["reason"] != reason ||
+			e.TargetName != route || e.WorkspaceName != ws || e.ActorName != actor {
+			t.Fatalf("%s：%+v（%s）", name, e, core.EventText(e))
+		}
+	}
+	none := func(name string) {
+		t.Helper()
+		if _, n := lastEvent(t, f.svc); n != before {
+			t.Fatalf("%s：不应留记录", name)
+		}
+	}
+
+	// 编程工具令牌（lee-claude 的）想生成邀请
+	tok := newBrowser(t, f.url)
+	tok.origin = ""
+	tok.do("POST", "/api/v1/w/default/admin/invites", map[string]any{"kind": "team"}, f.tokenA)
+	expect("令牌", core.ViaAgent, core.CredToken, core.DenyNeedPassword, "POST /api/v1/w/{ws}/admin/invites", "default", "lee-claude")
+
+	// 令牌想替人接受邀请：记接口模板，路径里的邀请码不进记录
+	inv := w.invite(t, store.InvitePersonal)
+	_, before = lastEvent(t, f.svc)
+	tok.do("POST", "/api/v1/invites/"+inv.Code+"/accept", map[string]any{}, f.tokenA)
+	expect("令牌接受邀请", core.ViaAgent, core.CredToken, core.DenyNeedPassword, "POST /api/v1/invites/{code}/accept", "", "lee-claude")
+	if e, _ := lastEvent(t, f.svc); strings.Contains(fmt.Sprint(e), inv.Code) {
+		t.Fatal("邀请码进了记录")
+	}
+
+	// 设备密钥调服务器管理接口
+	_, secret := w.pairDevice(t, w.claude, "mac")
+	_, before = lastEvent(t, f.svc)
+	tok.do("GET", "/api/v1/server/accounts", nil, secret)
+	expect("设备密钥", core.ViaMemberCLI, core.CredDevice, core.DenyNeedPassword, "GET /api/v1/server/accounts", "", "lee-claude")
+
+	// cohive web 免密会话想改角色
+	once, err := f.svc.CreateWebLoginCode(ctx, f.b.AccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev := newBrowser(t, f.url)
+	if resp, err := dev.client.Get(f.url + "/auth/once/" + once); err != nil {
+		t.Fatal(err)
+	} else {
+		resp.Body.Close()
+	}
+	_, before = lastEvent(t, f.svc)
+	dev.do("POST", "/api/v1/w/default/admin/members/1", map[string]any{"role": "admin"}, "")
+	expect("免密会话", core.ViaWeb, core.CredDeviceWeb, core.DenyNeedPassword, "POST /api/v1/w/{ws}/admin/members/{id}", "default", "lee-codex")
+
+	// 密码会话但不是管理员
+	w.member.do("POST", "/api/v1/w/default/admin/invites", map[string]any{"kind": "team"}, "")
+	expect("非管理员", core.ViaWeb, core.CredPassword, core.DenyNoPermission, "POST /api/v1/w/{ws}/admin/invites", "default", "lee-claude")
+
+	// 不记：未认证、不是成员的工作空间（404）、管理员正常操作、普通接口被拒
+	newBrowser(t, f.url).do("POST", "/api/v1/w/default/admin/invites", map[string]any{"kind": "team"}, "")
+	none("未认证")
+	w.member.do("GET", "/api/v1/w/nope/admin/events", nil, "")
+	none("不存在的工作空间")
+	w.admin.do("GET", "/api/v1/w/default/admin/members", nil, "")
+	none("管理员读成员列表")
+
+	// 限频：同一账号 10 分钟内最多 30 条
+	for i := 0; i < 40; i++ {
+		tok.do("GET", "/api/v1/w/default/admin/members", nil, f.tokenA)
+	}
+	es, err := store.ListAdminEvents(ctx, f.svc.Pool, store.AdminEventFilter{Actions: []string{core.ActAccessDenied}, Limit: 200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, e := range es {
+		if e.ActorName == "lee-claude" {
+			n++
+		}
+	}
+	if n != 30 {
+		t.Fatalf("lee-claude 的被拒记录应封顶 30 条，得到 %d", n)
+	}
+}

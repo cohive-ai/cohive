@@ -122,6 +122,8 @@ func (f *fakeCore) BotPosts(_ context.Context, kind string, ref int64) ([]store.
 	return out, nil
 }
 
+func (f *fakeCore) RecordDenied(context.Context, core.Actor, core.DeniedAttempt) error { return nil }
+
 func newBot(c *fakeCore, api *fakeAPI) *notify.Bot {
 	return &notify.Bot{Core: c, API: api, Name: "CohiveBot"}
 }

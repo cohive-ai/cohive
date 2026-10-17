@@ -25,7 +25,7 @@ func auditCmd(ctx context.Context, out io.Writer, args []string) error {
 	fs.StringVar(&q.Workspace, "workspace", "", "只看这个工作空间（含已删除的）")
 	fs.StringVar(&q.Category, "type", "", "动作类别："+categoryIDs())
 	fs.StringVar(&q.Actor, "actor", "", "操作人登录名")
-	fs.StringVar(&q.Via, "via", "", "入口：web、telegram、server_cli、member_cli、system、unknown")
+	fs.StringVar(&q.Via, "via", "", "入口：web、telegram、server_cli、member_cli、agent（编程工具令牌）、system、unknown")
 	fs.Int64Var(&before, "before", 0, "只看编号小于它的（翻页）")
 	fs.IntVar(&limit, "limit", 50, fmt.Sprintf("条数，1 到 %d", core.MaxEventPage))
 	if err := fs.Parse(args[1:]); err != nil {

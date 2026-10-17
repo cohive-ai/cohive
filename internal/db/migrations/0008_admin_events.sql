@@ -1,11 +1,12 @@
 -- 管理操作记录：只追加。与业务操作在同一事务里写入，业务失败不留记录。
 -- 附加信息里绝不放密码、密码哈希、令牌、邀请码、设备密钥等秘密。
+-- 已认证的身份调管理接口被拒也记（动作 access.denied，单独的事务）；via = 'agent' 是编程工具令牌，只会出现在这类记录里。
 CREATE TABLE admin_events (
     id                bigserial PRIMARY KEY,
     at                timestamptz NOT NULL DEFAULT now(),
     actor_account_id  bigint REFERENCES accounts(id),   -- 服务器命令行、系统为空；账号从不删除
     actor_name        text NOT NULL DEFAULT '',         -- 操作人登录名快照
-    via               text NOT NULL CHECK (via IN ('web', 'telegram', 'server_cli', 'member_cli', 'system', 'unknown')),
+    via               text NOT NULL CHECK (via IN ('web', 'telegram', 'server_cli', 'member_cli', 'agent', 'system', 'unknown')),
     workspace_id      bigint,                           -- 工作空间可删除，不设外键
     workspace_name    text NOT NULL DEFAULT '',         -- 工作空间名快照
     action            text NOT NULL,
