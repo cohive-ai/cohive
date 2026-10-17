@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -47,6 +48,8 @@ func NewSchemaPool(t *testing.T) *pgxpool.Pool {
 		t.Fatal(err)
 	}
 	cfg.ConnConfig.RuntimeParams["search_path"] = schema
+	// 用 schema 名作连接的应用名，测试可据此在 pg_stat_activity 里只看自己的连接（见 WaitLockWaiters）
+	cfg.ConnConfig.RuntimeParams["application_name"] = schema
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -58,4 +61,26 @@ func NewSchemaPool(t *testing.T) *pgxpool.Pool {
 		admin.Close()
 	})
 	return pool
+}
+
+// WaitLockWaiters 等到本测试连接池里至少有 n 个连接在等锁（按应用名过滤，不受其他测试影响）。
+// 用于在并发用例里确认某个事务已经停在预期的锁上，再放行下一步。
+func WaitLockWaiters(t *testing.T, pool *pgxpool.Pool, n int) {
+	t.Helper()
+	app := pool.Config().ConnConfig.RuntimeParams["application_name"]
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var got int
+		if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM pg_stat_activity
+			WHERE application_name = $1 AND wait_event_type = 'Lock'`, app).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("等了 10 秒，等锁的连接只有 %d 个，预期至少 %d 个", got, n)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
