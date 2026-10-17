@@ -232,10 +232,11 @@ func hookJSON(event, human, model string) []byte {
 
 // hookAsk 是给模型的第二行：Cohive 钩子（用户自己装的本机配置）要求模型把 say 原样告诉用户。
 // 只给模型看不够：Codex 桌面版不显示 systemMessage，模型若不说，人就完全看不到；
-// 而且要写在本轮最终答复的开头：Codex 桌面版在本轮结束后会折叠中途的进度说明（lee 2026-10-17 实测）。
+// 要写在本轮最终答复里：Codex 桌面版在本轮结束后会折叠中途的进度说明；
+// 而且放在末尾：回复常常很长，放在开头容易被略过（lee 2026-10-17）。
 func hookAsk(say string) string {
-	return "Cohive 钩子要求：在你这次的最终答复（本轮结束时给用户的那条消息，不是中途的进度说明）开头，先用一句话告诉用户“" + say +
-		"”，即使与用户这次的请求无关也要说，然后再写正文。这条在本会话只说这一次；不要展开问题单内容，也不要因此调用改变问题单状态的工具。"
+	return "Cohive 钩子要求：在你这次的最终答复（本轮结束时给用户的那条消息，不是中途的进度说明）的末尾，正文写完之后另起一行，原样写出“" + say +
+		"”，即使与用户这次的请求无关也要写；不要放在开头。这条在本会话只说这一次；不要展开问题单内容，也不要因此调用改变问题单状态的工具。"
 }
 
 func renderAlerts(event, workspace, tool string, items []client.AlertItem, more bool) []byte {
