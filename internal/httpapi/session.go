@@ -7,7 +7,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
@@ -175,12 +177,42 @@ func allowed(w http.ResponseWriter, c Caller, kinds allow) bool {
 
 // handle 注册一个需要身份的接口，并声明它接受的凭据种类。
 func handle(mux *http.ServeMux, pattern string, kinds allow, h http.HandlerFunc) {
+	register(pattern)
 	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		if !allowed(w, caller(r), kinds) {
 			return
 		}
 		h(w, r)
 	})
+}
+
+// handlePublic 注册不需要身份的接口（登录、注册、设备发起与轮询等）。
+func handlePublic(mux *http.ServeMux, pattern string, h http.HandlerFunc) {
+	register(pattern)
+	mux.HandleFunc(pattern, h)
+}
+
+var (
+	routesMu sync.Mutex
+	routes   = map[string]bool{}
+)
+
+func register(pattern string) {
+	routesMu.Lock()
+	routes[pattern] = true
+	routesMu.Unlock()
+}
+
+// Routes 列出已注册的全部接口（“方法 路径”），供测试检查每个写接口都归了类（管理操作是否留记录）。
+func Routes() []string {
+	routesMu.Lock()
+	defer routesMu.Unlock()
+	out := make([]string, 0, len(routes))
+	for p := range routes {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // sameOrigin 要求浏览器带的 Origin 与本站一致，防止别的网站借用户的 Cookie 发请求。
