@@ -19,13 +19,15 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| MIG 测试服迁到 pm-dev1 | 无代码分支（服务器专属配置不入仓） | ops-migrate / `local_891cae15-49a6-4a88-8f8f-d75b6a7a3806` | — | 已派 | 用仓库编排起三个容器，隧道容器走宿主机网络（不改 Cloudflare）；凭据原样搬运不打印；先停本机再起服务器（机器人只能一个实例）；数量对比、五条通知、MCP、容器自动重启、服务器每日备份；不碰 pm 的容器与 /etc/cloudflared；本机库与容器保留作回滚 |
+| MIG 测试服迁到 pm-dev1 | 无代码分支（服务器专属配置不入仓） | ops-migrate / `local_891cae15-49a6-4a88-8f8f-d75b6a7a3806` | — | 打回（迁移已核对通过；补服务器上的升级脚本与说明并实跑一次） | 用仓库编排起三个容器，隧道容器走宿主机网络（不改 Cloudflare）；凭据原样搬运不打印；先停本机再起服务器（机器人只能一个实例）；数量对比、五条通知、MCP、容器自动重启、服务器每日备份；不碰 pm 的容器与 /etc/cloudflared；本机库与容器保留作回滚 |
 | IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
+| MIG-4 | 本机旧测试服（库 cohive_test、容器 cohive-dev-postgres、三个 plist）何时删 | A 一周后（10-25）确认服务器稳定再删；B 现在删 | A | 不阻塞 |
+| MIG-5 | 服务器备份要不要再拷一份到别的机器 | A 每天拷到 pm-dev2 的 /data（同一办公室，防单机坏盘）；B 不拷 | A | 不阻塞 |
 | I18N-GH | 仓库安全类设置，剩私密漏洞报告未开启（lee 亲手点“高级安全”页的启用按钮）；依赖告警已开、main 规则集 protect-main 已生效（禁止删除、禁止强推，无豁免） | 做 | 做（SECURITY.md 指向私密漏洞报告） | 安全报告入口可用 |
 | I18N-D13 | README 默认语言 | A README.md 改英文、中文移到 README.zh-CN.md；B 维持中文为默认 | A（GitHub 首页默认展示 README.md，面向外部用户） | I18N 第一段的 README 部分 |
 | I18N-D15 | 贡献者是否签 CLA 或 DCO | A 都不要；B DCO；C CLA | A；若将来可能改许可证或做商业双授权，应现在选 C | 不阻塞（先按 A 写） |
@@ -47,9 +49,10 @@
 ## 4. 环境与待清理
 - 本仓库自用 Cohive（2026-10-18 起）：主检出已 `cohive init` 接入测试服工作空间 `cohive-internal`（只配 Claude Code，含会话钩子），生成的 `.mcp.json`、`.claude/settings.json`、`.claude/skills/` 写在本地 `.git/info/exclude`，不提交；服务 `cohive` 负责人 lee。工作树里的实施会话没有这些文件，不受提醒打扰。朋友与同事在该空间报的问题单，由 lee 或主脑在主检出会话里用 /cohive 拉取，再分派。
 - 仓库：公开在 `https://github.com/cohive-ai/cohive`（2026-10-17 起），Apache-2.0。往 main 提交的一切都会公开，台账里不写本机绝对路径、令牌、公司事项。
-- 测试服（2026-10-16 起）：main 构建的程序（`<仓库根>/bin/`，当前 `d7b4869`（Go 1.26.9 编译），已执行至 0013 迁移；server.env 已加 COHIVE_DEFAULT_LANGUAGE=zh-CN；钉钉未配凭据，未启用）+ 长期测试库 `cohive_test`，由 launchd 服务 `com.anormlylee.cohive.server` 常驻（KeepAlive；登录后自动启动，环境用 env -i 清空、以 server.env 为准），管理用 `scripts/cohive-server.sh start|stop|restart|status`（restart 即 kickstart -k）（配置 `~/.local/share/cohive-server/server.env`，数据目录 `…/data`，日志 `…/logs`，详见 `docs/guides/single-host.md`）。监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（2026-10-17 起隧道由 launchd 服务 `com.anormlylee.cohive.tunnel` 常驻，日志 `~/.local/share/cohive-server/logs/tunnel.log`；主脑终端 c1 的旧隧道已停）。
-- 备份：`scripts/backup-db.sh` 手动可用，备份在 `~/.local/share/cohive-server/backups/`，保留 14 份；launchd 定时备份已安装（`~/Library/LaunchAgents/com.anormlylee.cohive.backup.plist`，每天 03:30，日志 `…/logs/backup.log`；撤销见 `docs/guides/single-host.md` 第 5 节），2026-10-16 已试跑成功。Docker Desktop 没开时备份会失败。迁移 M5b 前的备份在主脑临时目录 `…/scratchpad/backup/`。
-- 测试账号：admin（服务器管理员）、tester-a、tester-b（已停用）；密码文件在 `~/.local/share/cohive-server/data/`（权限 600，测试凭据）。工作空间：default、proj-b、proj-c。
+- 测试服（2026-10-18 19:30 起在办公室测试机 pm-dev1，与 pm 项目共用、互不干扰）：服务器上的检出 `~/cohive`（main），用仓库编排 `deploy/docker-compose.yml` 加本地覆盖文件（隧道容器用宿主机网络，不入仓），编排项目 `cohive`，容器 cohive-postgres-1、cohive-cohive-1、cohive-tunnel-1，卷 cohive_pgdata、cohive_data，均 unless-stopped；配置 `deploy/.env`（600，含机器人与隧道令牌、缺省语言 zh-CN，不入仓）；库为编排里的 `cohive`，已执行至 0013 迁移；监听 127.0.0.1:8787，经隧道 `cohive-test` 对外。运维目录 `~/cohive-ops`（备份脚本、日志；升级脚本与说明待补）。合入 main 后升级测试服改在服务器上做，不再用本机 `scripts/cohive-server.sh`。pm 的容器、pm-cloudflared、/etc/cloudflared 一概不碰。
+- 备份：服务器 crontab 每天 UTC 20:30（即 UTC+7 03:30）跑 `~/cohive-ops/backup.sh`，保留 14 份，在 `~/cohive-ops/backups/`；切换时的导出 `~/cohive-ops/cutover-20261018-193003.dump`。
+- 本机旧测试服（回滚用，保留）：launchd 的 server、tunnel、backup 三个服务已停用，plist 保留；容器 cohive-dev-postgres（已设 unless-stopped）与库 `cohive_test` 保留，数据停在 10-18 19:30；本机备份在 `~/.local/share/cohive-server/backups/`。删除时机待 lee（MIG-4）。
+- 测试账号：admin（服务器管理员）、tester-a、tester-b（已停用）等；密码文件仍在本机 `~/.local/share/cohive-server/data/`（权限 600，测试凭据）。工作空间：default、proj-b、proj-c、lee、cohive-internal。
 - 旧库：`cohive`（M4 数据，群编号 `<旧测试群编号>`，停用不删）、`cohive_m5`（旧版第六号，停用）。
 - 待清理：主脑临时目录里的旧启动脚本 `test-restart.sh` 与 `test-data/` 已不再使用。
 - 机器人：同一个机器人令牌同时只能有一个程序收消息，测试服与本机调试不要同时跑。
