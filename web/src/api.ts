@@ -362,6 +362,9 @@ export interface WorkspaceSettings {
   // 绑定的群（第一期最多一个）与服务器启用的通讯工具；telegram_chat 只在绑的是 Telegram 群时有值
   chat?: { provider: ChatProvider; chat_id: string; title?: string } | null;
   channels?: { provider: ChatProvider }[];
+  // 超时催办时长（小时），0 表示关闭
+  remind_open_hours?: number;
+  remind_verify_hours?: number;
 }
 
 export interface SaveWorkspaceSettings {
@@ -369,6 +372,8 @@ export interface SaveWorkspaceSettings {
   show_title: boolean;
   show_brief: boolean;
   display_name: string;
+  remind_open_hours?: number;
+  remind_verify_hours?: number;
 }
 
 // 服务器级设置：对外地址

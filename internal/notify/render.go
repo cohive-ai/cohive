@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -26,10 +27,19 @@ func Render(base string, ws store.Workspace, is store.Issue, n store.Notificatio
 func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.Issue, n store.Notification, people map[int64]Person) Rendered {
 	w := newWriter(f, provider)
 	esc := w.esc
+	// 不 @ 操作者本人，只写名字（2026-10-18 lee 定）：自己发单给自己、发起人与负责人是同一人等情况。
+	// 超时催办没有操作者，照常 @。
+	self := n.ActorMemberID
+	if core.SystemEvent(n.Event) {
+		self = 0
+	}
 	mention := func(id int64) string {
 		p, ok := people[id]
 		if !ok {
 			return "（未知成员）"
+		}
+		if id == self {
+			return esc(p.Name)
 		}
 		return w.mention(p, esc(p.Name), false)
 	}
@@ -65,6 +75,8 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 		head = fmt.Sprintf("#%d 验证未通过，已重开给 %s", is.ID, mentions(n.Recipients))
 	case "escalated":
 		head = fmt.Sprintf("#%d 已多次重开，需要人介入：%s", is.ID, mentions(n.Recipients))
+	case "overdue", "overdue_admin":
+		head = overdueHead(ws, is.ID, n, mention, mentions)
 	case "accepted":
 		head = fmt.Sprintf("#%d 已被 %s 接单，告知发起人 %s", is.ID, actor, mentions(n.Recipients))
 		via = fmt.Sprintf("由 %s 用 %s 接单", actor, tool)
@@ -103,6 +115,32 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 	return w.done(fmt.Sprintf("#%d %s", is.ID, eventTitle(n.Event)), lines...)
 }
 
+// overdueHead 是超时催办的首行。收件人第一个是当事人（待接单的负责人、待验证的发起人），其余是工作空间管理员。
+// 时长取工作空间当前的设置；投递前改小或关掉了，就不写具体小时数。
+func overdueHead(ws store.Workspace, id int64, n store.Notification, mention func(int64) string, mentions func([]int64) string) string {
+	waiting, todo, hours := "接单", "接单、退回或转交", ws.Remind.OpenHours
+	if n.IssueStatus == string(issue.StatusReadyForVerification) {
+		waiting, todo, hours = "验证", "验证", ws.Remind.VerifyHours
+	}
+	if len(n.Recipients) == 0 {
+		return fmt.Sprintf("#%d 等待%s超时", id, waiting)
+	}
+	party, rest := n.Recipients[0], n.Recipients[1:]
+	long := func(times int) string {
+		if hours <= 0 {
+			return "已等待" + waiting + "较长时间"
+		}
+		return fmt.Sprintf("已等待%s超过 %d 小时", waiting, hours*times)
+	}
+	if n.Event == "overdue" {
+		return fmt.Sprintf("#%d %s，请 %s %s", id, long(1), mention(party), todo)
+	}
+	if len(rest) == 0 {
+		return fmt.Sprintf("#%d %s，仍没有动作，请 %s 尽快%s", id, long(2), mention(party), todo)
+	}
+	return fmt.Sprintf("#%d %s，仍没有动作：请 %s 尽快%s；请管理员 %s 协调", id, long(2), mention(party), todo, mentions(rest))
+}
+
 // eventTitle 是钉钉卡片标题与会话列表摘要里的事件名。
 func eventTitle(event string) string {
 	switch event {
@@ -116,6 +154,10 @@ func eventTitle(event string) string {
 		return "已重开"
 	case "escalated":
 		return "需要人介入"
+	case "overdue":
+		return "催办"
+	case "overdue_admin":
+		return "催办（已请管理员协调）"
 	case "accepted":
 		return "已接单"
 	case "closed":

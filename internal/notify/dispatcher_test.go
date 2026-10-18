@@ -233,6 +233,110 @@ func TestDispatchAcceptedNotStale(t *testing.T) {
 	}
 }
 
+// 催办是“要动手”的通知：写入后、投递前负责人已经接单，就不再发。
+func TestDispatchOverdueStale(t *testing.T) {
+	e := newDispatchEnv(t)
+	ctx := context.Background()
+	is := e.submitOne(t)
+	if _, err := e.pool.Exec(ctx, `UPDATE issues SET status_since = now() - interval '5 hours' WHERE id = $1`, is.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.QueueReminders(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Act(ctx, e.b, core.ActInput{IssueID: is.ID, Action: issue.ActAccept, ExpectedVersion: is.Version}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.d.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range e.sender.sent {
+		if strings.Contains(m, "已等待接单") {
+			t.Fatalf("接单后催办不应再发：%v", e.sender.sent)
+		}
+	}
+	if len(e.sender.sent) != 1 || !strings.Contains(e.sender.sent[0], "已被 lee-codex 接单") {
+		t.Fatalf("只发“已接单”：%v", e.sender.sent)
+	}
+}
+
+// 投递循环顺带写催办：Reminders 设了就调用（每分钟一次，第一轮立即调）。
+func TestDispatcherRunCallsReminders(t *testing.T) {
+	e := newDispatchEnv(t)
+	calls := make(chan struct{}, 4)
+	e.d.Reminders = func(context.Context) (int, error) { calls <- struct{}{}; return 0, nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go e.d.Run(ctx, 10*time.Millisecond)
+	select {
+	case <-calls:
+	case <-time.After(3 * time.Second):
+		t.Fatal("投递循环应调用催办")
+	}
+}
+
+// 催办是服务端发起的，不算当事人自己的操作：第 1 档必须 @ 到当事人；第 2 档必须 @ 到当事人和管理员
+// （通知记录里的操作人虽然填的是当事人，但不按“不 @ 操作者本人”去掉）。
+func TestDispatchOverdueMentionsParty(t *testing.T) {
+	e := newDispatchEnv(t)
+	ctx := context.Background()
+	codexID, claudeID := int64(7002), int64(7001)
+	if err := store.SetAccountTelegramUserID(ctx, e.pool, e.b.AccountID, &codexID); err != nil { // 负责人
+		t.Fatal(err)
+	}
+	if err := store.SetAccountTelegramUserID(ctx, e.pool, e.a.AccountID, &claudeID); err != nil { // 发起人兼管理员
+		t.Fatal(err)
+	}
+	if err := store.SetMemberRole(ctx, e.pool, e.a.MemberID, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	is := e.submitOne(t)
+	if _, err := e.d.RunOnce(ctx); err != nil { // 先把“新单”发掉
+		t.Fatal(err)
+	}
+	e.sender.sent = nil
+	step := func(hours int) string {
+		t.Helper()
+		if _, err := e.pool.Exec(ctx, `UPDATE issues SET status_since = now() - make_interval(hours => $2) WHERE id = $1`, is.ID, hours); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.svc.QueueReminders(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.d.RunOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.sender.sent) == 0 {
+			t.Fatal("应发出一条催办")
+		}
+		m := e.sender.sent[len(e.sender.sent)-1]
+		return m
+	}
+	if m := step(5); !strings.Contains(m, "已等待接单") || !strings.Contains(m, "tg://user?id=7002") {
+		t.Fatalf("第 1 档必须 @ 到当事人：%s", m)
+	}
+	if m := step(9); !strings.Contains(m, "请管理员") || !strings.Contains(m, "tg://user?id=7002") || !strings.Contains(m, "tg://user?id=7001") {
+		t.Fatalf("第 2 档必须 @ 到当事人和管理员：%s", m)
+	}
+	// 会话内提醒：催办不带“谁”（不写成“当事人自己……”）
+	res, err := e.svc.Alerts(ctx, e.b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, it := range res.Items {
+		if it.Kind == core.AlertOverdue {
+			found++
+			if it.Actor != "" {
+				t.Fatalf("催办提醒不应带操作人：%+v", it)
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatalf("当事人应收到催办提醒：%+v", res.Items)
+	}
+}
+
 func TestDispatchRetriesThenFails(t *testing.T) {
 	e := newDispatchEnv(t)
 	is := e.submitOne(t)

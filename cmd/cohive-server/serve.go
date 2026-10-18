@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -115,7 +116,7 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		fmt.Fprintf(out, "  群通知：钉钉已启用（Client ID 尾号 …%s），Stream 连接中；同一个钉钉应用只能接一台 Cohive\n", tail(dt.API.ClientID, 4))
 	}
 	if len(hub.Channels) > 0 {
-		d := &notify.Dispatcher{Pool: pool, Senders: senders,
+		d := &notify.Dispatcher{Pool: pool, Senders: senders, Reminders: svc.QueueReminders,
 			BaseURL: func(ctx context.Context) string { ext, _ := svc.ExternalURL(ctx); return ext.URL }}
 		go d.Run(ctx, 2*time.Second)
 		opts.API.Announcer = hub
@@ -128,6 +129,21 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		}
 	} else {
 		fmt.Fprintln(out, "  群通知：未设置 COHIVE_TELEGRAM_BOT_TOKEN 或钉钉应用凭据，暂不发送（待发记录会保留）")
+		// 没有群也照样催办：会话内提醒照发，群催办写进待发记录，设置机器人后补发
+		go func() {
+			t := time.NewTicker(notify.RemindEvery)
+			defer t.Stop()
+			for {
+				if _, err := svc.QueueReminders(ctx); err != nil && ctx.Err() == nil {
+					log.Printf("写超时催办出错：%v", err)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+				}
+			}
+		}()
 	}
 	srv := &http.Server{
 		Addr:              *addr,

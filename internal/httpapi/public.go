@@ -19,8 +19,10 @@ type Announcer interface {
 	// AnnounceSignupDecided、AnnounceDeviceDecided 在网页上处理申请后，把各群里的审批消息改成结果。
 	AnnounceSignupDecided(ctx context.Context, d core.SignupDecision) error
 	AnnounceDeviceDecided(ctx context.Context, d core.DeviceDecision) error
-	// AnnounceJoined 在有人加入工作空间（直接加入、接受个人邀请）后在群里打招呼并 @ 他。
+	// AnnounceJoined 在管理员让人加入工作空间（直接加入、批准申请）后在群里打招呼并 @ 他。
 	AnnounceJoined(ctx context.Context, m store.Member) error
+	// AnnounceSelfJoined 在本人加入（凭个人邀请注册、接受邀请）后在群里打招呼：操作者是他自己，只写名字不 @。
+	AnnounceSelfJoined(ctx context.Context, m store.Member) error
 }
 
 // announce 在后台通知，不拖慢请求；失败只记日志（管理员仍可在网页上看到待审申请）。
@@ -190,7 +192,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		setSessionCookie(w, r, sess.ID)
 		m := *res.Member
-		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceJoined(ctx, m) })
+		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceSelfJoined(ctx, m) })
 		writeJSON(w, http.StatusOK, map[string]any{"status": "active", "account": accountJSON(*res.Account, true),
 			"workspace": map[string]string{"name": res.Workspace.Name, "display_name": res.Workspace.Label(), "role": m.Role}})
 	})

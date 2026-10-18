@@ -39,6 +39,8 @@ type Dispatcher struct {
 	// BaseURL 返回服务器级对外地址，用于拼问题单链接（服务端传入 core.Service 的，环境变量优先）；
 	// 为空时直接读数据库里的设置。
 	BaseURL func(ctx context.Context) string
+	// Reminders 写到点的超时催办（core.Service.QueueReminders）；为空时不催办。
+	Reminders func(ctx context.Context) (int, error)
 
 	downMsg string // 上一次记录的通道不可用原因，只在变化时打日志
 }
@@ -64,13 +66,24 @@ func (d *Dispatcher) baseURL(ctx context.Context) string {
 
 // Run 每隔 interval 投递一次，直到 ctx 结束。
 func (d *Dispatcher) Run(ctx context.Context, interval time.Duration) {
+	var lastRemind time.Time
 	for ctx.Err() == nil {
+		// 超时催办搭投递循环的车：大约每分钟扫一次到点的单子，写好的催办随即由下面的投递发出
+		if d.Reminders != nil && time.Since(lastRemind) >= RemindEvery {
+			lastRemind = time.Now()
+			if _, err := d.Reminders(ctx); err != nil && ctx.Err() == nil {
+				d.logf("写超时催办出错：%v", err)
+			}
+		}
 		if _, err := d.RunOnce(ctx); err != nil && ctx.Err() == nil {
 			d.logf("投递群通知出错：%v", err)
 		}
 		sleep(ctx, interval)
 	}
 }
+
+// RemindEvery 是扫描超时催办的间隔。催办时长以小时计，一分钟的误差无关紧要。
+const RemindEvery = time.Minute
 
 // RunOnce 处理当前所有到期的待发通知（单次最多 50 条），返回处理条数。
 func (d *Dispatcher) RunOnce(ctx context.Context) (int, error) {

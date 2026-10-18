@@ -109,3 +109,49 @@ it("转交对话框：全部转给同一人后提交；409 时用最新清单刷
     services: [{ name: "pay-api", to_member_id: 3 }],
   });
 });
+
+it("工作空间设置：超时催办时长默认 4、24 小时，保存时一并提交；不是 0 到 720 的整数时不让保存", async () => {
+  const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+  const { WorkspaceForm } = await import("./Admin");
+  const bodies: unknown[] = [];
+  vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+    if (url === "/api/v1/w/pay/admin/workspace" && init.method === "POST") {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(null, { status: 204 });
+    }
+    return new Response(JSON.stringify({ error: "没有这个接口" }), { status: 404 });
+  });
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <WorkspaceForm
+        ws="pay"
+        serverAdmin={false}
+        initial={{
+          name: "pay",
+          path: "pay",
+          display_name: "pay",
+          telegram_chat: "",
+          show_title: true,
+          show_brief: true,
+          bot_enabled: true,
+          external_url_set: false,
+          issue_link_example: "",
+        }}
+      />
+    </QueryClientProvider>,
+  );
+  const open = screen.getByLabelText("待接单催办时长（小时）") as HTMLInputElement;
+  const verify = screen.getByLabelText("待验证催办时长（小时）") as HTMLInputElement;
+  expect(open.value).toBe("4");
+  expect(verify.value).toBe("24");
+  fireEvent.change(open, { target: { value: "1000" } });
+  expect(screen.getByText("请填 0 到 720 的整数小时。")).toBeTruthy();
+  fireEvent.click(screen.getByText("保存"));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(bodies).toHaveLength(0);
+  fireEvent.change(open, { target: { value: "0" } });
+  fireEvent.change(verify, { target: { value: "48" } });
+  fireEvent.click(screen.getByText("保存"));
+  await waitFor(() => expect(bodies).toHaveLength(1));
+  expect(bodies[0]).toMatchObject({ remind_open_hours: 0, remind_verify_hours: 48 });
+});

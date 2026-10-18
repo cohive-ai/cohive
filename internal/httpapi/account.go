@@ -312,7 +312,7 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			return
 		}
 		m := *res.Member
-		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceJoined(ctx, m) })
+		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceSelfJoined(ctx, m) })
 		writeJSON(w, http.StatusOK, map[string]any{"status": "active",
 			"workspace": map[string]string{"name": res.Workspace.Name, "display_name": res.Workspace.Label(), "role": m.Role}})
 	})

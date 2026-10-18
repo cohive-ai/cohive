@@ -294,7 +294,10 @@ func UpdateIssue(ctx context.Context, q DBTX, is *Issue) error {
 		UPDATE issues SET owner_id=$3, target_service=$4, severity=$5, title=$6, summary=$7,
 			expected=$8, actual=$9, repro_script=$10, repro_env=$11, repro_exit_code=$12,
 			evidence=$13, repo=$14, branch=$15, commit_sha=$16, status=$17, reopen_count=$18,
-			escalated_at=$19, escalation_reason=$20, brief=$21, version=version+1, updated_at=now()
+			escalated_at=$19, escalation_reason=$20, brief=$21, version=version+1, updated_at=now(),
+			-- 超时催办：状态或负责人一变就重新计时、档位归零（右边引用的是更新前的值）
+			status_since = CASE WHEN status IS DISTINCT FROM $17 OR owner_id IS DISTINCT FROM $3 THEN now() ELSE status_since END,
+			remind_level = CASE WHEN status IS DISTINCT FROM $17 OR owner_id IS DISTINCT FROM $3 THEN 0 ELSE remind_level END
 		WHERE id=$1 AND version=$2
 		RETURNING version, updated_at`,
 		is.ID, is.Version, is.OwnerID, is.TargetService, is.Severity, is.Title, is.Summary,

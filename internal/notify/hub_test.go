@@ -132,3 +132,24 @@ func TestRenderForMentionsLinkedOnly(t *testing.T) {
 		t.Fatalf("Mentions 与标题：%+v %q", m.Mentions, m.Title)
 	}
 }
+
+// 加入通知：管理员让人加入时 @ 他；本人凭邀请加入（操作者是他自己）只写名字不 @。
+func TestSelfJoinedNoMention(t *testing.T) {
+	ctx := context.Background()
+	ws := store.Workspace{ID: 3, Name: "pay", Notify: store.NotifyConfig{Channel: store.ProviderTelegram, Target: "-1001"}}
+	c := &fakeCore{workspace: ws}
+	api := &fakeAPI{}
+	bot := &notify.Bot{Core: c, API: api}
+	id := int64(555)
+	m := store.Member{ID: 7, WorkspaceID: 3, Name: "ann", TelegramUserID: &id, TelegramUsername: "anntg"}
+	if err := bot.AnnounceJoined(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	if err := bot.AnnounceSelfJoined(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.texts) != 2 || !strings.Contains(api.texts[0], "tg://user?id=555") || strings.Contains(api.texts[1], "tg://user?id=555") ||
+		!strings.Contains(api.texts[1], "ann 已加入工作空间 pay") {
+		t.Fatalf("管理员让人加入时 @，本人加入时只写名字：%q", api.texts)
+	}
+}

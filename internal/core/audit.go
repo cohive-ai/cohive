@@ -276,7 +276,7 @@ var actions = map[string]actionInfo{
 	ActWorkspaceDelete: {"删除工作空间", CatWorkspace, func(e store.AdminEvent) string { return "删除了工作空间 " + e.TargetName }},
 	ActWorkspaceSettings: {"修改工作空间设置", CatWorkspace, func(e store.AdminEvent) string {
 		var fields []string
-		for _, k := range []string{"public_url", "telegram_chat", "show_title", "show_brief"} {
+		for _, k := range []string{"public_url", "telegram_chat", "show_title", "show_brief", "remind_open_hours", "remind_verify_hours"} {
 			if _, ok := e.Detail[k]; ok {
 				fields = append(fields, detailLabels[k])
 			}
@@ -498,7 +498,7 @@ var detailLabels = map[string]string{
 	"expires_at": "到期时间", "self": "本人操作", "account_created": "新建账号", "issues": "转交的问题单",
 	"services": "转交的服务", "tokens_revoked": "吊销的令牌数", "devices_revoked": "吊销的设备数",
 	"display_name": "显示名", "telegram_username": "Telegram 用户名", "telegram_user_id": "Telegram 用户编号",
-	"admin": "首位管理员", "public_url": "公网地址", "telegram_chat": "Telegram 群", "show_title": "群消息显示标题",
+	"admin": "首位管理员", "public_url": "公网地址", "telegram_chat": "Telegram 群", "show_title": "群消息显示标题", "remind_open_hours": "待接单催办时长", "remind_verify_hours": "待验证催办时长",
 	"show_brief": "群消息显示简述", "member": "成员", "tool": "工具", "as": "命令行记作", "invite_id": "邀请编号",
 	"initial_admin": "初始管理员", "backfilled": "上线前补记", "time_approx": "时间为近似值",
 	"credential": "凭据", "external_url": "对外地址",

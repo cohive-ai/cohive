@@ -11,7 +11,21 @@ type Workspace struct {
 	Name        string // 路径：出现在链接与项目配置里，不可改
 	DisplayName string // 显示名：给人看，可随时改；空表示与路径相同
 	Notify      NotifyConfig
+	Remind      RemindConfig
 }
+
+// RemindConfig 是超时催办的时长（小时），0 表示关闭。
+type RemindConfig struct {
+	OpenHours   int // 待接单
+	VerifyHours int // 待验证
+}
+
+// 催办时长的默认值与上限（小时）
+const (
+	DefaultRemindOpenHours   = 4
+	DefaultRemindVerifyHours = 24
+	MaxRemindHours           = 720
+)
 
 // Label 返回给人看的名字：显示名，没设时为路径。
 func (w Workspace) Label() string {
@@ -33,11 +47,12 @@ type NotifyConfig struct {
 const workspaceColumns = `w.id, w.name, w.display_name,
 	coalesce((SELECT wc.provider FROM workspace_chats wc WHERE wc.workspace_id = w.id ORDER BY wc.id LIMIT 1), ''),
 	coalesce((SELECT wc.chat_id FROM workspace_chats wc WHERE wc.workspace_id = w.id ORDER BY wc.id LIMIT 1), ''),
-	w.notify_show_title, w.notify_show_brief`
+	w.notify_show_title, w.notify_show_brief, w.remind_open_hours, w.remind_verify_hours`
 
 func scanWorkspace(row interface{ Scan(...any) error }) (Workspace, error) {
 	var w Workspace
-	err := row.Scan(&w.ID, &w.Name, &w.DisplayName, &w.Notify.Channel, &w.Notify.Target, &w.Notify.ShowTitle, &w.Notify.ShowBrief)
+	err := row.Scan(&w.ID, &w.Name, &w.DisplayName, &w.Notify.Channel, &w.Notify.Target, &w.Notify.ShowTitle, &w.Notify.ShowBrief,
+		&w.Remind.OpenHours, &w.Remind.VerifyHours)
 	return w, notFound(err)
 }
 
@@ -91,6 +106,12 @@ func SetWorkspaceNotify(ctx context.Context, q DBTX, wsID int64, cfg NotifyConfi
 		return nil
 	}
 	return SetWorkspaceChat(ctx, q, WorkspaceChat{WorkspaceID: wsID, Provider: cfg.Channel, ChatID: cfg.Target})
+}
+
+// SetWorkspaceRemind 保存超时催办时长。
+func SetWorkspaceRemind(ctx context.Context, q DBTX, wsID int64, r RemindConfig) error {
+	return execOne(ctx, q, `UPDATE workspaces SET remind_open_hours = $2, remind_verify_hours = $3 WHERE id = $1`,
+		wsID, r.OpenHours, r.VerifyHours)
 }
 
 // SetWorkspaceNotifyTarget 只更新 Telegram 群编号（例如群升级为超级群后编号变化）。
