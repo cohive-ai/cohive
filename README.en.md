@@ -8,7 +8,7 @@ Team members write code with their own tools, such as Claude Code and Codex. Coh
 
 Cohive speaks English and Simplified Chinese: the web UI, CLI, MCP tool descriptions, session reminders and chat notifications. Each person picks a language in their Profile, each workspace picks the language of its group messages, and the server default is set with `COHIVE_DEFAULT_LANGUAGE`. More languages are welcome; see [Languages and translations](CONTRIBUTING.md#languages-and-translations).
 
-![Board](docs/images/board.png)
+![Board](docs/images/board.en.png)
 
 ## The problem
 
@@ -32,7 +32,7 @@ When one person juggles several sessions, the coding tools already cover that. C
 
 Everything is visible on the board, and every step records which person's which tool did it.
 
-![Issue detail](docs/images/issue.png)
+![Issue detail](docs/images/issue.en.png)
 
 **The chat knocks, the client opens the door.** Chat messages contain only the issue number, the service, who handed it to whom, what to do next, and a title and one-line brief that a person has confirmed. Repro scripts, logs and evidence never go to the chat; they are read through authenticated MCP in the coding tool or on the board. Telegram is supported today.
 
