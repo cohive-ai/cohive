@@ -19,14 +19,17 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| N-2 超时催办 | 会话自建（从最新 main） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245` | — | 已派 | 按 decisions“超时催办”；待接单、待验证计时，时长由工作空间管理员配置；第二次同时 @ 管理员；催办投递前状态已变则不发；不引入 river；避开 I18N 第一段的文件；并入 N-3：群通知不 @ 操作者本人、只写名字；交回 `docs/brain/inbox/N-2-overdue-reminder.md` |
-| I18N 多语言与社区规范 | 会话自建（从最新 main） | i18n-community / `local_2d4cac2f-f92f-4352-a1aa-63c9ec1d1e8c` | — | 已派（第 0 步先交方案） | 中英两种，其他语言社区维护；抽取与翻译用 sonnet 子代理；第一段避开 internal/notify、core、store 与 Admin 页，第二段等 N-1、N-2 合入后做群通知与工作空间语言；社区规范（贡献指南、行为准则、安全、模板、鸣谢），仓库设置只列清单给 lee；交回 `docs/brain/inbox/I18N-*.md` |
+| N-2 超时催办 | `feature/overdue-reminder` | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245` | `02e97ef` | 实施中（N-2 已交回，等 N-3 补充；主脑另要求催办不能被“不 @ 操作者”误伤） | 按 decisions“超时催办”；待接单、待验证计时，时长由工作空间管理员配置；第二次同时 @ 管理员；催办投递前状态已变则不发；不引入 river；避开 I18N 第一段的文件；并入 N-3：群通知不 @ 操作者本人、只写名字；交回 `docs/brain/inbox/N-2-overdue-reminder.md` |
+| I18N 多语言与社区规范 | `claude/i18n-community-8501fd` | i18n-community / `local_2d4cac2f-f92f-4352-a1aa-63c9ec1d1e8c` | `605c4ba` | 实施中（方案 `f505c97` 已认可，做第一段；N-2 合入后需变基） | 中英两种，其他语言社区维护；抽取与翻译用 sonnet 子代理；第一段避开 internal/notify、core、store 与 Admin 页，第二段等 N-1、N-2 合入后做群通知与工作空间语言；社区规范（贡献指南、行为准则、安全、模板、鸣谢），仓库设置只列清单给 lee；交回 `docs/brain/inbox/I18N-*.md` |
 | IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
+| I18N-D13 | README 默认语言 | A README.md 改英文、中文移到 README.zh-CN.md；B 维持中文为默认 | A（GitHub 首页默认展示 README.md，面向外部用户） | I18N 第一段的 README 部分 |
+| I18N-D15 | 贡献者是否签 CLA 或 DCO | A 都不要；B DCO；C CLA | A；若将来可能改许可证或做商业双授权，应现在选 C | 不阻塞（先按 A 写） |
+| I18N-D18 | 行为准则的举报邮箱 | lee 提供一个地址 | 专用别名，不用个人主邮箱 | 行为准则定稿 |
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
