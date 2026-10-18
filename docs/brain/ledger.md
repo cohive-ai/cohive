@@ -19,6 +19,8 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
+| N-4 信息链通知补全 | 会话自建（从最新 main） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245` | — | 已派 | 每次变化都通知除操作者外的相关方（群通知与会话提醒口径一致）；补留言、开始修复、转交告知发起人、管理员改派等；留言正文不进群；先交“动作 × 收件人”对照表；交回 `docs/brain/inbox/N-4.md`；之后同会话做 #12 |
+| ISSUE-13 MCP 按昵称找成员 | 会话自建（从最新 main） | issue-13 / `local_2621a548-cd50-49c9-9e96-4fbad0120443` | — | 已派 | 新增成员查找工具；指派仍只认登录名，昵称或歧义时返回候选不指派；可本地化报错；技能文件补说明；避开 N-4 的文件；交回 `docs/brain/inbox/ISSUE-13.md` |
 | IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
@@ -29,7 +31,7 @@
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
-- P2 N-4 只留言（cohive_update_issue 只填 note）不给对方任何提醒：既不发群通知，也不写会话提醒，对方不打开单子就不知道有新留言（10-18 lee 在 #6 留言问 guanyu 时发现）。建议：留言给另一方（发起人留言给负责人、负责人留言给发起人）写会话提醒，群里是否发由 lee 定 —— 来源 lee 处理 #6
+- P1 ISSUE-12 问题单“作废”（cohive-internal #12，lee 已接单）：发起人可作废未接单的单，管理员可作废任意单，草稿可删；写理由记动态；看板默认隐藏；通知另一方。N-4 合入后由 im-research 从最新 main 开分支做 —— 来源 guanyu
 - P3 DEP-2 依赖跟进：cohive-ai/cohive#3 等机器人按新分组配置自动重建或关闭，10-25 前后仍没动就手动关并留言；重建的分组请求（react 19.3.1、i18next 26.4.5、react-query 5.104.3、react-i18next 17.0.16）10-28 前后满两周再合；typescript 7、jsdom 30、vitest 5 等大版本单独请求逐个评估 —— 来源 DEP-1b
 - P2 T-5 cmd/cohive 用例从当前目录往上找 `.mcp.json`，在执行过 cohive init 的克隆里会读到本机配置，3 条用例失败（TestRevokedDeviceHintsForce、TestLoginOpensBrowserAndSaves、TestLegacyCredentials）；开源贡献者照着做也会碰到，测试应隔离仓库目录 —— 来源 N-2 合入时主脑发现
 - P2 OS-4 打标签时用 GitHub Actions 构建多架构镜像推到 ghcr，compose 缺省用预构建镜像（公开后第一个小任务）；另：机器人入群后 /bind 绑群、未配对时 init 自动走 login、安装脚本经同意写 PATH、Caddy 自动 HTTPS 示例、发布物附第三方许可证清单 —— 来源 OSS-1 建议
