@@ -29,6 +29,7 @@
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
+- P2 N-4 只留言（cohive_update_issue 只填 note）不给对方任何提醒：既不发群通知，也不写会话提醒，对方不打开单子就不知道有新留言（10-18 lee 在 #6 留言问 guanyu 时发现）。建议：留言给另一方（发起人留言给负责人、负责人留言给发起人）写会话提醒，群里是否发由 lee 定 —— 来源 lee 处理 #6
 - P3 DEP-2 依赖跟进：cohive-ai/cohive#3 等机器人按新分组配置自动重建或关闭，10-25 前后仍没动就手动关并留言；重建的分组请求（react 19.3.1、i18next 26.4.5、react-query 5.104.3、react-i18next 17.0.16）10-28 前后满两周再合；typescript 7、jsdom 30、vitest 5 等大版本单独请求逐个评估 —— 来源 DEP-1b
 - P2 T-5 cmd/cohive 用例从当前目录往上找 `.mcp.json`，在执行过 cohive init 的克隆里会读到本机配置，3 条用例失败（TestRevokedDeviceHintsForce、TestLoginOpensBrowserAndSaves、TestLegacyCredentials）；开源贡献者照着做也会碰到，测试应隔离仓库目录 —— 来源 N-2 合入时主脑发现
 - P2 OS-4 打标签时用 GitHub Actions 构建多架构镜像推到 ghcr，compose 缺省用预构建镜像（公开后第一个小任务）；另：机器人入群后 /bind 绑群、未配对时 init 自动走 login、安装脚本经同意写 PATH、Caddy 自动 HTTPS 示例、发布物附第三方许可证清单 —— 来源 OSS-1 建议
