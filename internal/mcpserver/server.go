@@ -133,6 +133,10 @@ type WhoOwnsArgs struct {
 	Service string `json:"service"`
 }
 
+type FindMemberArgs struct {
+	Query string `json:"query,omitempty"`
+}
+
 type GetResult struct {
 	Issue  view.IssueView   `json:"issue"`
 	Events []view.EventView `json:"events"`
@@ -155,6 +159,19 @@ type OwnerResult struct {
 	Service     string `json:"service"`
 	Owner       string `json:"owner"`
 	DisplayName string `json:"display_name,omitempty"`
+}
+
+type MemberEntry struct {
+	Name        string   `json:"name"`
+	DisplayName string   `json:"display_name,omitempty"`
+	Role        string   `json:"role"`
+	Services    []string `json:"services"`
+	Exact       bool     `json:"exact"`
+}
+
+type FindMemberResult struct {
+	Members   []MemberEntry `json:"members"`
+	Truncated bool          `json:"truncated"`
 }
 
 // ---- 工具注册 ----
@@ -216,6 +233,17 @@ var (
 		"query":   "mcp.arg.query",
 		"service": "mcp.arg.service",
 	}
+	findMemberArgDescs = map[string]string{
+		"query": "mcp.arg.member_query",
+	}
+	findMemberOutDescs = map[string]string{
+		"members[].name":         "mcp.out.member.name",
+		"members[].display_name": "mcp.out.member.display_name",
+		"members[].role":         "mcp.out.member.role",
+		"members[].services":     "mcp.out.member.services",
+		"members[].exact":        "mcp.out.member.exact",
+		"truncated":              "mcp.out.member.truncated",
+	}
 
 	issueOutDescs  = view.IssueDescs
 	getOutDescs    = merge(view.Prefix("issue.", view.IssueDescs), view.Prefix("events[].", view.EventDescs))
@@ -272,8 +300,16 @@ func NewServerFor(svc *core.Service, l i18n.Lang) *mcp.Server {
 		Instructions: l.T("mcp.instructions") + "\n\n" + l.T("mcp.note.trust"),
 	})
 
-	// fail 把错误按本服务的语言渲染后交给 MCP 开发包（它只取 err.Error()）
-	fail := func(err error) error { return errors.New(i18n.Message(l, err)) }
+	// fail 把错误按本服务的语言渲染后交给 MCP 开发包（它只取 err.Error()）；
+	// 带稳定错误码的错误（如成员名歧义）在文字末尾附上错误码，供智能体按代码判断
+	fail := func(err error) error {
+		msg := i18n.Message(l, err)
+		var ce interface{ ErrorCode() string }
+		if errors.As(err, &ce) {
+			msg = l.T("mcp.err.with_code", i18n.D{"Msg": msg, "Code": ce.ErrorCode()})
+		}
+		return errors.New(msg)
+	}
 
 	act := func(ctx context.Context, req *mcp.CallToolRequest, in core.ActInput) (*mcp.CallToolResult, view.IssueView, error) {
 		who, err := identity(req)
@@ -421,6 +457,28 @@ func NewServerFor(svc *core.Service, l i18n.Lang) *mcp.Server {
 				return nil, OwnerResult{}, fail(err)
 			}
 			return nil, OwnerResult{Service: in.Service, Owner: m.Name, DisplayName: m.DisplayName}, nil
+		})
+
+	register(s, l, spec{name: "cohive_find_member", ann: readOnly, desc: "mcp.tool.find_member"}, findMemberArgDescs, findMemberOutDescs,
+		func(ctx context.Context, req *mcp.CallToolRequest, in FindMemberArgs) (*mcp.CallToolResult, FindMemberResult, error) {
+			who, err := identity(req)
+			if err != nil {
+				return nil, FindMemberResult{}, fail(err)
+			}
+			list, more, err := svc.FindMembers(ctx, who, in.Query)
+			if err != nil {
+				return nil, FindMemberResult{}, fail(err)
+			}
+			out := FindMemberResult{Members: make([]MemberEntry, 0, len(list)), Truncated: more}
+			for _, m := range list {
+				svcs := m.Services
+				if svcs == nil {
+					svcs = []string{}
+				}
+				out.Members = append(out.Members, MemberEntry{Name: m.Name, DisplayName: m.DisplayName, Role: m.Role,
+					Services: svcs, Exact: m.Exact})
+			}
+			return nil, out, nil
 		})
 
 	return s

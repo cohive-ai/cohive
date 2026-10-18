@@ -35,7 +35,7 @@ The user may call this with an issue number, for example `/cohive 12` (Claude Co
 4. **Recommend**: based on the `your_actions` that the issue returns, give the action you recommend and why. The tools for the possible actions:
    | Action | Tool |
    |---|---|
-   | Accept / decline / transfer | `cohive_accept_issue` (decision is accept / decline / transfer; a reason is required for decline and transfer) |
+   | Accept / decline / transfer | `cohive_accept_issue` (decision is accept / decline / transfer; a reason is required for decline and transfer; transfer to a username, and if the user only gave a nickname, confirm it with `cohive_find_member` first) |
    | Start fixing, add progress | `cohive_update_issue` (start_fixing or note) |
    | Ask the other side to verify after a fix | `cohive_request_verification` (note says what changed, the merge request, and where it is deployed) |
    | Verification passed / failed | `cohive_close_issue` (verdict is pass / reopen) |
@@ -48,6 +48,7 @@ When verifying someone else's fix: show the repro script and get agreement befor
 When the user asks you to hand a problem you found to another member:
 
 1. First use `cohive_search` to check for duplicates, and `cohive_who_owns` to confirm the owner.
+   When the user refers to someone by a nickname, a name in another language, or a name you are not sure of, look them up with `cohive_find_member` first and confirm the username before assigning; when there are several candidates, list them for the user to choose instead of guessing. Pass only usernames when drafting, submitting, or transferring.
 2. Call `cohive_draft_issue` to draft it, providing as much of this as you can: expected and actual results, a repro script that can be run directly, the exit code expected after the fix, the repository, the branch, and the commit.
 3. Write the `brief` (the short text for the group notification): say in one sentence what the problem is and what it affects, in no more than 80 characters, **with no logs, secrets, internal addresses, or customer data**. The title and the brief appear in the team's chat group exactly as written.
 4. Show the user the draft's title, brief, and owner, and call `cohive_submit_issue` to submit only after the user confirms.

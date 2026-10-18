@@ -6,6 +6,7 @@
       "mcp__cohive__cohive_get_issue",
       "mcp__cohive__cohive_search",
       "mcp__cohive__cohive_who_owns",
+      "mcp__cohive__cohive_find_member",
       "mcp__cohive__cohive_draft_issue",
       "mcp__cohive__cohive_update_issue",
       "mcp__cohive__cohive_request_verification"

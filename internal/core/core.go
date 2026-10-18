@@ -289,21 +289,6 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 	return out, err
 }
 
-// assignable 返回可以指派的成员：本工作空间在册、账号未停用。
-func assignable(ctx context.Context, q store.DBTX, wsID int64, name string) (store.Member, error) {
-	m, err := store.MemberByName(ctx, q, wsID, name)
-	if errors.Is(err, store.ErrNotFound) {
-		return m, inputErr("core.err.member_not_found", i18n.D{"Name": strconv.Quote(name)})
-	}
-	if err != nil {
-		return m, err
-	}
-	if m.AccountDisabled {
-		return m, inputErr("core.err.member_disabled_assign", i18n.D{"Name": strconv.Quote(name)})
-	}
-	return m, nil
-}
-
 func visible(who store.Identity, is store.Issue) bool {
 	if is.WorkspaceID != who.WorkspaceID {
 		return false

@@ -26,6 +26,9 @@ approval_mode = "approve"
 [mcp_servers.cohive.tools.cohive_who_owns]
 approval_mode = "approve"
 
+[mcp_servers.cohive.tools.cohive_find_member]
+approval_mode = "approve"
+
 [mcp_servers.cohive.tools.cohive_draft_issue]
 approval_mode = "approve"
 

@@ -56,8 +56,8 @@ func TestToolsPerLanguage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(res.Tools) != 10 {
-			t.Fatalf("%s：应有 10 个工具，得到 %d", l, len(res.Tools))
+		if len(res.Tools) != 11 {
+			t.Fatalf("%s：应有 11 个工具，得到 %d", l, len(res.Tools))
 		}
 		for _, tool := range res.Tools {
 			raw, _ := json.Marshal(map[string]any{"d": tool.Description, "in": tool.InputSchema, "out": tool.OutputSchema})
