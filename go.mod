@@ -2,6 +2,8 @@ module github.com/cohive-ai/cohive
 
 go 1.26.0
 
+toolchain go1.26.9
+
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/google/jsonschema-go v0.4.3
