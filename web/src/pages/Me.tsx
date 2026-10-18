@@ -6,7 +6,7 @@ import { safeTrans } from "../i18n/safeTrans";
 import { api, ApiError, type Me } from "../api";
 import { DeviceTokens, Notice } from "../components";
 import { absoluteTime, roleLabel, workspaceLabel } from "../format";
-import { LanguageSelect } from "../i18n/LanguageSelect";
+import i18n, { followBrowserLanguage, languages, setLanguage } from "../i18n";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
 import { initCommands, installCommands, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
@@ -78,8 +78,54 @@ export function MePage() {
       </Section>
 
       <Section title={t("language.title")} description={t("language.description")}>
-        <LanguageSelect />
+        <AccountLanguage me={m} />
       </Section>
+    </div>
+  );
+}
+
+// 账号语言：存在账号上，网页、编程工具（MCP）、命令行与会话提醒都按它；没设时网页跟随浏览器，其余用服务器缺省语言
+function AccountLanguage({ me }: { me: Me }) {
+  const { t } = useTranslation("me");
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  // 旧版服务端不返回语言列表时，用网页自带的语言
+  const options = me.languages ?? languages.map((code) => ({ code, name: i18n.getFixedT(code)("language.name") }));
+  const defaultName = options.find((o) => o.code === me.default_language)?.name ?? me.default_language ?? "";
+
+  const change = async (code: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.setMyLanguage(code);
+      if (!code) await followBrowserLanguage();
+      else if (languages.includes(code)) await setLanguage(code);
+      await qc.invalidateQueries({ queryKey: ["me"] });
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <select
+        aria-label={t("language.label")}
+        className="rounded border border-line bg-surface px-2 py-1 text-sm text-ink disabled:opacity-60"
+        value={me.account.language ?? ""}
+        disabled={busy}
+        onChange={(e) => void change(e.target.value)}
+      >
+        <option value="">{t("language.unset", { name: defaultName })}</option>
+        {options.map((o) => (
+          <option key={o.code} value={o.code}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+      <ErrorText>{error}</ErrorText>
     </div>
   );
 }

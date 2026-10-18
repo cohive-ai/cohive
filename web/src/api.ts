@@ -154,6 +154,14 @@ export interface Account {
   disabled: boolean;
   has_password: boolean;
   telegram?: { username?: string; linked: boolean };
+  // 账号语言（网页、编程工具、命令行、会话提醒都按它）；空表示没设
+  language?: string;
+}
+
+// 服务器支持的语言：名称用各语言自己的文字
+export interface LanguageOption {
+  code: string;
+  name: string;
 }
 
 export interface Me {
@@ -166,6 +174,9 @@ export interface Me {
   // 本人在各通讯工具上的连接、服务器启用的通讯工具
   chat?: ChatIdentity[];
   channels?: { provider: ChatProvider }[];
+  // 服务器缺省语言（账号没设语言时编程工具、命令行用它）与支持的语言
+  default_language?: string;
+  languages?: LanguageOption[];
 }
 
 export type ChatProvider = "telegram" | "dingtalk";
@@ -367,6 +378,10 @@ export interface WorkspaceSettings {
   // 超时催办时长（小时），0 表示关闭
   remind_open_hours?: number;
   remind_verify_hours?: number;
+  // 群消息语言（空表示跟随服务器缺省语言）、服务器缺省语言与支持的语言
+  language?: string;
+  default_language?: string;
+  languages?: LanguageOption[];
 }
 
 export interface SaveWorkspaceSettings {
@@ -376,6 +391,8 @@ export interface SaveWorkspaceSettings {
   display_name: string;
   remind_open_hours?: number;
   remind_verify_hours?: number;
+  // 空串表示跟随服务器缺省语言；不传则不改
+  language?: string;
 }
 
 // 服务器级设置：对外地址
@@ -484,6 +501,8 @@ export const api = {
 
   // 账号
   me: () => request<Me>("/api/v1/me"),
+  // 设置账号语言；空串表示清除（编程工具、命令行回到服务器缺省语言）
+  setMyLanguage: (language: string) => post("/api/v1/me/language", { language }),
   login: (body: { name: string; password: string }) => post<LoginResult>("/api/v1/auth/login", body, false),
   logout: () => post("/api/v1/auth/logout", undefined, false),
   changePassword: (body: { old_password: string; new_password: string }) =>
@@ -491,8 +510,9 @@ export const api = {
 
   // 邀请、注册与加入
   invite: (code: string) => request<InviteInfo>(`/api/v1/invites/${seg(code)}`, { session: false }),
+  // 注册时带上当前界面语言，作为新账号的语言
   register: (body: { code: string; name: string; display_name: string; password: string }) =>
-    post<RegisterResult>("/api/v1/register", body, false),
+    post<RegisterResult>("/api/v1/register", { ...body, language: i18n.resolvedLanguage || i18n.language }, false),
   acceptInvite: (code: string) => post<AcceptResult>(`/api/v1/invites/${seg(code)}/accept`, {}),
 
   // 设备授权

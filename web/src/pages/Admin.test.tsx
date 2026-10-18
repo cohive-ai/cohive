@@ -155,3 +155,119 @@ it("工作空间设置：超时催办时长默认 4、24 小时，保存时一�
   await waitFor(() => expect(bodies).toHaveLength(1));
   expect(bodies[0]).toMatchObject({ remind_open_hours: 0, remind_verify_hours: 48 });
 });
+
+const wsSettings = {
+  name: "pay",
+  path: "pay",
+  display_name: "pay",
+  telegram_chat: "",
+  show_title: true,
+  show_brief: true,
+  bot_enabled: true,
+  external_url_set: false,
+  issue_link_example: "",
+};
+
+it("工作空间设置：群消息语言默认跟随服务器缺省，选了语言后随其他设置一起提交", async () => {
+  const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+  const { WorkspaceForm } = await import("./Admin");
+  const bodies: Record<string, unknown>[] = [];
+  vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+    if (url === "/api/v1/w/pay/admin/workspace" && init.method === "POST") {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(null, { status: 204 });
+    }
+    return new Response(JSON.stringify({ error: "没有这个接口" }), { status: 404 });
+  });
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <WorkspaceForm
+        ws="pay"
+        serverAdmin={false}
+        initial={{
+          ...wsSettings,
+          language: "",
+          default_language: "zh-CN",
+          languages: [
+            { code: "en", name: "English" },
+            { code: "zh-CN", name: "简体中文" },
+          ],
+        }}
+      />
+    </QueryClientProvider>,
+  );
+  const select = screen.getByLabelText("群消息语言") as HTMLSelectElement;
+  expect(select.value).toBe("");
+  expect(screen.getByText("跟随服务器缺省（当前：简体中文）")).toBeTruthy();
+  fireEvent.change(select, { target: { value: "en" } });
+  fireEvent.click(screen.getByText("保存"));
+  await waitFor(() => expect(bodies).toHaveLength(1));
+  expect(bodies[0]).toMatchObject({ language: "en" });
+  // 改回跟随缺省：提交空串
+  fireEvent.change(select, { target: { value: "" } });
+  fireEvent.click(screen.getByText("保存"));
+  await waitFor(() => expect(bodies).toHaveLength(2));
+  expect(bodies[1]).toMatchObject({ language: "" });
+});
+
+it("English: invite link dialog and workspace form follow the interface language", async () => {
+  const i18n = (await import("../i18n")).default;
+  const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+  const { WorkspaceForm } = await import("./Admin");
+  await i18n.changeLanguage("en");
+  try {
+    const done = vi.fn();
+    render(<InviteLinkDialog url="https://cohive.example.com/i/abc" onDone={done} />);
+    fireEvent.click(screen.getByText("I've copied it"));
+    expect(done).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <WorkspaceForm
+          ws="pay"
+          serverAdmin={false}
+          initial={{
+            ...wsSettings,
+            display_name: "Pay <b>team</b>",
+            language: "en",
+            default_language: "zh-CN",
+            languages: [
+              { code: "en", name: "English" },
+              { code: "zh-CN", name: "简体中文" },
+            ],
+          }}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByLabelText("Group message language")).toBeTruthy();
+    expect(screen.getByText("Follow the server default (currently: 简体中文)")).toBeTruthy();
+    expect(screen.getByLabelText("Reminder after open for (hours)")).toBeTruthy();
+    expect(screen.getByText(/Open for more than/)).toBeTruthy();
+    expect(screen.getByText(/Ask a server admin to set it in Server admin → Settings\./)).toBeTruthy();
+    expect(screen.getByText("Workspace: Pay <b>team</b>")).toBeTruthy();
+    expect(screen.getByText("Save")).toBeTruthy();
+  } finally {
+    await i18n.changeLanguage("zh-CN");
+  }
+});
+
+it("English: handover dialog texts and pluralised member counts", async () => {
+  const i18n = (await import("../i18n")).default;
+  await i18n.changeLanguage("en");
+  try {
+    vi.stubGlobal("fetch", async () =>
+      new Response(JSON.stringify({ member_id: 7, account: "bob", issues: [], services: [] }), { status: 200 }),
+    );
+    render(
+      <HandoverDialog ws="pay" member={memberOf(7, "bob")} remove candidates={[memberOf(3, "ann")]} onClose={() => {}} onDone={async () => {}} />,
+    );
+    expect(screen.getByText("Remove bob")).toBeTruthy();
+    expect(await screen.findByText("They have no issues or services to transfer.")).toBeTruthy();
+    expect(i18n.t("admin:members.devices", { count: 1 })).toBe("1 device");
+    expect(i18n.t("admin:members.devices", { count: 3 })).toBe("3 devices");
+    expect(i18n.t("admin:handover.missing", { count: 2 })).toBe("2 items still have no new owner.");
+  } finally {
+    await i18n.changeLanguage("zh-CN");
+  }
+});

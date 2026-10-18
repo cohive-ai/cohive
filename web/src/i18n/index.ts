@@ -58,6 +58,24 @@ export async function setLanguage(lang: string) {
   await i18n.changeLanguage(lang);
 }
 
+// followBrowserLanguage 去掉本机记住的选择，界面语言回到浏览器语言（账号没设语言时用）
+export async function followBrowserLanguage() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // 隐私模式下读写不了，只影响本次
+  }
+  await i18n.changeLanguage(detectLanguage());
+}
+
+// useAccountLanguage 在读到账号信息后，账号设了语言且与当前界面语言不同，就切换界面语言（写本机）。
+// 只在账号语言本身变化时才比对，所以本机上的其他改动（登录页的语言选择）不会被反复覆盖，也不会循环。
+export function applyAccountLanguage(accountLanguage: string | undefined) {
+  if (!accountLanguage || !languages.includes(accountLanguage)) return;
+  if (i18n.resolvedLanguage === accountLanguage) return;
+  void setLanguage(accountLanguage);
+}
+
 i18n.on("languageChanged", (lang) => {
   if (typeof document === "undefined") return;
   document.documentElement.lang = lang;

@@ -5,6 +5,7 @@ import type issues from "../locales/en/issues.json";
 import type auth from "../locales/en/auth.json";
 import type me from "../locales/en/me.json";
 import type server from "../locales/en/server.json";
+import type admin from "../locales/en/admin.json";
 
 declare module "i18next" {
   interface CustomTypeOptions {
@@ -15,6 +16,7 @@ declare module "i18next" {
       auth: typeof auth;
       me: typeof me;
       server: typeof server;
+      admin: typeof admin;
     };
   }
 }

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { Link, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type DeviceToken, type WorkspaceRef } from "./api";
 import { joinList, roleLabel, tokensByWorkspace, toolLabel, workspaceLabel } from "./format";
+import { applyAccountLanguage } from "./i18n";
 import { btn } from "./ui";
 import {
   canAdminWorkspace,
@@ -55,6 +56,9 @@ export function Layout() {
   const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [leaving, setLeaving] = useState(false);
+  // 账号设了语言就以它为准（写本机）；只在账号语言本身变化时比对
+  const accountLanguage = me.data?.account.language;
+  useEffect(() => applyAccountLanguage(accountLanguage), [accountLanguage]);
   const signOut = async () => {
     setLeaving(true);
     try {

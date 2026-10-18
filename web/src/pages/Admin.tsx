@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Link, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -13,6 +14,8 @@ import {
   type WorkspaceSettings,
 } from "../api";
 import { DeviceTokens, NeedPasswordLogin, Notice } from "../components";
+import i18n from "../i18n";
+import { safeTrans } from "../i18n/safeTrans";
 import {
   absoluteTime,
   inviteKindLabel,
@@ -54,31 +57,32 @@ import { EventLog } from "./EventLog";
 import { DingTalkBind } from "./DingTalk";
 
 export const adminTabs = [
-  { id: "pending", label: "待审" },
-  { id: "members", label: "成员" },
-  { id: "devices", label: "设备" },
-  { id: "invites", label: "邀请" },
-  { id: "workspace", label: "工作空间" },
-  { id: "events", label: "记录" },
+  { id: "pending" },
+  { id: "members" },
+  { id: "devices" },
+  { id: "invites" },
+  { id: "workspace" },
+  { id: "events" },
 ] as const;
 
 export type AdminTab = (typeof adminTabs)[number]["id"];
 
 export function AdminPage() {
+  const { t } = useTranslation("admin");
   const ws = useWs();
   const { tab = "pending" } = useSearch({ from: "/layout/w/$ws/admin" });
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
 
-  if (me.isPending) return <Notice>正在读取…</Notice>;
-  if (me.isError) return <Notice tone="danger">读取失败：{me.error.message}</Notice>;
+  if (me.isPending) return <Notice>{t("loading")}</Notice>;
+  if (me.isError) return <Notice tone="danger">{t("loadFailed", { message: me.error.message })}</Notice>;
   if (!canAdminWorkspace(me.data, ws)) {
-    return <Notice tone="danger">你没有这个工作空间的管理权限。成员、设备与邀请由本工作空间的管理员管理。</Notice>;
+    return <Notice tone="danger">{t("noPermission")}</Notice>;
   }
   if (adminNeedsPasswordLogin(me.data)) {
     return (
       <NeedPasswordLogin
         redirectTo={`/w/${encodeURIComponent(ws)}/admin`}
-        message="管理操作请在网页上用账号密码登录后进行。你现在是用已配对电脑免密打开的网页（cohive web），为安全起见不能做管理操作。"
+        message={t("needPasswordLogin")}
       />
     );
   }
@@ -86,24 +90,32 @@ export function AdminPage() {
   const ref = me.data.workspaces.find((w) => w.name === ws);
   const wsTitle = ref ? workspaceLabel(ref) : ws;
   const self = me.data.account.name;
+  const tabLabels = {
+    pending: t("tabs.pending"),
+    members: t("tabs.members"),
+    devices: t("tabs.devices"),
+    invites: t("tabs.invites"),
+    workspace: t("tabs.workspace"),
+    events: t("tabs.events"),
+  };
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="mb-3 text-lg font-semibold">管理 · {wsTitle}</h1>
+      <h1 className="mb-3 text-lg font-semibold">{t("title", { name: wsTitle })}</h1>
       {!member && <JoinSelf ws={ws} self={self} />}
-      <nav aria-label="管理分类" className="mb-5 flex flex-wrap gap-1 border-b border-line">
-        {adminTabs.map((t) => (
+      <nav aria-label={t("navLabel")} className="mb-5 flex flex-wrap gap-1 border-b border-line">
+        {adminTabs.map((item) => (
           <Link
-            key={t.id}
+            key={item.id}
             to="/w/$ws/admin"
             params={{ ws }}
-            search={{ tab: t.id }}
-            aria-current={tab === t.id ? "page" : undefined}
+            search={{ tab: item.id }}
+            aria-current={tab === item.id ? "page" : undefined}
             className={`-mb-px border-b-2 px-3 py-2 text-sm ${
-              tab === t.id ? "border-teal text-ink" : "border-transparent text-muted hover:text-ink"
+              tab === item.id ? "border-teal text-ink" : "border-transparent text-muted hover:text-ink"
             }`}
           >
-            {t.label}
+            {tabLabels[item.id]}
           </Link>
         ))}
       </nav>
@@ -119,17 +131,18 @@ export function AdminPage() {
 
 // 服务器管理员管理自己不是成员的工作空间：看板与问题单要先把自己加进来（留痕）才能看
 function JoinSelf({ ws, self }: { ws: string; self: string }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   return (
     <div className="mb-4">
       <Callout>
-        <p>你不是这个工作空间的成员，现在是以服务器管理员身份管理它。要查看它的看板与问题单，先把自己加为成员。</p>
+        <p>{t("joinSelf.notice")}</p>
         <div className="mt-2">
           <ConfirmButton
-            label="把自己加为管理员"
-            title="把自己加入这个工作空间？"
-            message={`以管理员身份加入工作空间“${ws}”。加入后会出现在它的成员列表里，群里也会收到加入通知。`}
-            confirmLabel="确认加入"
+            label={t("joinSelf.button")}
+            title={t("joinSelf.title")}
+            message={t("joinSelf.message", { ws })}
+            confirmLabel={t("joinSelf.confirm")}
             danger={false}
             action={async () => {
               await api.addMember(ws, self, "admin");
@@ -157,8 +170,9 @@ function Loading<T>({
   isEmpty: (d: T) => boolean;
   children: (d: T) => React.ReactNode;
 }) {
-  if (q.isPending) return <Notice>正在读取…</Notice>;
-  if (q.isError) return <Notice tone="danger">读取失败：{q.error?.message}</Notice>;
+  const { t } = useTranslation("admin");
+  if (q.isPending) return <Notice>{t("loading")}</Notice>;
+  if (q.isError) return <Notice tone="danger">{t("loadFailed", { message: q.error?.message })}</Notice>;
   const d = q.data as T;
   if (isEmpty(d)) return <Notice>{empty}</Notice>;
   return <>{children(d)}</>;
@@ -166,6 +180,7 @@ function Loading<T>({
 
 // 批准 / 拒绝：批准直接执行，拒绝需二次确认
 function DecideButtons({ name, onDecide }: { name: string; onDecide: (approve: boolean) => Promise<void> }) {
+  const { t } = useTranslation("admin");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const approve = async () => {
@@ -182,13 +197,13 @@ function DecideButtons({ name, onDecide }: { name: string; onDecide: (approve: b
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button type="button" onClick={approve} disabled={busy} className={btn.primary}>
-        {busy ? "正在批准…" : "批准"}
+        {busy ? t("decide.approving") : t("decide.approve")}
       </button>
       <ConfirmButton
-        label="拒绝"
-        title="拒绝这条申请？"
-        message={`拒绝“${name}”的申请。拒绝后对方需要重新申请。`}
-        confirmLabel="确认拒绝"
+        label={t("decide.reject")}
+        title={t("decide.rejectTitle")}
+        message={t("decide.rejectMessage", { name })}
+        confirmLabel={t("decide.rejectConfirm")}
         disabled={busy}
         action={() => onDecide(false)}
       />
@@ -205,28 +220,38 @@ export function PendingDeviceRow({
   v: PendingDevice;
   onDecide: (approve: boolean) => Promise<void>;
 }) {
+  const { t } = useTranslation("admin");
   return (
     <li className={rowClass}>
       <div className="min-w-0 flex-1">
         <p className="break-words">
           <span className="font-mono font-medium">{v.account}</span>
           {v.display_name && v.display_name !== v.account && <span className="ml-2">{v.display_name}</span>}
-          <span className="ml-2">{v.device_name || "未命名"}</span>
-          <span className="ml-1 text-xs text-muted">（终端自报）</span>
+          <span className="ml-2">{v.device_name || t("pending.devices.unnamed")}</span>
+          <span className="ml-1 text-xs text-muted">{t("pending.devices.selfReported")}</span>
         </p>
         <p className="text-xs text-muted" title={absoluteTime(v.created_at)}>
-          {toolsText(v.tools)} · {relativeTime(v.created_at)}申请
+          {t("pending.devices.requested", { tools: toolsText(v.tools), time: relativeTime(v.created_at) })}
         </p>
         <p className="text-xs">
-          批准后用于：{workspaceListText(v.workspaces, "（他目前不在任何工作空间）")}
+          {t("pending.devices.usedFor", {
+            workspaces: workspaceListText(v.workspaces, t("pending.devices.noWorkspaces")),
+          })}
         </p>
       </div>
-      <DecideButtons name={`${v.account} 的 ${v.device_name || "设备"}`} onDecide={onDecide} />
+      <DecideButtons
+        name={t("pending.devices.rejectName", {
+          account: v.account,
+          device: v.device_name || t("pending.devices.deviceFallback"),
+        })}
+        onDecide={onDecide}
+      />
     </li>
   );
 }
 
 function PendingTab({ ws }: { ws: string }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["admin", ws, "pending"], queryFn: () => api.pending(ws), refetchInterval: 10000 });
   const refresh = () => qc.invalidateQueries({ queryKey: ["admin", ws] });
@@ -234,9 +259,9 @@ function PendingTab({ ws }: { ws: string }) {
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="mb-2 font-semibold">注册与加入申请</h2>
-        <p className="mb-2 text-sm text-muted">通过团队邀请提交的申请：新人注册会新建账号；已有账号的人只是加入本工作空间。</p>
-        <Loading q={q} empty="没有待审的注册或加入申请。" isEmpty={(d) => d.signups.length === 0}>
+        <h2 className="mb-2 font-semibold">{t("pending.signups.title")}</h2>
+        <p className="mb-2 text-sm text-muted">{t("pending.signups.description")}</p>
+        <Loading q={q} empty={t("pending.signups.empty")} isEmpty={(d) => d.signups.length === 0}>
           {(d) => (
             <ul className={listClass}>
               {d.signups.map((s) => (
@@ -254,7 +279,7 @@ function PendingTab({ ws }: { ws: string }) {
                       </span>
                     </p>
                     <p className="text-xs text-muted" title={absoluteTime(s.created_at)}>
-                      {relativeTime(s.created_at)}申请 · 通过团队邀请
+                      {t("pending.signups.requested", { time: relativeTime(s.created_at) })}
                     </p>
                   </div>
                   <DecideButtons
@@ -271,11 +296,9 @@ function PendingTab({ ws }: { ws: string }) {
         </Loading>
       </section>
       <section>
-        <h2 className="mb-2 font-semibold">设备申请</h2>
-        <p className="mb-2 text-sm text-muted">
-          成员已在浏览器里授权、但不是第一台设备的电脑，需要管理员批准后才能使用。设备属于账号，批准后可用于他所在的全部工作空间。
-        </p>
-        <Loading q={q} empty="没有待审的设备申请。" isEmpty={(d) => d.devices.length === 0}>
+        <h2 className="mb-2 font-semibold">{t("pending.devices.title")}</h2>
+        <p className="mb-2 text-sm text-muted">{t("pending.devices.description")}</p>
+        <Loading q={q} empty={t("pending.devices.empty")} isEmpty={(d) => d.devices.length === 0}>
           {(d) => (
             <ul className={listClass}>
               {d.devices.map((v) => (
@@ -296,10 +319,14 @@ function PendingTab({ ws }: { ws: string }) {
   );
 }
 
+// 在调用时取当前语言；用到它的组件都订阅了语言变化
 const memberLabel = (m: { account: string; display_name?: string }) =>
-  m.display_name && m.display_name !== m.account ? `${m.display_name}（${m.account}）` : m.account;
+  m.display_name && m.display_name !== m.account
+    ? i18n.t("admin:member.label", { display: m.display_name, account: m.account })
+    : m.account;
 
 function MembersTab({ ws, self }: { ws: string; self: string }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const [view, setView] = useState<"active" | "removed">("active");
   const [adding, setAdding] = useState(false);
@@ -320,20 +347,20 @@ function MembersTab({ ws, self }: { ws: string; self: string }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => setAdding(true)} className={btn.primary}>
-          添加已有账号
+          {t("members.add")}
         </button>
         <button
           type="button"
           onClick={() => setView(view === "active" ? "removed" : "active")}
           className={`${btn.secondary} ml-auto`}
         >
-          {view === "active" ? "查看已移出" : "返回在册成员"}
+          {view === "active" ? t("members.viewRemoved") : t("members.viewActive")}
         </button>
       </div>
       <SuccessText>{notice}</SuccessText>
 
       {view === "active" ? (
-        <Loading q={active} empty="还没有成员。添加已有账号，或到“邀请”里生成邀请链接。" isEmpty={(d) => d.items.length === 0}>
+        <Loading q={active} empty={t("members.empty")} isEmpty={(d) => d.items.length === 0}>
           {(d) => (
             <ul className={listClass}>
               {d.items.map((m) => (
@@ -350,7 +377,7 @@ function MembersTab({ ws, self }: { ws: string; self: string }) {
           )}
         </Loading>
       ) : (
-        <Loading q={removed} empty="没有被移出的成员。" isEmpty={(d) => d.items.length === 0}>
+        <Loading q={removed} empty={t("members.emptyRemoved")} isEmpty={(d) => d.items.length === 0}>
           {(d) => (
             <ul className={listClass}>
               {d.items.map((m) => (
@@ -359,16 +386,18 @@ function MembersTab({ ws, self }: { ws: string; self: string }) {
                     <p className="flex flex-wrap items-center gap-x-2">
                       <span className="font-mono font-medium">{m.account}</span>
                       {m.display_name && <span>{m.display_name}</span>}
-                      <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">已移出</span>
-                      {m.disabled && <span className="rounded bg-sunken px-1.5 py-px text-xs text-danger">账号已停用</span>}
+                      <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">{t("members.removedTag")}</span>
+                      {m.disabled && (
+                        <span className="rounded bg-sunken px-1.5 py-px text-xs text-danger">{t("members.disabledTag")}</span>
+                      )}
                     </p>
                   </div>
                   {!m.disabled && (
                     <ConfirmButton
-                      label="加回"
-                      title="把他加回这个工作空间？"
-                      message={`“${memberLabel(m)}”将重新成为本工作空间的成员（角色：成员），恢复原来的成员资格。`}
-                      confirmLabel="确认加回"
+                      label={t("members.rejoin")}
+                      title={t("members.rejoinTitle")}
+                      message={t("members.rejoinMessage", { name: memberLabel(m) })}
+                      confirmLabel={t("members.rejoinConfirm")}
                       danger={false}
                       action={async () => {
                         await api.addMember(ws, m.account, "member");
@@ -389,7 +418,7 @@ function MembersTab({ ws, self }: { ws: string; self: string }) {
         onClose={() => setAdding(false)}
         onAdded={async (name) => {
           setAdding(false);
-          setNotice(`已把 ${name} 加入本工作空间。`);
+          setNotice(t("members.added", { name }));
           await refresh();
         }}
       />
@@ -403,7 +432,11 @@ function MembersTab({ ws, self }: { ws: string; self: string }) {
           onDone={async () => {
             const m = handover.member;
             setHandover(null);
-            setNotice(handover.remove ? `已移出 ${memberLabel(m)}。` : `已把 ${memberLabel(m)} 的单子和服务改派出去。`);
+            setNotice(
+              handover.remove
+                ? t("members.removed", { name: memberLabel(m) })
+                : t("members.reassigned", { name: memberLabel(m) }),
+            );
             await refresh();
           }}
         />
@@ -425,6 +458,7 @@ function MemberRow({
   onChanged: () => Promise<void>;
   onHandover: (remove: boolean) => void;
 }) {
+  const { t } = useTranslation("admin");
   const nextRole = m.role === "admin" ? "member" : "admin";
   const name = m.display_name || m.account;
   return (
@@ -433,7 +467,7 @@ function MemberRow({
         <p className="flex flex-wrap items-center gap-x-2">
           <span className="font-mono font-medium">{m.account}</span>
           {m.display_name && <span>{m.display_name}</span>}
-          {isSelf && <span className="text-xs text-muted">（你）</span>}
+          {isSelf && <span className="text-xs text-muted">{t("members.you")}</span>}
           <span
             className={`rounded px-1.5 py-px text-xs ${
               m.role === "admin" ? "bg-amber-soft text-amber" : "bg-sunken text-muted"
@@ -442,41 +476,47 @@ function MemberRow({
             {roleLabel(m.role)}
           </span>
           {m.disabled && (
-            <span className="rounded bg-sunken px-1.5 py-px text-xs text-danger" title="账号已被服务器管理员停用">
-              已停用
+            <span className="rounded bg-sunken px-1.5 py-px text-xs text-danger" title={t("members.disabledTitle")}>
+              {t("members.disabledShort")}
             </span>
           )}
         </p>
         <p className="text-xs text-muted">
-          Telegram {m.telegram_linked ? `已连接${m.telegram_username ? ` @${m.telegram_username}` : ""}` : "未连接"}
+          {m.telegram_linked
+            ? m.telegram_username
+              ? t("members.telegramLinkedAs", { username: m.telegram_username })
+              : t("members.telegramLinked")
+            : t("members.telegramNotLinked")}
           {" · "}
-          {m.devices} 台设备
+          {t("members.devices", { count: m.devices })}
           {" · "}
-          {m.has_password ? "已设密码" : "未设密码"}
+          {m.has_password ? t("members.passwordSet") : t("members.passwordNotSet")}
           {" · "}
-          <span className={m.pending_issues > 0 ? "text-ink" : undefined}>待处理单 {m.pending_issues} 张</span>
+          <span className={m.pending_issues > 0 ? "text-ink" : undefined}>
+            {t("members.pendingIssues", { count: m.pending_issues })}
+          </span>
           {" · "}
-          <span className={m.owned_services > 0 ? "text-ink" : undefined}>负责服务 {m.owned_services} 个</span>
+          <span className={m.owned_services > 0 ? "text-ink" : undefined}>
+            {t("members.ownedServices", { count: m.owned_services })}
+          </span>
         </p>
         {m.disabled && (m.pending_issues > 0 || m.owned_services > 0) && (
-          <p className="mt-1 text-xs text-amber">
-            账号已停用，但手上还有单子或登记为服务负责人，新问题单仍会路由给他。可以点“改派”交给别人。
-          </p>
+          <p className="mt-1 text-xs text-amber">{t("members.disabledWarning")}</p>
         )}
       </div>
       <div className="flex flex-wrap gap-2">
         <ConfirmButton
-          label={nextRole === "admin" ? "设为管理员" : "设为成员"}
+          label={nextRole === "admin" ? t("members.makeAdmin") : t("members.makeMember")}
           danger={nextRole === "member"}
-          title={nextRole === "admin" ? "设为管理员？" : "取消管理员身份？"}
+          title={nextRole === "admin" ? t("members.makeAdminTitle") : t("members.makeMemberTitle")}
           message={
             nextRole === "admin"
-              ? `“${name}”将可以审批注册与设备、管理成员和邀请。`
+              ? t("members.makeAdminMessage", { name })
               : isSelf
-                ? "你将失去这个工作空间的管理权限（服务器管理员除外），之后无法再打开它的管理页。确定要取消自己的管理员身份吗？"
-                : `“${name}”将不再能管理这个工作空间。`
+                ? t("members.demoteSelfMessage")
+                : t("members.demoteMessage", { name })
           }
-          confirmLabel="确认"
+          confirmLabel={t("members.confirm")}
           action={async () => {
             await api.setMemberRole(ws, m.member_id, nextRole);
             await onChanged();
@@ -484,11 +524,11 @@ function MemberRow({
         />
         {m.disabled && (
           <button type="button" onClick={() => onHandover(false)} className={btn.secondary}>
-            改派
+            {t("members.reassign")}
           </button>
         )}
         <button type="button" onClick={() => onHandover(true)} className={btn.danger}>
-          移出
+          {t("members.remove")}
         </button>
       </div>
     </li>
@@ -507,6 +547,7 @@ function AddMemberDialog({
   onClose: () => void;
   onAdded: (name: string) => Promise<void>;
 }) {
+  const { t } = useTranslation("admin");
   const [name, setName] = useState("");
   const [found, setFound] = useState<AccountLookup | null>(null);
   const [role, setRole] = useState<"member" | "admin">("member");
@@ -526,7 +567,7 @@ function AddMemberDialog({
   const lookup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!memberNamePattern.test(trimmed)) {
-      setError("登录名只能是小写字母、数字、下划线和横线，1 到 32 位。");
+      setError(t("addMember.badUsername"));
       return;
     }
     setBusy(true);
@@ -537,7 +578,7 @@ function AddMemberDialog({
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 404
-          ? `没有登录名为 ${trimmed} 的账号。登录名要完全一致；还没有账号的新人请用“邀请”里的链接注册。`
+          ? t("addMember.notFound", { name: trimmed })
           : errMsg(err),
       );
     } finally {
@@ -551,7 +592,7 @@ function AddMemberDialog({
     setError("");
     try {
       await api.addMember(ws, found.name, role);
-      await onAdded(found.display_name ? `${found.display_name}（${found.name}）` : found.name);
+      await onAdded(memberLabel({ account: found.name, display_name: found.display_name }));
     } catch (err) {
       setError(errMsg(err));
     } finally {
@@ -562,9 +603,9 @@ function AddMemberDialog({
   const canAdd = !!found && found.member_status !== "active" && !found.disabled;
 
   return (
-    <Dialog open={open} onClose={() => !busy && onClose()} title="添加已有账号" dismissible={!busy}>
+    <Dialog open={open} onClose={() => !busy && onClose()} title={t("addMember.title")} dismissible={!busy}>
       <form onSubmit={lookup} className="space-y-3">
-        <Field label="登录名" htmlFor="add-account" hint="问对方要他的登录名，必须完全一致。">
+        <Field label={t("addMember.username")} htmlFor="add-account" hint={t("addMember.usernameHint")}>
           <div className="flex gap-2">
             <input
               id="add-account"
@@ -579,7 +620,7 @@ function AddMemberDialog({
               className={`${inputClass} min-w-0 flex-1 font-mono`}
             />
             <button type="submit" disabled={busy || !trimmed} className={`${btn.secondary} shrink-0`}>
-              查找
+              {t("addMember.find")}
             </button>
           </div>
         </Field>
@@ -591,23 +632,23 @@ function AddMemberDialog({
             {found.display_name && <span className="ml-2">{found.display_name}</span>}
           </p>
           {found.disabled ? (
-            <p className="text-danger">这个账号已被停用，不能加入。</p>
+            <p className="text-danger">{t("addMember.disabled")}</p>
           ) : found.member_status === "active" ? (
-            <p className="text-muted">他已经是本工作空间的成员。</p>
+            <p className="text-muted">{t("addMember.alreadyMember")}</p>
           ) : (
             <>
               {found.member_status === "removed" && (
-                <p className="text-muted">他以前被移出过本工作空间，加入后恢复原来的成员资格。</p>
+                <p className="text-muted">{t("addMember.wasRemoved")}</p>
               )}
               <label className="flex items-center gap-2">
-                <span>角色</span>
+                <span>{t("addMember.role")}</span>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value as "member" | "admin")}
                   className="rounded border border-line bg-surface px-2 py-1 text-sm"
                 >
-                  <option value="member">成员</option>
-                  <option value="admin">管理员</option>
+                  <option value="member">{t("addMember.roleMember")}</option>
+                  <option value="admin">{t("addMember.roleAdmin")}</option>
                 </select>
               </label>
             </>
@@ -617,10 +658,10 @@ function AddMemberDialog({
       <ErrorText>{error}</ErrorText>
       <div className="mt-5 flex justify-end gap-2">
         <button type="button" onClick={onClose} disabled={busy} className={btn.secondary}>
-          取消
+          {t("addMember.cancel")}
         </button>
         <button type="button" onClick={add} disabled={busy || !canAdd} className={btn.primary}>
-          {busy && found ? "正在加入…" : "加入"}
+          {busy && found ? t("addMember.joining") : t("addMember.join")}
         </button>
       </div>
     </Dialog>
@@ -643,6 +684,7 @@ export function HandoverDialog({
   onClose: () => void;
   onDone: () => Promise<void>;
 }) {
+  const { t } = useTranslation("admin");
   const [h, setH] = useState<Handover | null>(null);
   const [loadError, setLoadError] = useState("");
   const [assign, setAssign] = useState<Assignments>({});
@@ -672,7 +714,7 @@ export function HandoverDialog({
     if (!h) return;
     const r = buildHandoverPlan(h, assign);
     if ("missing" in r) {
-      setError(`还有 ${r.missing} 项没有选接手人。`);
+      setError(t("handover.missing", { count: r.missing }));
       return;
     }
     setBusy(true);
@@ -686,7 +728,7 @@ export function HandoverDialog({
         setH(latest);
         setAssign(keepAssignments(latest, assign));
         setAllTo("");
-        setError(`${errMsg(err).replace(/[。.]$/, "")}。清单已按最新情况刷新，请检查后再提交。`);
+        setError(t("handover.refreshed", { message: errMsg(err).replace(/[\u3002.]$/, "") }));
       } else {
         setError(errMsg(err));
       }
@@ -702,7 +744,7 @@ export function HandoverDialog({
       onChange={(e) => setAssign({ ...assign, [key]: e.target.value })}
       className="w-full rounded border border-line bg-surface px-2 py-1 text-sm sm:w-48"
     >
-      <option value="">选择接手人</option>
+      <option value="">{t("handover.choose")}</option>
       {candidates.map((c) => (
         <option key={c.member_id} value={String(c.member_id)}>
           {memberLabel(c)}
@@ -716,26 +758,24 @@ export function HandoverDialog({
       open
       wide
       onClose={() => !busy && onClose()}
-      title={remove ? `移出 ${name}` : `改派 ${name} 的单子和服务`}
+      title={remove ? t("handover.removeTitle", { name }) : t("handover.reassignTitle", { name })}
       dismissible={!busy}
     >
       <p className="text-sm text-muted">
-        {remove
-          ? "移出后，他在本工作空间的编程工具令牌立即失效，也看不到本工作空间的看板和问题单；他的账号、设备和其他工作空间不受影响。他手上未结束的单子和登记的服务必须先转给别人。"
-          : "只改派、不移出：把他手上未结束的单子和登记的服务交给别人，他仍是本工作空间的成员。"}
+        {remove ? t("handover.removeDescription") : t("handover.reassignDescription")}
       </p>
       {loadError ? (
-        <ErrorText>读取转交清单失败：{loadError}</ErrorText>
+        <ErrorText>{t("handover.loadFailed", { message: loadError })}</ErrorText>
       ) : !h ? (
-        <p className="mt-3 text-sm text-muted">正在读取转交清单…</p>
+        <p className="mt-3 text-sm text-muted">{t("handover.loading")}</p>
       ) : count === 0 ? (
-        <p className="mt-3 text-sm">{remove ? "他手上没有需要转交的单子和服务。" : "他手上没有需要改派的单子和服务。"}</p>
+        <p className="mt-3 text-sm">{remove ? t("handover.nothingToRemove") : t("handover.nothingToReassign")}</p>
       ) : candidates.length === 0 ? (
-        <Callout>本工作空间没有其他可以接手的成员（在册且未停用）。请先添加成员再{remove ? "移出" : "改派"}。</Callout>
+        <Callout>{remove ? t("handover.noCandidatesRemove") : t("handover.noCandidatesReassign")}</Callout>
       ) : (
         <div className="mt-3 space-y-3">
           <label className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-medium">全部转给</span>
+            <span className="font-medium">{t("handover.allTo")}</span>
             <select
               value={allTo}
               onChange={(e) => {
@@ -744,7 +784,7 @@ export function HandoverDialog({
               }}
               className="rounded border border-line bg-surface px-2 py-1 text-sm"
             >
-              <option value="">逐项选择</option>
+              <option value="">{t("handover.oneByOne")}</option>
               {candidates.map((c) => (
                 <option key={c.member_id} value={String(c.member_id)}>
                   {memberLabel(c)}
@@ -760,21 +800,21 @@ export function HandoverDialog({
                     <span className="text-muted">#{it.id}</span> {it.title}
                   </p>
                   <p className="text-xs text-muted">
-                    {it.status_label} · {it.as === "owner" ? "他是负责人" : "他是发起人（之后的验证与关闭要有人接手）"}
+                    {it.status_label} · {it.as === "owner" ? t("handover.ownerOf") : t("handover.reporterOf")}
                   </p>
                 </div>
-                {picker(issueKey(it), `#${it.id} 的接手人`)}
+                {picker(issueKey(it), t("handover.issueNewOwner", { id: it.id }))}
               </li>
             ))}
             {h.services.map((sv) => (
               <li key={serviceKey(sv)} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
                 <div className="min-w-0 flex-1">
                   <p className="break-words">
-                    服务 <span className="font-mono">{sv.name}</span>
+                    {t("handover.service")} <span className="font-mono">{sv.name}</span>
                   </p>
-                  <p className="text-xs text-muted">他是登记的负责人，新问题单会路由给接手人</p>
+                  <p className="text-xs text-muted">{t("handover.serviceOwnerNote")}</p>
                 </div>
-                {picker(serviceKey(sv), `服务 ${sv.name} 的接手人`)}
+                {picker(serviceKey(sv), t("handover.serviceNewOwner", { name: sv.name }))}
               </li>
             ))}
           </ul>
@@ -783,7 +823,7 @@ export function HandoverDialog({
       <ErrorText>{error}</ErrorText>
       <div className="mt-5 flex justify-end gap-2">
         <button type="button" onClick={onClose} disabled={busy} className={btn.secondary}>
-          取消
+          {t("handover.cancel")}
         </button>
         <button
           type="button"
@@ -791,7 +831,13 @@ export function HandoverDialog({
           disabled={busy || !h || (count > 0 && candidates.length === 0) || (!remove && count === 0)}
           className={remove ? btn.dangerSolid : btn.primary}
         >
-          {busy ? "正在处理…" : remove ? (count > 0 ? "转交并移出" : "确认移出") : "确认改派"}
+          {busy
+            ? t("handover.working")
+            : remove
+              ? count > 0
+                ? t("handover.transferAndRemove")
+                : t("handover.confirmRemove")
+              : t("handover.confirmReassign")}
         </button>
       </div>
     </Dialog>
@@ -799,13 +845,14 @@ export function HandoverDialog({
 }
 
 function DevicesTab({ ws }: { ws: string }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["admin", ws, "devices"], queryFn: () => api.devices(ws) });
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-muted">本工作空间在册成员的电脑。设备属于账号，吊销会让这台电脑在他所在的全部工作空间里都失去访问权限。</p>
-      <Loading q={q} empty="还没有成员绑定电脑。" isEmpty={(d) => d.items.length === 0}>
+      <p className="text-sm text-muted">{t("devices.description")}</p>
+      <Loading q={q} empty={t("devices.empty")} isEmpty={(d) => d.items.length === 0}>
         {(d) => (
           <ul className={listClass}>
             {d.items.map((v) => (
@@ -813,25 +860,25 @@ function DevicesTab({ ws }: { ws: string }) {
                 <div className="min-w-0 flex-1">
                   <p className="break-words">
                     <span className="font-mono font-medium">{v.account}</span>
-                    <span className="ml-2">{v.name || "未命名"}</span>
+                    <span className="ml-2">{v.name || t("devices.unnamed")}</span>
                   </p>
                   <DeviceTokens tokens={v.tokens} revoked={!!v.revoked_at} />
                   <p className="text-xs text-muted">
-                    {absoluteTime(v.created_at)} 添加
-                    {v.last_used_at && ` · 最近使用 ${absoluteTime(v.last_used_at)}`}
-                    {v.revoked_at && ` · ${absoluteTime(v.revoked_at)} 吊销`}
+                    {t("devices.added", { time: absoluteTime(v.created_at) })}
+                    {v.last_used_at && ` · ${t("devices.lastUsed", { time: absoluteTime(v.last_used_at) })}`}
+                    {v.revoked_at && ` · ${t("devices.revokedAt", { time: absoluteTime(v.revoked_at) })}`}
                   </p>
                 </div>
                 {v.revoked_at ? (
-                  <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">已吊销</span>
+                  <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">{t("devices.revokedTag")}</span>
                 ) : (
                   <>
-                    <span className="rounded bg-teal-soft px-1.5 py-px text-xs text-teal">使用中</span>
+                    <span className="rounded bg-teal-soft px-1.5 py-px text-xs text-teal">{t("devices.active")}</span>
                     <ConfirmButton
-                      label="吊销"
-                      title="吊销这台设备？"
-                      message={`吊销后，${v.account} 的“${v.name || "未命名"}”会立即失去访问权限（包括他所在的其他工作空间），需要重新执行 cohive login 并经过审批。`}
-                      confirmLabel="确认吊销"
+                      label={t("devices.revoke")}
+                      title={t("devices.revokeTitle")}
+                      message={t("devices.revokeMessage", { account: v.account, name: v.name || t("devices.unnamed") })}
+                      confirmLabel={t("devices.revokeConfirm")}
                       action={async () => {
                         await api.revokeDevice(ws, v.id);
                         await qc.invalidateQueries({ queryKey: ["admin", ws] });
@@ -848,17 +895,26 @@ function DevicesTab({ ws }: { ws: string }) {
   );
 }
 
-function inviteState(inv: Invite): { label: string; active: boolean } {
-  if (inv.revoked_at) return { label: "已作废", active: false };
-  if (new Date(inv.expires_at).getTime() <= Date.now()) return { label: "已过期", active: false };
-  if (inv.max_uses && inv.uses >= inv.max_uses) return { label: "已用完", active: false };
-  return { label: "有效", active: true };
+type InviteState = "revoked" | "expired" | "usedUp" | "active";
+
+function inviteState(inv: Invite): InviteState {
+  if (inv.revoked_at) return "revoked";
+  if (new Date(inv.expires_at).getTime() <= Date.now()) return "expired";
+  if (inv.max_uses && inv.uses >= inv.max_uses) return "usedUp";
+  return "active";
 }
 
 function InvitesTab({ ws }: { ws: string }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["admin", ws, "invites"], queryFn: () => api.invites(ws) });
   const [created, setCreated] = useState<CreatedInvite | null>(null);
+  const stateLabels: Record<InviteState, string> = {
+    revoked: t("invites.state.revoked"),
+    expired: t("invites.state.expired"),
+    usedUp: t("invites.state.usedUp"),
+    active: t("invites.state.active"),
+  };
 
   return (
     <div className="space-y-6">
@@ -870,37 +926,42 @@ function InvitesTab({ ws }: { ws: string }) {
         }}
       />
       <section>
-        <h2 className="mb-2 font-semibold">已生成的邀请</h2>
-        <Loading q={q} empty="还没有生成过邀请。" isEmpty={(d) => d.items.length === 0}>
+        <h2 className="mb-2 font-semibold">{t("invites.title")}</h2>
+        <Loading q={q} empty={t("invites.empty")} isEmpty={(d) => d.items.length === 0}>
           {(d) => (
             <ul className={listClass}>
               {d.items.map((inv) => {
                 const st = inviteState(inv);
+                const active = st === "active";
                 return (
                   <li key={inv.id} className={rowClass}>
                     <div className="min-w-0 flex-1">
                       <p className="flex flex-wrap items-center gap-x-2">
                         <span className="font-medium">{inviteKindLabel(inv.kind)}</span>
-                        <span className="text-muted">加入后为{roleLabel(inv.role)}</span>
+                        <span className="text-muted">{t("invites.joinsAs", { role: roleLabel(inv.role) })}</span>
                         <span
                           className={`rounded px-1.5 py-px text-xs ${
-                            st.active ? "bg-teal-soft text-teal" : "bg-sunken text-muted"
+                            active ? "bg-teal-soft text-teal" : "bg-sunken text-muted"
                           }`}
                         >
-                          {st.label}
+                          {stateLabels[st]}
                         </span>
                       </p>
                       <p className="text-xs text-muted">
-                        已用 {inv.uses} / {inv.max_uses ? inv.max_uses : "不限"} · {absoluteTime(inv.expires_at)} 过期 ·{" "}
-                        {absoluteTime(inv.created_at)} 生成
+                        {t("invites.usage", {
+                          uses: inv.uses,
+                          max: inv.max_uses ? inv.max_uses : t("invites.unlimited"),
+                          expires: absoluteTime(inv.expires_at),
+                          created: absoluteTime(inv.created_at),
+                        })}
                       </p>
                     </div>
-                    {st.active && (
+                    {active && (
                       <ConfirmButton
-                        label="作废"
-                        title="作废这个邀请？"
-                        message="作废后链接立即失效，已经用它加入的成员不受影响。"
-                        confirmLabel="确认作废"
+                        label={t("invites.revoke")}
+                        title={t("invites.revokeTitle")}
+                        message={t("invites.revokeMessage")}
+                        confirmLabel={t("invites.revokeConfirm")}
                         action={async () => {
                           await api.revokeInvite(ws, inv.id);
                           await qc.invalidateQueries({ queryKey: ["admin", ws, "invites"] });
@@ -921,15 +982,16 @@ function InvitesTab({ ws }: { ws: string }) {
 
 // 新生成的邀请链接只显示这一次：不允许按 Esc 关掉，必须点“我已复制”。
 export function InviteLinkDialog({ url, onDone }: { url: string; onDone: () => void }) {
+  const { t } = useTranslation("admin");
   return (
-    <Dialog open={!!url} onClose={onDone} title="邀请链接已生成" dismissible={false}>
+    <Dialog open={!!url} onClose={onDone} title={t("invites.linkTitle")} dismissible={false}>
       {url && (
         <div className="space-y-3">
-          <CopyField label="邀请链接" value={url} />
-          <Callout>链接只显示这一次，关闭后无法再查看。请现在复制并发给对方；丢了就作废后重新生成。</Callout>
+          <CopyField label={t("invites.linkLabel")} value={url} />
+          <Callout>{t("invites.linkWarning")}</Callout>
           <div className="flex justify-end">
             <button type="button" onClick={onDone} className={btn.primary}>
-              我已复制
+              {t("invites.copied")}
             </button>
           </div>
         </div>
@@ -939,6 +1001,7 @@ export function InviteLinkDialog({ url, onDone }: { url: string; onDone: () => v
 }
 
 function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: CreatedInvite) => Promise<void> }) {
+  const { t } = useTranslation("admin");
   const [kind, setKind] = useState<"personal" | "team">("personal");
   const [asAdmin, setAsAdmin] = useState(false);
   const [maxUses, setMaxUses] = useState("10");
@@ -994,15 +1057,15 @@ function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: Created
 
   return (
     <Section
-      title="生成邀请"
-      description="把链接发给要加入的人：新人打开后自己设登录名和密码；已有账号的人登录后可以直接以自己的账号加入。已有账号的人也可以在“成员”里直接添加。"
+      title={t("newInvite.title")}
+      description={t("newInvite.description")}
     >
       <form onSubmit={submit} className="space-y-4">
         <fieldset>
-          <legend className="mb-1 text-sm">邀请类型</legend>
+          <legend className="mb-1 text-sm">{t("newInvite.kind")}</legend>
           <div className="flex flex-col gap-2 sm:flex-row">
-            {radio("personal", "个人邀请", "一次性，加入后直接可用，无需审批。")}
-            {radio("team", "团队邀请", "多人可用，每个注册或加入都需要管理员批准。")}
+            {radio("personal", t("newInvite.personal"), t("newInvite.personalDesc"))}
+            {radio("team", t("newInvite.team"), t("newInvite.teamDesc"))}
           </div>
         </fieldset>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -1014,10 +1077,10 @@ function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: Created
                 onChange={(e) => setAsAdmin(e.target.checked)}
                 className="accent-[var(--teal)]"
               />
-              加入后设为管理员
+              {t("newInvite.asAdmin")}
             </label>
           ) : (
-            <Field label="可用次数" htmlFor="max-uses" hint={usesOk ? "1 到 100。" : undefined}>
+            <Field label={t("newInvite.maxUses")} htmlFor="max-uses" hint={usesOk ? t("newInvite.maxUsesHint") : undefined}>
               <input
                 id="max-uses"
                 type="number"
@@ -1028,10 +1091,10 @@ function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: Created
                 onChange={(e) => setMaxUses(e.target.value)}
                 className={inputClass}
               />
-              {!usesOk && <p className="mt-1 text-xs text-danger">请填 1 到 100 之间的整数。</p>}
+              {!usesOk && <p className="mt-1 text-xs text-danger">{t("newInvite.maxUsesError")}</p>}
             </Field>
           )}
-          <Field label="有效期（小时）" htmlFor="ttl" hint={ttlOk ? "默认 168 小时，即 7 天。" : undefined}>
+          <Field label={t("newInvite.ttl")} htmlFor="ttl" hint={ttlOk ? t("newInvite.ttlHint") : undefined}>
             <input
               id="ttl"
               type="number"
@@ -1042,12 +1105,12 @@ function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: Created
               onChange={(e) => setTtl(e.target.value)}
               className={inputClass}
             />
-            {!ttlOk && <p className="mt-1 text-xs text-danger">请填 1 到 720 之间的整数（最长 30 天）。</p>}
+            {!ttlOk && <p className="mt-1 text-xs text-danger">{t("newInvite.ttlError")}</p>}
           </Field>
         </div>
         <ErrorText>{error}</ErrorText>
         <button type="submit" disabled={busy || !usesOk || !ttlOk} className={btn.primary}>
-          {busy ? "正在生成…" : "生成邀请链接"}
+          {busy ? t("newInvite.submitting") : t("newInvite.submit")}
         </button>
       </form>
     </Section>
@@ -1055,16 +1118,17 @@ function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: Created
 }
 
 function WorkspaceTab({ ws, serverAdmin }: { ws: string; serverAdmin: boolean }) {
+  const { t } = useTranslation("admin");
   const q = useQuery({ queryKey: ["admin", ws, "workspace"], queryFn: () => api.workspaceSettings(ws) });
-  if (q.isPending) return <Notice>正在读取…</Notice>;
-  if (q.isError) return <Notice tone="danger">读取失败：{q.error.message}</Notice>;
+  if (q.isPending) return <Notice>{t("loading")}</Notice>;
+  if (q.isError) return <Notice tone="danger">{t("loadFailed", { message: q.error.message })}</Notice>;
   return (
     <div className="space-y-4">
       {!q.data.telegram_chat && !q.data.chat && (
         <Callout>
           {q.data.channels?.some((c) => c.provider === "dingtalk")
-            ? "下一步：在下面绑定项目群（钉钉群用“生成群绑定码”，Telegram 群填群编号）；然后到“成员”里添加已有账号，或到“邀请”里生成邀请链接。"
-            : "下一步：把 Telegram 机器人拉进项目群，在群里发 /chatid，把得到的群编号填到下面并保存；然后到“成员”里添加已有账号，或到“邀请”里生成邀请链接。"}
+            ? t("workspace.nextStepDingtalk")
+            : t("workspace.nextStepTelegram")}
         </Callout>
       )}
       <WorkspaceForm key={ws} ws={ws} initial={q.data} serverAdmin={serverAdmin} />
@@ -1081,6 +1145,7 @@ export function WorkspaceForm({
   initial: WorkspaceSettings;
   serverAdmin: boolean;
 }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const [display, setDisplay] = useState(initial.display_name === initial.path ? "" : initial.display_name ?? "");
   const [chat, setChat] = useState(initial.telegram_chat == null ? "" : String(initial.telegram_chat));
@@ -1088,6 +1153,8 @@ export function WorkspaceForm({
   const [showBrief, setShowBrief] = useState(initial.show_brief);
   const [remindOpen, setRemindOpen] = useState(String(initial.remind_open_hours ?? 4));
   const [remindVerify, setRemindVerify] = useState(String(initial.remind_verify_hours ?? 24));
+  // 群消息语言：空串表示跟随服务器缺省语言。旧版服务端不返回 languages，此时不显示也不提交
+  const [language, setLanguage] = useState(initial.language ?? "");
   const hoursOk = (v: string) => /^\d{1,3}$/.test(v.trim()) && Number(v) <= 720;
   const remindOk = hoursOk(remindOpen) && hoursOk(remindVerify);
   const [error, setError] = useState("");
@@ -1099,6 +1166,9 @@ export function WorkspaceForm({
   // 旧版服务端不返回 channels；只启用了钉钉时不显示 Telegram 群编号（已绑 Telegram 群的照样显示）
   const tgShown = !providers || providers.includes("telegram") || !!initial.telegram_chat || !dtEnabled;
   const dtBound = initial.chat?.provider === "dingtalk";
+  const languages = initial.languages ?? [];
+  const defaultLanguageName =
+    languages.find((l) => l.code === initial.default_language)?.name ?? initial.default_language ?? "";
   const refresh = useCallback(() => {
     void qc.invalidateQueries({ queryKey: ["admin", ws, "workspace"] });
   }, [qc, ws]);
@@ -1117,8 +1187,9 @@ export function WorkspaceForm({
         display_name: display.trim(),
         remind_open_hours: Number(remindOpen),
         remind_verify_hours: Number(remindVerify),
+        language: languages.length > 0 ? language : undefined,
       });
-      setOk("已保存。");
+      setOk(t("workspace.saved"));
       await qc.invalidateQueries({ queryKey: ["admin", ws, "workspace"] });
       await qc.invalidateQueries({ queryKey: ["me"] });
     } catch (err) {
@@ -1129,17 +1200,20 @@ export function WorkspaceForm({
   };
 
   return (
-    <Section title={`工作空间：${initial.display_name || initial.path}`}>
+    <Section title={t("workspace.title", { name: initial.display_name || initial.path })}>
       <form onSubmit={submit} className="space-y-4">
         <Field
-          label="显示名"
+          label={t("workspace.displayName")}
           htmlFor="display-name"
           hint={
             displayOk ? (
-              <>
-                给人看的名字，可随时改。留空则显示路径 <span className="font-mono">{initial.path}</span>
-                。路径出现在链接与项目配置里，不能修改。
-              </>
+              <Trans
+                {...safeTrans}
+                t={t}
+                i18nKey="workspace.displayNameHint"
+                values={{ path: initial.path }}
+                components={{ path: <span className="font-mono" /> }}
+              />
             ) : undefined
           }
         >
@@ -1147,47 +1221,56 @@ export function WorkspaceForm({
             id="display-name"
             value={display}
             onChange={(e) => setDisplay(e.target.value)}
-            placeholder={`留空则显示 ${initial.path}`}
+            placeholder={t("workspace.displayNamePlaceholder", { path: initial.path })}
             className={inputClass}
           />
-          {!displayOk && <p className="mt-1 text-xs text-danger">显示名最多 40 个字符。</p>}
+          {!displayOk && <p className="mt-1 text-xs text-danger">{t("workspace.displayNameError")}</p>}
         </Field>
+        {languages.length > 0 && (
+          <Field label={t("workspace.language.label")} htmlFor="ws-language" hint={t("workspace.language.hint")}>
+            <select
+              id="ws-language"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">{t("workspace.language.follow", { name: defaultLanguageName })}</option>
+              {languages.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <div className="text-sm">
-          <p className="mb-1">群消息里的问题单链接</p>
+          <p className="mb-1">{t("workspace.issueLink")}</p>
           {initial.external_url_set ? (
             <p className="break-all font-mono text-xs text-muted">{initial.issue_link_example}</p>
           ) : (
             <Callout>
-              服务器还没有设置对外地址，群消息里暂时不带链接。
               {serverAdmin ? (
-                <>
-                  {" "}
-                  <Link to="/server" search={{ tab: "settings" }} className="text-teal hover:underline">
-                    去“服务器管理 → 设置”填写
-                  </Link>
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="workspace.noExternalUrlAdmin"
+                  components={{
+                    l: <Link to="/server" search={{ tab: "settings" }} className="text-teal hover:underline" />,
+                  }}
+                />
               ) : (
-                "请服务器管理员在“服务器管理 → 设置”里填写。"
+                t("workspace.noExternalUrlOther")
               )}
             </Callout>
           )}
-          <p className="mt-1 text-xs text-muted">对外地址是整个服务器共用的，由服务器管理员设置。</p>
+          <p className="mt-1 text-xs text-muted">{t("workspace.externalUrlNote")}</p>
         </div>
-        {!initial.bot_enabled && !dtEnabled && (
-          <Callout>
-            协作服务没有启用 Telegram 机器人，下面的群设置暂时不会生效。请在服务器上配置机器人后重启协作服务。
-          </Callout>
-        )}
+        {!initial.bot_enabled && !dtEnabled && <Callout>{t("workspace.botDisabled")}</Callout>}
         {dtEnabled && <DingTalkBind ws={ws} chat={initial.chat} onChange={refresh} />}
         {tgShown && (
           <Field
-            label="Telegram 群编号"
+            label={t("workspace.telegramChat")}
             htmlFor="telegram-chat"
-            hint={
-              dtBound
-                ? "本工作空间已绑定钉钉群；要改用 Telegram 群，先解绑钉钉群。"
-                : "把机器人拉进群后，在群里发 /chatid 获取，形如 -1001234567890。留空则不发群消息。"
-            }
+            hint={dtBound ? t("workspace.telegramChatBoundDingtalk") : t("workspace.telegramChatHint")}
           >
             <input
               id="telegram-chat"
@@ -1201,7 +1284,7 @@ export function WorkspaceForm({
           </Field>
         )}
         <fieldset className="space-y-2 text-sm">
-          <legend className="mb-1">群消息里显示</legend>
+          <legend className="mb-1">{t("workspace.showInGroup")}</legend>
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -1209,7 +1292,7 @@ export function WorkspaceForm({
               onChange={(e) => setShowTitle(e.target.checked)}
               className="accent-[var(--teal)]"
             />
-            问题单标题
+            {t("workspace.showTitle")}
           </label>
           <label className="flex items-center gap-2">
             <input
@@ -1218,46 +1301,55 @@ export function WorkspaceForm({
               onChange={(e) => setShowBrief(e.target.checked)}
               className="accent-[var(--teal)]"
             />
-            问题单简述
+            {t("workspace.showBrief")}
           </label>
-          <p className="text-xs text-muted">群里有外部人员时可以关掉，只发编号与链接。</p>
+          <p className="text-xs text-muted">{t("workspace.showHint")}</p>
         </fieldset>
         <fieldset className="space-y-2 text-sm">
-          <legend className="mb-1">超时催办</legend>
+          <legend className="mb-1">{t("workspace.remind.title")}</legend>
           <div className="flex flex-wrap gap-4">
             <label className="flex items-center gap-2">
-              待接单超过
-              <input
-                aria-label="待接单催办时长（小时）"
-                inputMode="numeric"
-                value={remindOpen}
-                onChange={(e) => setRemindOpen(e.target.value)}
-                className={`${inputClass} w-20`}
+              <Trans
+                t={t}
+                i18nKey="workspace.remind.open"
+                components={{
+                  input: (
+                    <input
+                      aria-label={t("workspace.remind.openLabel")}
+                      inputMode="numeric"
+                      value={remindOpen}
+                      onChange={(e) => setRemindOpen(e.target.value)}
+                      className={`${inputClass} w-20`}
+                    />
+                  ),
+                }}
               />
-              小时
             </label>
             <label className="flex items-center gap-2">
-              待验证超过
-              <input
-                aria-label="待验证催办时长（小时）"
-                inputMode="numeric"
-                value={remindVerify}
-                onChange={(e) => setRemindVerify(e.target.value)}
-                className={`${inputClass} w-20`}
+              <Trans
+                t={t}
+                i18nKey="workspace.remind.verify"
+                components={{
+                  input: (
+                    <input
+                      aria-label={t("workspace.remind.verifyLabel")}
+                      inputMode="numeric"
+                      value={remindVerify}
+                      onChange={(e) => setRemindVerify(e.target.value)}
+                      className={`${inputClass} w-20`}
+                    />
+                  ),
+                }}
               />
-              小时
             </label>
           </div>
-          {!remindOk && <p className="text-xs text-danger">请填 0 到 720 的整数小时。</p>}
-          <p className="text-xs text-muted">
-            到点在群里再 @ 当事人一次；再过同样时长仍没有动作，同时 @ 工作空间管理员，之后不再催。按自然时间计算，“修复中”不计时，状态一变就重新计时。填
-            0 表示关闭。
-          </p>
+          {!remindOk && <p className="text-xs text-danger">{t("workspace.remind.error")}</p>}
+          <p className="text-xs text-muted">{t("workspace.remind.hint")}</p>
         </fieldset>
         <ErrorText>{error}</ErrorText>
         <SuccessText>{ok}</SuccessText>
         <button type="submit" disabled={busy || !displayOk} className={btn.primary}>
-          {busy ? "正在保存…" : "保存"}
+          {busy ? t("workspace.saving") : t("workspace.save")}
         </button>
       </form>
     </Section>
