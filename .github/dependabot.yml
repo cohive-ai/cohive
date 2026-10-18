@@ -1,4 +1,5 @@
 # 每周检查依赖更新；更新的合并请求带 dependencies 标签，需要维护者审核后合入。
+# Go 与网页依赖：小版本、补丁升级合成一个请求；大版本升级不进分组，每个包单独开请求，逐个评估。
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -9,6 +10,7 @@ updates:
     groups:
       go:
         patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /web
     schedule:
@@ -17,6 +19,7 @@ updates:
     groups:
       web:
         patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
