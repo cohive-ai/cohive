@@ -175,6 +175,9 @@ func TestRemindersRestartOnPartyChange(t *testing.T) {
 	if remindLevel(t, e, is.ID) != 0 {
 		t.Fatal("转交后重新计时")
 	}
+	if n := runReminders(t, e); n != 0 { // 计时起点也要重来，不能沿用转交前已等的 5 小时
+		t.Fatal("转交后还没到点，不应马上又催")
+	}
 	// 改派发起人：直接用存储层（业务层的改派另有用例覆盖权限）
 	ago(t, e, is.ID, 5)
 	if err := store.SetIssueSource(ctx, e.svc.Pool, is.ID, e.b.MemberID); err != nil {
