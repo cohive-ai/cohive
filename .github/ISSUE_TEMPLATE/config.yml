@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question / 提问
+    url: https://github.com/cohive-ai/cohive/discussions
+    about: Ask and answer questions in Discussions. 使用问题请到讨论区。
+  - name: Security vulnerability / 安全漏洞
+    url: https://github.com/cohive-ai/cohive/security/advisories/new
+    about: Report privately, never in a public issue. 请私密报告，不要公开。

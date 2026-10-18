@@ -1,0 +1,31 @@
+name: Translation / 翻译
+description: Add a language, become a language maintainer, or report a wrong translation. 新增语言、认领维护或报告译文错误。
+labels: ["translation", "needs-triage"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type / 类型
+      options:
+        - Wrong or unclear translation / 译文错误或不清楚
+        - Add a new language / 新增语言
+        - Become a maintainer of a language / 认领一种语言的维护
+    validations:
+      required: true
+  - type: input
+    id: language
+    attributes:
+      label: Language and code / 语言与代码
+      placeholder: e.g. Japanese (ja), Brazilian Portuguese (pt-BR)
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details / 详情
+      description: For a wrong translation, say where it appears (page, command or message), the current text and your suggestion. 译文错误请写明出现位置、当前文字与建议。
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: See CONTRIBUTING.md → "Languages and translations" for how to add or maintain a language. 新增或维护语言的步骤见 CONTRIBUTING.zh-CN.md。

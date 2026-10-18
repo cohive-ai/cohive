@@ -1,0 +1,24 @@
+# 每周检查依赖更新；更新的合并请求带 dependencies 标签，需要维护者审核后合入。
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    groups:
+      go:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    groups:
+      web:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies]
