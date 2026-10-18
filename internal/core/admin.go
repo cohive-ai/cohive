@@ -737,6 +737,7 @@ func checkPlan(ctx context.Context, tx pgx.Tx, h Handover, plan HandoverPlan) er
 // reassign 由管理员改派问题单的负责人与 / 或发起人：版本号加一，写事件，给新接手人入队群通知。
 func reassign(ctx context.Context, tx pgx.Tx, op store.Member, is store.Issue, owner, source *int64) error {
 	payload := map[string]any{"reason": "removed"}
+	oldOwner, oldSource := is.OwnerID, is.SourceMemberID
 	name := func(id int64) string {
 		if m, err := store.MemberByID(ctx, tx, id); err == nil {
 			return m.Name
@@ -768,7 +769,7 @@ func reassign(ctx context.Context, tx pgx.Tx, op store.Member, is store.Issue, o
 		Action: issue.ActReassign, FromStatus: is.Status, ToStatus: is.Status, Note: i18n.T("core.reassign.note"), Payload: payload}); err != nil {
 		return err
 	}
-	return queueReassign(ctx, tx, who, is, owner != nil, source != nil)
+	return queueNotices(ctx, tx, who, is, reassignFanout(who, is, oldOwner, oldSource, owner != nil, source != nil))
 }
 
 // ---- 停用与启用、服务器管理员 ----

@@ -91,11 +91,12 @@ func TestAlertRecipientsByAction(t *testing.T) {
 	// 第二张单：转交、接单、开始修复、评论、请求验证、重开、关闭
 	y := e.draft(t)
 	step("发出 → 负责人", []alertRow{{b.MemberID, core.AlertAssigned, a.MemberID}}, do(a, &y, issue.ActSubmit))
-	step("转交 → 新负责人（原负责人、发起人不收）", []alertRow{{c.MemberID, core.AlertAssigned, b.MemberID}},
+	step("转交 → 新负责人；告知发起人（原负责人是操作者，不收）",
+		[]alertRow{{c.MemberID, core.AlertAssigned, b.MemberID}, {a.MemberID, core.AlertTransferred, b.MemberID}},
 		func() { act(b, &y, core.ActInput{Action: issue.ActTransfer, Assignee: "lee-third", Note: "归你"}) })
 	step("接单 → 发起人", []alertRow{{a.MemberID, core.AlertAccepted, c.MemberID}}, do(c, &y, issue.ActAccept))
-	step("开始修复：不提醒", nil, do(c, &y, issue.ActStart))
-	step("评论：不提醒", nil, func() {
+	step("开始修复 → 告知发起人", []alertRow{{a.MemberID, core.AlertStarted, c.MemberID}}, do(c, &y, issue.ActStart))
+	step("负责人留言 → 发起人", []alertRow{{a.MemberID, core.AlertCommented, c.MemberID}}, func() {
 		if _, err := e.svc.Act(ctx, c, core.ActInput{IssueID: y.ID, Action: issue.ActComment, Note: "进展"}); err != nil {
 			t.Fatal(err)
 		}
@@ -121,7 +122,7 @@ func TestAlertRecipientsByAction(t *testing.T) {
 	step("升级过后再重开不再升级", []alertRow{{b.MemberID, core.AlertReopened, a.MemberID}}, do(a, &z, issue.ActReopen))
 }
 
-// 管理员改派：只提醒新接手人；被移出的人、做改派的管理员都不收。
+// 管理员改派：新接手人收“交给你”“请验证”；被移出的人（只在群里 @）、做改派的管理员都不收会话内提醒。
 func TestAlertRecipientsOnReassign(t *testing.T) {
 	ctx := context.Background()
 	h := newHandover(t)
@@ -147,7 +148,9 @@ func TestAlertRecipientsOnReassign(t *testing.T) {
 	if err := h2.p.e.svc.ApplyHandover(ctx, core.WebActor(h2.p.payAdmin), h2.p.pay, h2.p.annPay.ID, h2.fullPlan(h2.payAdminMember.ID), true); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := alertsAfter(t, e2, last2); len(got) != 0 {
-		t.Fatalf("管理员改派给自己不应提醒自己：%v", got)
+	// 管理员自己不收；两张单的另一方都是 bob，他收到“已改派”的告知（N-4）
+	want2 := []alertRow{{h2.bob.ID, core.AlertReassigned, h2.payAdminMember.ID}, {h2.bob.ID, core.AlertReassigned, h2.payAdminMember.ID}}
+	if got, _ := alertsAfter(t, e2, last2); fmt.Sprint(got) != fmt.Sprint(want2) {
+		t.Fatalf("管理员改派给自己：自己不收，另一方收到改派告知：%v", got)
 	}
 }

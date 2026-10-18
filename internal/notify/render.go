@@ -58,6 +58,17 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 		return strings.Join(parts, " ")
 	}
 	actor := esc(people[n.ActorMemberID].Name)
+	// nameOf 是问题单当前的负责人、发起人的名字（只写名字；要 @ 的人在“告知”里）
+	nameOf := func(id *int64) string {
+		if id == nil {
+			return l.T("notify.unknown_member")
+		}
+		p, ok := people[*id]
+		if !ok {
+			return l.T("notify.unknown_member")
+		}
+		return esc(p.Name)
+	}
 	tool := esc(toolLabel(n.ActorTool))
 	d := func(extra i18n.D) i18n.D {
 		out := i18n.D{"ID": is.ID, "Actor": actor, "Tool": tool, "Who": mentions(n.Recipients)}
@@ -93,6 +104,17 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 	case "closed":
 		head = l.T("notify.head.closed", d(nil))
 		via = l.T("notify.via.closed", d(nil))
+	case "transferred":
+		head = l.T("notify.head.transferred", d(i18n.D{"Owner": nameOf(is.OwnerID)}))
+		via = l.T("notify.via.transferred", d(nil))
+	case "started":
+		head = l.T("notify.head.started", d(nil))
+		via = l.T("notify.via.started", d(nil))
+	case "commented": // 留言正文不进群，只说有新留言、来自谁
+		head = l.T("notify.head.commented", d(nil))
+	case "reassigned":
+		src := is.SourceMemberID
+		head = l.T("notify.head.reassigned", d(i18n.D{"Owner": nameOf(is.OwnerID), "Source": nameOf(&src)}))
 	default:
 		head = l.T("notify.head.default", d(nil))
 	}
@@ -173,6 +195,14 @@ func eventTitle(l i18n.Lang, event string) string {
 		return l.T("notify.event.accepted")
 	case "closed":
 		return l.T("notify.event.closed")
+	case "transferred":
+		return l.T("notify.event.transferred")
+	case "started":
+		return l.T("notify.event.started")
+	case "commented":
+		return l.T("notify.event.commented")
+	case "reassigned":
+		return l.T("notify.event.reassigned")
 	}
 	return l.T("notify.event.default")
 }

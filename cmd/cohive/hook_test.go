@@ -438,3 +438,17 @@ func TestAlertPhraseOverdue(t *testing.T) {
 		t.Fatalf("催办提醒：%q", got)
 	}
 }
+
+// N-4 新的会话内提醒种类各有自己的说法，不落到“有新动态”。
+func TestAlertPhraseNewKinds(t *testing.T) {
+	for kind, want := range map[string]string{
+		"transferred": "#7 你发的单已由 lee-codex 转交给别人",
+		"started":     "#7 lee-codex 已开始修复",
+		"commented":   "#7 lee-codex 留言了",
+		"reassigned":  "#7 已由管理员 lee-codex 改派",
+	} {
+		if got := alertPhrase(client.AlertItem{IssueID: 7, Kind: kind, Actor: "lee-codex"}); got != want {
+			t.Errorf("%s：%q，应为 %q", kind, got, want)
+		}
+	}
+}

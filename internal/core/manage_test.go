@@ -164,12 +164,16 @@ func TestRemoveWithHandover(t *testing.T) {
 		last.Payload["owner_to_name"] != "pay-admin" {
 		t.Fatalf("应写改派事件：%+v", last)
 	}
+	// 改派写两条群通知：新接手人“交给你”或“请验证”，再告知被换下的 ann 与另一方（N-4）
 	ns, _ := store.ListNotificationsForIssue(ctx, svc.Pool, h.asOwner.ID)
-	if n := ns[len(ns)-1]; n.Event != core.EventAssigned || n.Recipients[0] != to {
+	if n := ns[len(ns)-2]; n.Event != core.EventAssigned || n.Recipients[0] != to {
 		t.Fatalf("应给新负责人入队“交给你”的群通知：%+v", n)
 	}
+	if n := ns[len(ns)-1]; n.Event != core.EventReassigned || n.Recipients[0] != p.annPay.ID {
+		t.Fatalf("应告知被换下的 ann：%+v", n)
+	}
 	ns, _ = store.ListNotificationsForIssue(ctx, svc.Pool, h.asSource.ID)
-	if n := ns[len(ns)-1]; n.Event != core.EventVerify || n.Recipients[0] != to {
+	if n := ns[len(ns)-2]; n.Event != core.EventVerify || n.Recipients[0] != to {
 		t.Fatalf("应给新发起人入队“请验证”的群通知：%+v", n)
 	}
 	if m, _ := store.MemberByID(ctx, svc.Pool, p.annPay.ID); m.Status != store.MemberRemoved {
