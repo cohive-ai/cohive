@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import i18n from "./i18n";
 import { ConfirmButton } from "./ui";
 
 // jsdom 没有实现模态对话框，按浏览器的行为补上：showModal 打开；按 Esc 先发可取消的 cancel 事件，
@@ -16,7 +17,10 @@ beforeAll(() => {
   };
 });
 
-afterEach(cleanup);
+afterEach(async () => {
+  cleanup();
+  await i18n.changeLanguage("zh-CN");
+});
 
 function pressEsc(d: HTMLDialogElement) {
   const ev = new Event("cancel", { cancelable: true });
@@ -51,4 +55,15 @@ it("确认对话框空闲时按 Esc 可以关闭", () => {
   const dialog = document.querySelector("dialog")!;
   pressEsc(dialog);
   expect(dialog.hasAttribute("open")).toBe(false);
+});
+
+it("确认对话框的取消与处理中文案随语言切换", async () => {
+  await i18n.changeLanguage("en");
+  let finish: () => void = () => {};
+  render(<ConfirmButton label="Revoke" title="Revoke?" message="Sure?" action={() => new Promise<void>((r) => (finish = r))} />);
+  fireEvent.click(screen.getByText("Revoke"));
+  expect(screen.getByText("Cancel")).toBeTruthy();
+  fireEvent.click(screen.getByText("Revoke", { selector: "dialog button" }));
+  expect(await screen.findByText("Working…")).toBeTruthy();
+  await act(async () => finish());
 });

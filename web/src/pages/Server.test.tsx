@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ServerSettings } from "../api";
+import i18n from "../i18n";
 import { ExternalURLForm } from "./Server";
 
 afterEach(() => {
@@ -53,4 +54,22 @@ it("由环境变量锁定时只读", () => {
   expect(screen.getByText(/由环境变量 COHIVE_EXTERNAL_URL 锁定/)).toBeTruthy();
   expect(screen.queryByLabelText("对外地址")).toBeNull();
   expect(screen.queryByText("保存")).toBeNull();
+});
+
+it("英文界面：对外地址表单的文案与提示", async () => {
+  await i18n.changeLanguage("en");
+  try {
+    const bodies = show({ external_url: "", locked: false, suggested: "http://127.0.0.1:8787" });
+    expect(screen.getByText(/Not set yet/)).toBeTruthy();
+    const input = screen.getByLabelText("External URL") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "https://a.example.com/cohive" } });
+    expect(screen.getByText(/with no path/)).toBeTruthy();
+    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(input, { target: { value: "https://cohive.example.com/" } });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(bodies).toEqual([{ external_url: "https://cohive.example.com" }]));
+    expect(await screen.findByText("Saved. It takes effect immediately.")).toBeTruthy();
+  } finally {
+    await i18n.changeLanguage("zh-CN");
+  }
 });

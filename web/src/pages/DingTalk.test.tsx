@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { Me, WorkspaceSettings } from "../api";
+import i18n from "../i18n";
 import { DingTalkBind, DingTalkLink } from "./DingTalk";
 import { WorkspaceForm } from "./Admin";
 
@@ -102,4 +103,23 @@ it("工作空间设置：只启用钉钉时不显示 Telegram 群编号；两种
   );
   expect((screen.getByLabelText("Telegram 群编号") as HTMLInputElement).disabled).toBe(true);
   expect(screen.getByText("已绑定：支付群")).toBeTruthy();
+});
+
+it("英文界面：群绑定指令用机器人也认的 bindgroup，说明与按钮是英文", async () => {
+  await i18n.changeLanguage("en");
+  try {
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      if (url === "/api/v1/w/pay/admin/chat-binds" && init.method === "POST") return json(200, { id: 3, code: "WXYZ6789", expires_in: 600 });
+      if (url === "/api/v1/w/pay/admin/chat-binds/3") return json(200, { status: "pending" });
+      return json(404, { error: "not found" });
+    });
+    wrap(<DingTalkBind ws="pay" chat={null} onChange={() => {}} />);
+    expect(screen.getByText("Not bound")).toBeTruthy();
+    fireEvent.click(screen.getByText("Generate group code"));
+    await screen.findByDisplayValue("bindgroup WXYZ6789");
+    expect(screen.getByText(/exactly as shown/)).toBeTruthy();
+    expect(screen.getByLabelText("Send in the group")).toBeTruthy();
+  } finally {
+    await i18n.changeLanguage("zh-CN");
+  }
 });

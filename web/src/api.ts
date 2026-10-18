@@ -1,4 +1,5 @@
 // 网页接口层。鉴权用协作服务设置的会话 Cookie（HttpOnly，前端读不到也不保存任何令牌）。
+import i18n from "./i18n";
 
 export class ApiError extends Error {
   status: number;
@@ -32,7 +33,8 @@ interface RequestOptions {
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const method = opts.method ?? "GET";
-  const headers: Record<string, string> = { Accept: "application/json" };
+  // 服务端按界面语言回报错
+  const headers: Record<string, string> = { Accept: "application/json", "Accept-Language": i18n.language };
   const init: RequestInit = { method, credentials: "same-origin", headers };
   if (method !== "GET") {
     headers["Content-Type"] = "application/json";
@@ -48,19 +50,19 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     try {
       res = await fetch(path, init);
     } catch {
-      throw new ApiError(0, ctrl.signal.aborted ? "请求超时，请检查网络后重试" : "无法连接协作服务，请检查网络后重试");
+      throw new ApiError(0, i18n.t(ctrl.signal.aborted ? "api.timeout" : "api.offline"));
     }
     if (res.status === 204) return undefined as T;
     body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    if (ctrl.signal.aborted) throw new ApiError(0, "请求超时，请检查网络后重试");
+    if (ctrl.signal.aborted) throw new ApiError(0, i18n.t("api.timeout"));
   } finally {
     clearTimeout(timer);
   }
   if (res.ok) return body as T;
-  const message = typeof body.error === "string" && body.error ? body.error : `请求失败（${res.status}）`;
+  const message = typeof body.error === "string" && body.error ? body.error : i18n.t("api.failed", { status: res.status });
   if (res.status === 401 && opts.session !== false) {
     unauthorizedHandler?.();
-    throw new UnauthorizedError(401, "登录已失效，请重新登录", body);
+    throw new UnauthorizedError(401, i18n.t("api.sessionExpired"), body);
   }
   throw new ApiError(res.status, message, body);
 }

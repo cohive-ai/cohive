@@ -20,7 +20,7 @@ func hostGuard(allowed []string, dynamic func() string, next http.Handler) http.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := normalizeHost(r.Host)
 		if viaLoopback(r) && !ok[h] && (dynamic == nil || h == "" || h != normalizeHost(dynamic())) {
-			http.Error(w, fmt.Sprintf("Forbidden: invalid Host header %q（如经隧道访问，请在网页“服务器管理 → 设置”里填写对外地址，或把该域名加入 COHIVE_ALLOWED_HOSTS）", r.Host), http.StatusForbidden)
+			http.Error(w, fmt.Sprintf("Forbidden: invalid Host header %q (when accessing through a tunnel, set the external URL under Server admin > Settings in the web UI, or add the domain to COHIVE_ALLOWED_HOSTS)", r.Host), http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)

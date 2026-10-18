@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // Login 是一次登录得到的令牌，按“服务地址 + 工作空间 + 工具”区分。
@@ -109,7 +111,7 @@ func ConfigDir() (string, error) {
 	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return "", errors.New("找不到用户主目录，无法确定凭据保存位置：请设置环境变量 COHIVE_CONFIG_DIR")
+		return "", i18n.Errorf("cli.client.no_home_dir")
 	}
 	return filepath.Join(home, ".config", "cohive"), nil
 }
@@ -143,7 +145,7 @@ func LoadCredentials() (*Credentials, error) {
 	}
 	var c Credentials
 	if err := json.Unmarshal(b, &c); err != nil {
-		return nil, errors.New("凭据文件格式不对：" + CredentialsPath())
+		return nil, i18n.Errorf("cli.client.creds_bad_format", i18n.D{"Path": CredentialsPath()})
 	}
 	return &c, nil
 }

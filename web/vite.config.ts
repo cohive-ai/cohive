@@ -14,6 +14,8 @@ export default defineConfig({
       "/healthz": "http://127.0.0.1:8787",
     },
   },
+  // vitest 读取 test 字段；vite 8 的配置类型里没有它
+  ...({ test: { setupFiles: ["./src/test-setup.ts"] } } as object),
   build: {
     outDir: "dist",
     emptyOutDir: true,

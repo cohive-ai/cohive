@@ -4,6 +4,8 @@ package issue
 import (
 	"fmt"
 	"strings"
+
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // Status 是问题单的具体状态。
@@ -20,30 +22,34 @@ const (
 	StatusDeclined             Status = "DECLINED"
 )
 
-var statusLabel = map[Status]string{
-	StatusDraft:                "草稿",
-	StatusOpen:                 "待接单",
-	StatusAccepted:             "已接单",
-	StatusFixing:               "修复中",
-	StatusReadyForVerification: "待验证",
-	StatusReopened:             "已重开",
-	StatusClosed:               "已关闭",
-	StatusDeclined:             "已退回",
+// statusKey 是各状态名称在语言包里的文案键（新增状态时必须补齐，测试会遍历检查）。
+var statusKey = map[Status]string{
+	StatusDraft:                "issue.status.draft",
+	StatusOpen:                 "issue.status.open",
+	StatusAccepted:             "issue.status.accepted",
+	StatusFixing:               "issue.status.fixing",
+	StatusReadyForVerification: "issue.status.ready_for_verification",
+	StatusReopened:             "issue.status.reopened",
+	StatusClosed:               "issue.status.closed",
+	StatusDeclined:             "issue.status.declined",
 }
 
-// Label 返回状态的中文名。
-func (s Status) Label() string {
-	if l, ok := statusLabel[s]; ok {
-		return l
+// StatusLabelIn 返回状态按指定语言的名称；未知状态原样返回。
+func StatusLabelIn(l i18n.Lang, s Status) string {
+	if k, ok := statusKey[s]; ok {
+		return l.T(k)
 	}
 	return string(s)
 }
 
+// Label 返回状态的中文名。固定中文的旧函数：调用方（core、notify）迁移到 StatusLabelIn 后删除。
+func (s Status) Label() string { return StatusLabelIn(i18n.ZhCN, s) }
+
 // ParseStatus 校验并转换数据库中的状态值。
 func ParseStatus(v string) (Status, error) {
 	s := Status(v)
-	if _, ok := statusLabel[s]; !ok {
-		return "", fmt.Errorf("未知的问题单状态 %q", v)
+	if _, ok := statusKey[s]; !ok {
+		return "", fmt.Errorf("unknown issue status %q", v)
 	}
 	return s, nil
 }
@@ -94,11 +100,11 @@ const (
 	RoleOwner              // 负责人
 )
 
-func (r Role) label() string {
+func (r Role) labelIn(l i18n.Lang) string {
 	if r == RoleSource {
-		return "发起人"
+		return l.T("issue.role.source")
 	}
-	return "负责人"
+	return l.T("issue.role.owner")
 }
 
 // Roles 根据操作者是否为发起人、负责人得到角色列表。
@@ -138,23 +144,56 @@ var actionOrder = []Action{
 
 // TransitionError 说明为什么动作不能执行，以及当前允许做什么。
 type TransitionError struct {
-	From    Status
-	Action  Action
+	From   Status
+	Action Action
+	// Reason 是中文的原因（固定中文，保留给旧调用方）；按语言展示用 Localize。
 	Reason  string
 	Allowed []Action
+
+	reason reason
 }
 
-func (e *TransitionError) Error() string {
+// Error 固定用中文渲染：core 与它的测试还在按中文文案处理这个错误，第二段改完后改为用缺省语言。
+// 接口层和 MCP 不走这里，而是用 Localize 按请求或账号的语言展示。
+func (e *TransitionError) Error() string { return e.Localize(i18n.ZhCN) }
+
+// Localize 按指定语言渲染完整的说明。与 *i18n.Error 一样有 Localize(Lang) string，
+// 接口层和 MCP 据此按请求或账号的语言展示。
+func (e *TransitionError) Localize(l i18n.Lang) string {
 	allowed := make([]string, len(e.Allowed))
 	for i, a := range e.Allowed {
 		allowed[i] = string(a)
 	}
-	list := "无"
+	list := l.T("issue.transition.none")
 	if len(allowed) > 0 {
-		list = strings.Join(allowed, "、")
+		list = strings.Join(allowed, l.T("issue.list_sep"))
 	}
-	return fmt.Sprintf("问题单当前状态为“%s”（%s），不能执行 %s：%s。你当前允许的动作：%s",
-		e.From.Label(), e.From, e.Action, e.Reason, list)
+	return l.T("issue.transition.error", i18n.D{
+		"Label": StatusLabelIn(l, e.From), "Status": string(e.From), "Action": string(e.Action),
+		"Reason": e.reason.in(l), "Allowed": list,
+	})
+}
+
+// reason 是不能执行的原因：文案键加参数，按语言展示时才渲染。
+type reason struct {
+	key      string
+	statuses []Status // wrong_status：允许的状态
+	role     Role     // role_only：需要的角色
+}
+
+func (r reason) in(l i18n.Lang) string {
+	d := i18n.D{}
+	switch r.key {
+	case "issue.reason.wrong_status":
+		names := make([]string, len(r.statuses))
+		for i, s := range r.statuses {
+			names[i] = StatusLabelIn(l, s)
+		}
+		d["Statuses"] = strings.Join(names, l.T("issue.reason.status_join"))
+	case "issue.reason.role_only":
+		d["Role"] = r.role.labelIn(l)
+	}
+	return l.T(r.key, d)
 }
 
 func hasRole(roles []Role, r Role) bool {
@@ -166,22 +205,23 @@ func hasRole(roles []Role, r Role) bool {
 	return false
 }
 
-func check(from Status, act Action, roles []Role) (Status, string) {
+// check 返回执行动作后的状态；不允许时 reason.key 非空。
+func check(from Status, act Action, roles []Role) (Status, reason) {
 	if act == ActComment {
 		if from == StatusDraft {
 			if hasRole(roles, RoleSource) {
-				return from, ""
+				return from, reason{}
 			}
-			return "", "草稿只有发起人可以修改"
+			return "", reason{key: "issue.reason.draft_source_only"}
 		}
 		if len(roles) > 0 {
-			return from, ""
+			return from, reason{}
 		}
-		return "", "只有发起人或负责人可以评论"
+		return "", reason{key: "issue.reason.comment_roles"}
 	}
 	r, ok := rules[act]
 	if !ok {
-		return "", "未知动作"
+		return "", reason{key: "issue.reason.unknown_action"}
 	}
 	inFrom := false
 	for _, s := range r.from {
@@ -191,26 +231,22 @@ func check(from Status, act Action, roles []Role) (Status, string) {
 		}
 	}
 	if !inFrom {
-		names := make([]string, len(r.from))
-		for i, s := range r.from {
-			names[i] = s.Label()
-		}
-		return "", fmt.Sprintf("该动作只能在“%s”状态下执行", strings.Join(names, "”或“"))
+		return "", reason{key: "issue.reason.wrong_status", statuses: r.from}
 	}
 	if !hasRole(roles, r.role) {
-		return "", fmt.Sprintf("只有%s可以执行", r.role.label())
+		return "", reason{key: "issue.reason.role_only", role: r.role}
 	}
 	if r.to == "" {
-		return from, ""
+		return from, reason{}
 	}
-	return r.to, ""
+	return r.to, reason{}
 }
 
 // Apply 计算执行动作后的状态。不允许时返回 *TransitionError。
 func Apply(from Status, act Action, roles []Role) (Status, error) {
-	to, reason := check(from, act, roles)
-	if reason != "" {
-		return "", &TransitionError{From: from, Action: act, Reason: reason, Allowed: Allowed(from, roles)}
+	to, why := check(from, act, roles)
+	if why.key != "" {
+		return "", &TransitionError{From: from, Action: act, Reason: why.in(i18n.ZhCN), Allowed: Allowed(from, roles), reason: why}
 	}
 	return to, nil
 }
@@ -219,7 +255,7 @@ func Apply(from Status, act Action, roles []Role) (Status, error) {
 func Allowed(from Status, roles []Role) []Action {
 	var out []Action
 	for _, a := range actionOrder {
-		if _, reason := check(from, a, roles); reason == "" {
+		if _, why := check(from, a, roles); why.key == "" {
 			out = append(out, a)
 		}
 	}

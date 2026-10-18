@@ -1,0 +1,105 @@
+{
+  "app": {
+    "title": "Cohive"
+  },
+  "language": {
+    "name": "English",
+    "label": "Language"
+  },
+  "nav": {
+    "board": "Board",
+    "issues": "Issues",
+    "admin": "Admin",
+    "profile": "Profile",
+    "serverAdmin": "Server admin"
+  },
+  "session": {
+    "signOut": "Sign out",
+    "signingOut": "Signing out…",
+    "signOutAndUsePassword": "Sign out and sign in with a password"
+  },
+  "workspace": {
+    "switch": "Switch workspace",
+    "choose": "Choose a workspace",
+    "notMember": "{{name}} (you are not a member)",
+    "label": "{{display}} ({{name}})",
+    "noneJoined": "You have not joined any workspace yet. Contact an admin.",
+    "createHint": "You are a server admin. You can <create>create a workspace</create>."
+  },
+  "notFound": "This page does not exist. <home>Back to home</home>",
+  "loadError": {
+    "failed": "Failed to load the page: {{message}}",
+    "retry": "Retry"
+  },
+  "ui": {
+    "cancel": "Cancel",
+    "processing": "Working…",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Could not copy automatically. The text is selected, so copy it manually."
+  },
+  "list": {
+    "separator": ", ",
+    "none": "None"
+  },
+  "role": {
+    "admin": "Admin",
+    "member": "Member"
+  },
+  "tool": {
+    "web": "Web",
+    "unspecified": "Not specified"
+  },
+  "inviteKind": {
+    "personal": "Personal invite",
+    "team": "Team invite"
+  },
+  "signupKind": {
+    "existing": "Existing account asking to join",
+    "new": "New sign-up"
+  },
+  "action": {
+    "draft": "drafted",
+    "submit": "submitted",
+    "accept": "accepted",
+    "decline": "declined",
+    "transfer": "transferred",
+    "start": "started fixing",
+    "request_verification": "requested verification",
+    "close": "closed",
+    "reopen": "reopened",
+    "comment": "commented",
+    "reassign": "reassigned"
+  },
+  "status": {
+    "all": "All statuses",
+    "DRAFT": "Draft",
+    "OPEN": "Open",
+    "ACCEPTED": "Accepted",
+    "FIXING": "Fixing",
+    "READY_FOR_VERIFICATION": "Ready for verification",
+    "REOPENED": "Reopened",
+    "CLOSED": "Closed",
+    "DECLINED": "Declined"
+  },
+  "severity": {
+    "low": "Low",
+    "normal": "Normal",
+    "high": "High",
+    "critical": "Critical"
+  },
+  "deviceTokens": {
+    "allRevoked": "All tokens have been revoked",
+    "none": "No workspace tokens yet",
+    "tools": ": {{tools}}"
+  },
+  "time": {
+    "justNow": "just now"
+  },
+  "api": {
+    "timeout": "The request timed out. Check your network and try again.",
+    "offline": "Can't reach the Cohive server. Check your network and try again.",
+    "failed": "Request failed ({{status}})",
+    "sessionExpired": "Your session has expired. Sign in again."
+  }
+}

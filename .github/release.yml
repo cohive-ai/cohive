@@ -1,0 +1,22 @@
+# GitHub 自动生成发布说明时按标签分类；“New Contributors”一节由 GitHub 自动附上。
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: Breaking changes
+      labels: [breaking-change]
+    - title: Security
+      labels: [security]
+    - title: New features
+      labels: [enhancement]
+    - title: Bug fixes
+      labels: [bug]
+    - title: Translations
+      labels: [translation]
+    - title: Documentation
+      labels: [documentation]
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Other changes
+      labels: ["*"]

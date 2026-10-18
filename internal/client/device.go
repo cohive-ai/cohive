@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	qrcode "github.com/skip2/go-qrcode"
 )
 
@@ -52,7 +53,7 @@ type WorkspaceRef struct {
 }
 
 // ErrDeviceGone 表示服务端已找不到这次授权。
-var ErrDeviceGone = errors.New("这次设备授权已失效，请重新执行 cohive login")
+var ErrDeviceGone = i18n.Errorf("cli.client.device_gone")
 
 // post 发送 JSON 请求（token 非空时带令牌或设备密钥）；非 200 时把服务端的错误说明作为 error 返回。
 func post(ctx context.Context, server, path, token string, in, out any) (int, error) {
@@ -66,7 +67,7 @@ func get(ctx context.Context, server, path, token string, out any) (int, error) 
 }
 
 // ErrNotMember 表示账号不是该工作空间的成员。
-var ErrNotMember = errors.New("你还不是这个工作空间的成员，请联系它的管理员")
+var ErrNotMember = i18n.Errorf("cli.client.not_member")
 
 func send(ctx context.Context, method, server, path, token string, body io.Reader, out any) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, method, server+path, body)
@@ -77,13 +78,10 @@ func send(ctx context.Context, method, server, path, token string, body io.Reade
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	setLang(req)
 	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 	if err != nil {
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			err = ue.Err
-		}
-		return 0, fmt.Errorf("连接协作服务失败：%v", err)
+		return 0, connectError(err)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
@@ -91,17 +89,17 @@ func send(ctx context.Context, method, server, path, token string, body io.Reade
 		return resp.StatusCode, nil
 	}
 	if resp.StatusCode == http.StatusUnauthorized && token != "" {
-		return resp.StatusCode, errors.New("本机保存的设备密钥或令牌无效、已吊销，或账号已停用：请执行 cohive login --force 重新配对这台电脑")
+		return resp.StatusCode, i18n.Errorf("cli.client.unauthorized")
 	}
 	if resp.StatusCode != http.StatusOK {
 		var e struct{ Error string }
 		if json.Unmarshal(raw, &e) != nil || e.Error == "" {
-			return resp.StatusCode, fmt.Errorf("协作服务返回了无法识别的内容（HTTP %d），请确认服务地址", resp.StatusCode)
+			return resp.StatusCode, unrecognized(resp.StatusCode)
 		}
 		return resp.StatusCode, errors.New(e.Error)
 	}
 	if json.Unmarshal(raw, out) != nil {
-		return resp.StatusCode, fmt.Errorf("协作服务返回了无法识别的内容（HTTP %d），请确认服务地址", resp.StatusCode)
+		return resp.StatusCode, unrecognized(resp.StatusCode)
 	}
 	return resp.StatusCode, nil
 }
@@ -117,7 +115,7 @@ func StartDevice(ctx context.Context, server string, tools []string, device stri
 	}
 	u, err := url.Parse(st.URL)
 	if err != nil || !authPath.MatchString(u.Path) || st.PollSecret == "" || st.ExpiresIn <= 0 {
-		return st, errors.New("协作服务返回的授权信息不对，请确认服务地址")
+		return st, i18n.Errorf("cli.client.bad_device_start")
 	}
 	st.URL = server + u.Path
 	return st, nil
@@ -139,7 +137,7 @@ func IssueTokens(ctx context.Context, server, secret, workspace string, tools []
 	var w WorkspaceTokens
 	code, err := post(ctx, server, "/api/v1/device/tokens", secret, map[string]any{"workspace": workspace, "tools": tools}, &w)
 	if code == http.StatusNotFound {
-		return w, fmt.Errorf("工作空间 %s：%w", workspace, ErrNotMember)
+		return w, i18n.Wrap(ErrNotMember, "cli.client.workspace_not_member", i18n.D{"Workspace": workspace})
 	}
 	return w, err
 }
@@ -171,7 +169,7 @@ func WebLogin(ctx context.Context, server, token string) (string, error) {
 	}
 	u, err := url.Parse(out.URL)
 	if err != nil || !oncePath.MatchString(u.Path) {
-		return "", errors.New("协作服务返回的登录链接不对")
+		return "", i18n.Errorf("cli.client.bad_login_link")
 	}
 	return server + u.Path, nil
 }
@@ -304,4 +302,24 @@ func ColorizeQR(qr string) string {
 		b.WriteString("\x1b[0m\n")
 	}
 	return b.String()
+}
+
+// setLang 让服务端用命令行的语言回报错（Accept-Language）。
+// 只用于发给协作服务 REST 接口的请求；转发 MCP 的请求（proxy.go）不带，MCP 的语言由服务端决定。
+func setLang(req *http.Request) {
+	req.Header.Set("Accept-Language", string(i18n.Default()))
+}
+
+// connectError 把连接失败包成可本地化的错误，去掉 url.Error 外层的方法与地址。
+func connectError(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		err = ue.Err
+	}
+	return i18n.Wrap(err, "cli.client.connect_failed")
+}
+
+// unrecognized 表示协作服务返回了不认识的内容，多半是服务地址填错了。
+func unrecognized(code int) error {
+	return i18n.Errorf("cli.client.unrecognized_response", i18n.D{"Code": code})
 }

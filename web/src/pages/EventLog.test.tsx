@@ -3,11 +3,13 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { AdminEvent } from "../api";
+import i18n from "../i18n";
 import { EventLog } from "./EventLog";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.unstubAllGlobals();
+  await i18n.changeLanguage("zh-CN");
 });
 
 const ev = (id: number, text: string, over: Partial<AdminEvent> = {}): AdminEvent => ({
@@ -96,4 +98,17 @@ it("没有记录时提示", async () => {
   stub({});
   show({ ws: "pay" });
   expect(await screen.findByText("还没有记录。")).toBeTruthy();
+});
+
+it("切到英文后页面自己的文字变英文，服务端给的人话原样显示", async () => {
+  await i18n.changeLanguage("en");
+  stub({ "/api/v1/w/pay/admin/events": { items: [ev(1, "lee approved a sign-up")], next_before: 1, ...meta } });
+  show({ ws: "pay" });
+  expect(await screen.findByText("lee approved a sign-up")).toBeTruthy();
+  expect(screen.getByText(/^Admin actions in this workspace/)).toBeTruthy();
+  expect(screen.getByLabelText("Type")).toBeTruthy();
+  expect(screen.getByLabelText("Actor")).toBeTruthy();
+  expect(screen.getByText("Filter")).toBeTruthy();
+  expect(screen.getByText("Load older records")).toBeTruthy();
+  expect(screen.getByText("Details")).toBeTruthy();
 });

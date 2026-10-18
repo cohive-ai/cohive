@@ -6,6 +6,7 @@
 package clidist
 
 import (
+	"bytes"
 	"compress/gzip"
 	"embed"
 	"encoding/json"
@@ -18,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 //go:embed all:files
@@ -75,21 +78,21 @@ func New(fsys fs.FS) (*Dist, error) {
 	}
 	var m Manifest
 	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, fmt.Errorf("命令行安装包清单格式不对：%w", err)
+		return nil, fmt.Errorf("CLI bundle manifest is malformed: %w", err)
 	}
 	// 版本号会写进安装脚本，只接受常见的版本字符
 	if !safeVersion.MatchString(m.Version) {
-		return nil, fmt.Errorf("命令行安装包清单里的版本号 %q 不合法", m.Version)
+		return nil, fmt.Errorf("CLI bundle manifest has an invalid version %q", m.Version)
 	}
 	for p, f := range m.Files {
 		if !known(p) {
-			return nil, fmt.Errorf("命令行安装包清单里有未知平台 %q", p)
+			return nil, fmt.Errorf("CLI bundle manifest has an unknown platform %q", p)
 		}
 		if !sha256Hex.MatchString(f.SHA256) || f.Size <= 0 || f.GZ == "" || strings.ContainsAny(f.GZ, `/\`) {
-			return nil, fmt.Errorf("命令行安装包清单里 %s 的条目不完整", p)
+			return nil, fmt.Errorf("CLI bundle manifest entry for %s is incomplete", p)
 		}
 		if _, err := fs.Stat(fsys, f.GZ); err != nil {
-			return nil, fmt.Errorf("命令行安装包缺少 %s：%w", f.GZ, err)
+			return nil, fmt.Errorf("CLI bundle is missing %s: %w", f.GZ, err)
 		}
 	}
 	return &Dist{fsys: fsys, Manifest: &m}, nil
@@ -118,20 +121,19 @@ func (d *Dist) Available() []string {
 	return out
 }
 
-// Summary 是启动时打印的一行说明。
+// Summary 是启动时打印的一行说明（服务器日志，一律英文）。
 func (d *Dist) Summary() string {
 	if d.Manifest == nil {
-		return "未附带命令行安装包（构建时没有执行 make cli-dist），/install.sh 会提示联系管理员"
+		return "CLI install bundle: not included (make cli-dist was not run at build time); /install.sh will tell users to contact an admin"
 	}
-	return fmt.Sprintf("命令行安装包：版本 %s，%d 个平台（%s）", d.Manifest.Version, len(d.Available()), strings.Join(d.Available(), "、"))
+	return fmt.Sprintf("CLI install bundle: version %s, %d platforms (%s)", d.Manifest.Version, len(d.Available()), strings.Join(d.Available(), ", "))
 }
 
-const noDist = "这台服务器没有附带命令行安装包（构建服务端时没有执行 make cli-dist），请联系管理员"
-
-func writeErr(w http.ResponseWriter, code int, msg string) {
+// writeErr 回一个 JSON 错误，说明按请求的语言（Accept-Language，没有时用服务器缺省语言）。
+func writeErr(w http.ResponseWriter, r *http.Request, code int, key string, data ...i18n.D) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": i18n.FromRequest(r).T(key, data...)})
 }
 
 // validHost 只接受由字母、数字、点、连字符、冒号、方括号组成的 Host（域名、IPv4、IPv6 加端口）。
@@ -148,12 +150,12 @@ func (d *Dist) Register(mux *http.ServeMux, origin func(*http.Request) string, s
 		d.serveScript(w, r, origin, psTemplate)
 	})
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
-		writeErr(w, http.StatusNotFound, "没有这个文件")
+		writeErr(w, r, http.StatusNotFound, "install.http.no_file")
 	})
 	mux.HandleFunc("GET /dl/cohive/{platform}", func(w http.ResponseWriter, r *http.Request) {
 		p := r.PathValue("platform")
 		if d.Manifest == nil {
-			writeErr(w, http.StatusNotFound, noDist)
+			writeErr(w, r, http.StatusNotFound, "install.no_dist")
 			return
 		}
 		if p == "SHA256SUMS" {
@@ -166,18 +168,20 @@ func (d *Dist) Register(mux *http.ServeMux, origin func(*http.Request) string, s
 		}
 		f, ok := d.Manifest.Files[p]
 		if !ok {
-			writeErr(w, http.StatusNotFound, fmt.Sprintf("没有 %s 的安装包；提供的平台：%s", p, strings.Join(d.Available(), "、")))
+			l := i18n.FromRequest(r)
+			writeErr(w, r, http.StatusNotFound, "install.http.no_package",
+				i18n.D{"Platform": p, "Available": strings.Join(d.Available(), l.T("install.list_sep"))})
 			return
 		}
 		src, err := d.fsys.Open(f.GZ)
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "读取安装包失败")
+			writeErr(w, r, http.StatusInternalServerError, "install.http.read_failed")
 			return
 		}
 		defer src.Close()
 		zr, err := gzip.NewReader(src)
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "读取安装包失败")
+			writeErr(w, r, http.StatusInternalServerError, "install.http.read_failed")
 			return
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -199,23 +203,73 @@ func (d *Dist) Register(mux *http.ServeMux, origin func(*http.Request) string, s
 	})
 }
 
+// scriptData 是安装脚本模板的数据。文案不写在模板里：模板里用 Sh、Ps 按键取文案，
+// 语言包在 internal/i18n/locales/<语言>/install.json。
 type scriptData struct {
 	Server, Version string
 	Files           []platformSum
 	Windows         string // windows-amd64 的校验和；没有时为空
-	Missing         string // 没有安装包时的说明
+	Missing         bool   // 没有安装包
+	lang            i18n.Lang
 }
 
 type platformSum struct{ Platform, SHA256 string }
 
+// Sh 渲染一条文案，作为 sh 双引号字符串里的内容：译文里的 \ " $ ` 全部转义，
+// 参数 kv 是“占位符名, shell 表达式”成对给出，表达式（例如 ${server}、$(uname -s)）原样放进去，由 shell 在运行时展开。
+func (s scriptData) Sh(key string, kv ...string) string {
+	return renderMessage(s.lang, key, kv, escapeSh)
+}
+
+// Ps 渲染一条文案，作为 PowerShell 双引号字符串里的内容；参数约定同 Sh，表达式写成 ${name} 形式。
+func (s scriptData) Ps(key string, kv ...string) string {
+	return renderMessage(s.lang, key, kv, escapePs)
+}
+
+// renderMessage 先用不会被转义的哨兵占住占位符，转义整段译文后，再把哨兵换成真正的表达式。
+// 这样译文里无论有引号、美元符号还是反引号（比如英文的 don't、中文的“授权”），都不会破坏脚本。
+func renderMessage(lang i18n.Lang, key string, kv []string, esc func(string) string) string {
+	data := i18n.D{}
+	marks := make(map[string]string, len(kv)/2)
+	for i := 0; i+1 < len(kv); i += 2 {
+		mark := "\x00" + kv[i] + "\x00"
+		data[kv[i]] = mark
+		marks[mark] = kv[i+1]
+	}
+	out := esc(lang.T(key, data))
+	for mark, expr := range marks {
+		out = strings.ReplaceAll(out, mark, expr)
+	}
+	return out
+}
+
+var (
+	shEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, "`", "\\`")
+	// PowerShell 把弯引号“ ” „ 也当作双引号，所以一并转义
+	psEscaper = strings.NewReplacer("`", "``", `"`, "`\"", "$", "`$", "\u201c", "`\u201c", "\u201d", "`\u201d", "\u201e", "`\u201e")
+)
+
+func escapeSh(s string) string { return shEscaper.Replace(s) }
+func escapePs(s string) string { return psEscaper.Replace(s) }
+
+// scriptLang 决定安装脚本的语言：请求参数 lang > Accept-Language > 服务器缺省语言。
+// curl 不带语言头；网页“绑定新电脑”里复制的命令总带 ?lang=（当前界面语言）。
+func scriptLang(r *http.Request) i18n.Lang {
+	if l, ok := i18n.Match(r.URL.Query().Get("lang")); ok {
+		return l
+	}
+	return i18n.FromRequest(r)
+}
+
 func (d *Dist) serveScript(w http.ResponseWriter, r *http.Request, origin func(*http.Request) string, t *template.Template) {
+	lang := scriptLang(r)
 	if !validHost.MatchString(r.Host) {
-		http.Error(w, "请求的 Host 不合法", http.StatusBadRequest)
+		http.Error(w, lang.T("install.http.bad_host"), http.StatusBadRequest)
 		return
 	}
-	data := scriptData{Server: origin(r)}
+	data := scriptData{Server: origin(r), lang: lang}
 	if d.Manifest == nil {
-		data.Missing = noDist
+		data.Missing = true
 	} else {
 		data.Version = d.Manifest.Version
 		for _, p := range d.Available() {
@@ -225,11 +279,15 @@ func (d *Dist) serveScript(w http.ResponseWriter, r *http.Request, origin func(*
 			data.Windows = f.SHA256
 		}
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	if err := t.Execute(w, data); err != nil {
-		http.Error(w, "生成安装脚本失败", http.StatusInternalServerError)
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, data); err != nil {
+		http.Error(w, lang.T("install.http.script_failed"), http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Language", string(lang))
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write(buf.Bytes())
 }
 
 //go:embed install.sh.tmpl

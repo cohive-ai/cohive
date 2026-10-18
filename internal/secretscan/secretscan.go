@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/BurntSushi/toml"
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 //go:embed gitleaks/gitleaks.toml
@@ -35,8 +36,11 @@ type Finding struct {
 	Field    string
 	Line     int
 	RuleID   string
-	Category string // 中文类别，例如“GitHub 令牌”
+	Category string // 中文类别，例如“GitHub 令牌”；固定中文，按语言取用 CategoryIn
 }
+
+// CategoryIn 返回这条命中的规则类别，按指定语言（例如 GitHub token）。
+func (f Finding) CategoryIn(l i18n.Lang) string { return CategoryIn(l, f.RuleID) }
 
 type allowlist struct {
 	and       bool
@@ -93,7 +97,7 @@ func compileAllowlist(a *tomlAllowlist) (*allowlist, error) {
 	switch out.target {
 	case "", "secret", "match", "line":
 	default:
-		return nil, fmt.Errorf("未知的 regexTarget %q", a.RegexTarget)
+		return nil, fmt.Errorf("unknown regexTarget %q", a.RegexTarget)
 	}
 	for _, s := range a.Regexes {
 		re, err := regexp.Compile(s)
@@ -125,7 +129,7 @@ func parse(src string) (*ruleset, error) {
 	for _, g := range globals {
 		a, err := compileAllowlist(g)
 		if err != nil {
-			return nil, fmt.Errorf("全局放行规则：%w", err)
+			return nil, fmt.Errorf("global allowlist: %w", err)
 		}
 		if len(g.TargetRules) == 0 {
 			rs.global = append(rs.global, a)
@@ -140,10 +144,10 @@ func parse(src string) (*ruleset, error) {
 		}
 		re, err := regexp.Compile(r.Regex)
 		if err != nil {
-			return nil, fmt.Errorf("规则 %s：%w", r.ID, err)
+			return nil, fmt.Errorf("rule %s: %w", r.ID, err)
 		}
 		if r.SecretGroup > re.NumSubexp() {
-			return nil, fmt.Errorf("规则 %s：secretGroup %d 超出分组数", r.ID, r.SecretGroup)
+			return nil, fmt.Errorf("rule %s: secretGroup %d exceeds the number of groups", r.ID, r.SecretGroup)
 		}
 		out := &rule{id: r.ID, re: re, secretGroup: r.SecretGroup, entropy: r.Entropy}
 		for _, k := range r.Keywords {
@@ -156,7 +160,7 @@ func parse(src string) (*ruleset, error) {
 		for _, ta := range als {
 			a, err := compileAllowlist(ta)
 			if err != nil {
-				return nil, fmt.Errorf("规则 %s 的放行规则：%w", r.ID, err)
+				return nil, fmt.Errorf("allowlist of rule %s: %w", r.ID, err)
 			}
 			out.allowlists = append(out.allowlists, a)
 		}
@@ -170,10 +174,10 @@ func parse(src string) (*ruleset, error) {
 var rules = sync.OnceValue(func() *ruleset {
 	rs, err := parse(gitleaksTOML)
 	if err != nil {
-		panic("secretscan: 解析 gitleaks 规则失败：" + err.Error())
+		panic("secretscan: failed to parse gitleaks rules: " + err.Error())
 	}
 	if err := rs.addCohive(); err != nil {
-		panic("secretscan: Cohive 追加规则：" + err.Error())
+		panic("secretscan: Cohive extra rules: " + err.Error())
 	}
 	return rs
 })
@@ -309,7 +313,7 @@ func (rs *ruleset) scanText(field, text string) []Finding {
 			if allowed {
 				continue
 			}
-			out = append(out, Finding{Field: field, Line: line, RuleID: r.id, Category: category(r.id)})
+			out = append(out, Finding{Field: field, Line: line, RuleID: r.id, Category: CategoryIn(i18n.ZhCN, r.id)})
 		}
 	}
 	return out

@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // eventQuery 解析查看记录的查询参数；不合法时已写好 400。
@@ -18,7 +19,7 @@ func eventQuery(w http.ResponseWriter, r *http.Request) (core.EventQuery, bool) 
 		}
 		n, err := strconv.ParseInt(s, 10, 64)
 		if err != nil || n < 1 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": name + " 应为正整数"})
+			writeJSON(w, http.StatusBadRequest, apiErr(w, "invalid_param", "api.param_positive_int", i18n.D{"Name": name}))
 			return false
 		}
 		*dst = n

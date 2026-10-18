@@ -1,20 +1,27 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trans, useTranslation } from "react-i18next";
+import { safeTrans } from "../i18n/safeTrans";
 import { api, ApiError, needsPasswordLogin, type InviteInfo } from "../api";
 import { memberNamePattern, minPasswordLength, roleLabel } from "../format";
+import { LanguageSelect } from "../i18n/LanguageSelect";
 import { inviteLookupFailure } from "../rules";
 import { AuthShell, btn, Callout, ErrorText, Field, inputClass, errMsg } from "../ui";
 
+const mono = <span className="font-mono" />;
+const strong = <span className="font-medium" />;
+
 export function RegisterPage() {
+  const { t } = useTranslation("auth");
   const { code } = useParams({ from: "/i/$code" });
   const invite = useQuery({ queryKey: ["invite", code], queryFn: () => api.invite(code), retry: false });
   const d = invite.data;
 
   return (
-    <AuthShell title="加入 Cohive">
+    <AuthShell title={t("register.title")}>
       {invite.isPending ? (
-        <p className="text-sm text-muted">正在核对邀请链接…</p>
+        <p className="text-sm text-muted">{t("register.checking")}</p>
       ) : invite.isError ? (
         inviteLookupFailure(invite.error) === "invalid" ? (
           <InvalidInvite />
@@ -22,11 +29,11 @@ export function RegisterPage() {
           <div>
             <ErrorText>
               {inviteLookupFailure(invite.error) === "busy"
-                ? "请求过于频繁，请稍等一会儿再点重试。"
-                : `读取邀请失败：${invite.error.message}`}
+                ? t("register.busy")
+                : t("register.loadFailed", { message: invite.error.message })}
             </ErrorText>
             <button type="button" onClick={() => invite.refetch()} className={`${btn.secondary} mt-4`}>
-              重试
+              {t("register.retry")}
             </button>
           </div>
         )
@@ -37,23 +44,27 @@ export function RegisterPage() {
       ) : (
         <RegisterForm code={code} workspace={d.workspace_display || d.workspace} kind={d.kind} role={d.role} />
       )}
+      <div className="mt-6 border-t border-line pt-4">
+        <LanguageSelect />
+      </div>
     </AuthShell>
   );
 }
 
 function InviteSummary({ workspace, kind, role }: { workspace: string; kind: string; role?: string }) {
+  const { t } = useTranslation("auth");
   return (
     <div className="rounded border border-line bg-bg px-3 py-2 text-sm">
       <p>
-        工作空间：<span className="font-medium">{workspace}</span>
-        {role && <span className="ml-2 text-muted">加入后为{roleLabel(role)}</span>}
+        <Trans {...safeTrans} t={t} i18nKey="register.summary.workspace" values={{ workspace }} components={{ b: strong }} />
+        {role && <span className="ml-2 text-muted">{t("register.summary.role", { role: roleLabel(role) })}</span>}
       </p>
       <p className="text-muted">
         {kind === "personal"
-          ? "个人邀请：加入后立即可用。"
+          ? t("register.summary.personal")
           : kind === "team"
-            ? "团队邀请：需要管理员批准后才能加入。"
-            : `邀请类型：${kind}`}
+            ? t("register.summary.team")
+            : t("register.summary.other", { kind })}
       </p>
     </div>
   );
@@ -71,6 +82,7 @@ function JoinAsSignedIn({
   signedInAs: string;
   onSwitched: () => void;
 }) {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
@@ -118,15 +130,21 @@ function JoinAsSignedIn({
     }
   };
 
+  const wsName = invite.workspace_display || invite.workspace;
+
   if (invite.already_member) {
     return (
       <div className="space-y-4 text-sm">
         <Callout tone="teal">
-          你（<span className="font-mono">{signedInAs}</span>）已经是工作空间 <span className="font-medium">{invite.workspace_display || invite.workspace}</span>{" "}
-          的成员，不需要再用这个邀请。
+          <Trans {...safeTrans}
+            t={t}
+            i18nKey="register.joined.already"
+            values={{ account: signedInAs, workspace: wsName }}
+            components={{ m: mono, b: strong }}
+          />
         </Callout>
         <Link to="/w/$ws" params={{ ws: invite.workspace }} className="inline-block text-teal hover:underline">
-          进入 {invite.workspace_display || invite.workspace}
+          {t("register.joined.enter", { workspace: wsName })}
         </Link>
       </div>
     );
@@ -136,10 +154,10 @@ function JoinAsSignedIn({
     return (
       <div className="space-y-4 text-sm">
         <Callout tone="teal">
-          已提交加入申请，等待工作空间 <span className="font-medium">{invite.workspace_display || invite.workspace}</span> 的管理员批准。批准后它会出现在顶栏的工作空间列表里。
+          <Trans {...safeTrans} t={t} i18nKey="register.joined.pending" values={{ workspace: wsName }} components={{ b: strong }} />
         </Callout>
         <Link to="/" className="inline-block text-teal hover:underline">
-          回到首页
+          {t("register.joined.home")}
         </Link>
       </div>
     );
@@ -147,58 +165,73 @@ function JoinAsSignedIn({
 
   return (
     <div className="space-y-4">
-      <InviteSummary workspace={invite.workspace_display || invite.workspace} kind={invite.kind} role={invite.role} />
+      <InviteSummary workspace={wsName} kind={invite.kind} role={invite.role} />
       <p className="text-sm">
-        你已登录为 <span className="font-mono font-medium">{signedInAs}</span>。接受邀请后，这个账号会成为该工作空间的成员，不会新建账号。
+        <Trans {...safeTrans}
+          t={t}
+          i18nKey="register.joined.signedInAs"
+          values={{ account: signedInAs }}
+          components={{ m: <span className="font-mono font-medium" /> }}
+        />
       </p>
       {needPassword ? (
         <div className="space-y-3">
-          <Callout>
-            接受邀请需要用账号密码登录。你现在是用已配对电脑免密打开的网页（cohive web），为安全起见不能接受邀请。
-          </Callout>
+          <Callout>{t("register.joined.needPassword")}</Callout>
           <button type="button" onClick={() => signOut("login")} disabled={busy} className={btn.primary}>
-            退出并用账号密码登录
+            {t("register.joined.signOutAndLogin")}
           </button>
         </div>
       ) : mustChange ? (
         <Callout>
-          请先
-          <Link to="/password" search={{ redirect: here }} className="text-teal hover:underline">
-            修改密码
-          </Link>
-          ，改完会回到这里。
+          <Trans
+            t={t}
+            i18nKey="register.joined.mustChange"
+            components={{ l: <Link to="/password" search={{ redirect: here }} className="text-teal hover:underline" /> }}
+          />
         </Callout>
       ) : (
         <>
           <ErrorText>{error}</ErrorText>
           <button type="button" onClick={accept} disabled={busy} className={`${btn.primary} w-full`}>
-            {busy ? "正在加入…" : `以 ${signedInAs} 身份加入 ${invite.workspace_display || invite.workspace}`}
+            {busy ? t("register.joined.joining") : t("register.joined.join", { account: signedInAs, workspace: wsName })}
           </button>
         </>
       )}
       <p className="text-sm text-muted">
-        不是你的账号？
-        <button type="button" onClick={() => signOut("stay")} disabled={busy} className="text-teal hover:underline">
-          退出后换个账号
-        </button>
+        <Trans
+          t={t}
+          i18nKey="register.joined.notYou"
+          components={{
+            b: (
+              <button
+                type="button"
+                onClick={() => signOut("stay")}
+                disabled={busy}
+                className="text-teal hover:underline"
+              />
+            ),
+          }}
+        />
       </p>
     </div>
   );
 }
 
 function InvalidInvite() {
+  const { t } = useTranslation("auth");
   return (
     <div className="space-y-3 text-sm">
-      <p className="text-danger">这个邀请链接无效：可能已过期、已被作废，或者名额已经用完。</p>
-      <p className="text-muted">请向管理员要一个新的邀请链接。已经有账号的话可以直接登录。</p>
+      <p className="text-danger">{t("register.invalid.title")}</p>
+      <p className="text-muted">{t("register.invalid.hint")}</p>
       <Link to="/login" className="inline-block text-teal hover:underline">
-        去登录
+        {t("register.invalid.login")}
       </Link>
     </div>
   );
 }
 
 function RegisterForm({ code, workspace, kind, role }: { code: string; workspace: string; kind: string; role?: string }) {
+  const { t } = useTranslation("auth");
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
@@ -209,10 +242,10 @@ function RegisterForm({ code, workspace, kind, role }: { code: string; workspace
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const nameError = name && !memberNamePattern.test(name) ? "只能用小写字母、数字、下划线和横线，1 到 32 位，第一个字符须是字母或数字。" : "";
+  const nameError = name && !memberNamePattern.test(name) ? t("register.form.nameError") : "";
   const passwordError =
-    password && password.length < minPasswordLength ? `密码至少 ${minPasswordLength} 位。` : "";
-  const confirmError = confirm && confirm !== password ? "两次输入的密码不一致。" : "";
+    password && password.length < minPasswordLength ? t("register.form.passwordError", { min: minPasswordLength }) : "";
+  const confirmError = confirm && confirm !== password ? t("register.form.confirmError") : "";
   const ready =
     memberNamePattern.test(name) && password.length >= minPasswordLength && confirm === password && !busy;
 
@@ -240,11 +273,10 @@ function RegisterForm({ code, workspace, kind, role }: { code: string; workspace
     return (
       <div className="space-y-4 text-sm">
         <Callout tone="teal">
-          已提交，等待管理员批准。批准后用登录名 <span className="font-mono font-medium">{name}</span>{" "}
-          和刚才设的密码登录。
+          <Trans {...safeTrans} t={t} i18nKey="register.form.submitted" values={{ name }} components={{ m: <span className="font-mono font-medium" /> }} />
         </Callout>
         <Link to="/login" className="inline-block text-teal hover:underline">
-          去登录页
+          {t("register.form.toLogin")}
         </Link>
       </div>
     );
@@ -254,13 +286,9 @@ function RegisterForm({ code, workspace, kind, role }: { code: string; workspace
     <form onSubmit={submit} className="space-y-4">
       <InviteSummary workspace={workspace} kind={kind} role={role} />
       <Field
-        label="登录名"
+        label={t("register.form.name")}
         htmlFor="name"
-        hint={
-          nameError
-            ? undefined
-            : "全服务器唯一，用于登录和在问题单里被指派，注册后不能修改。小写字母、数字、下划线、横线，1 到 32 位。"
-        }
+        hint={nameError ? undefined : t("register.form.nameHint")}
       >
         <input
           id="name"
@@ -275,7 +303,7 @@ function RegisterForm({ code, workspace, kind, role }: { code: string; workspace
         />
         {nameError && <p className="mt-1 text-xs text-danger">{nameError}</p>}
       </Field>
-      <Field label="显示名" htmlFor="display" hint="同事在看板上看到的名字，可以用中文，可留空。">
+      <Field label={t("register.form.displayName")} htmlFor="display" hint={t("register.form.displayNameHint")}>
         <input
           id="display"
           autoComplete="nickname"
@@ -285,7 +313,11 @@ function RegisterForm({ code, workspace, kind, role }: { code: string; workspace
           className={inputClass}
         />
       </Field>
-      <Field label="密码" htmlFor="password" hint={passwordError ? undefined : `至少 ${minPasswordLength} 位。`}>
+      <Field
+        label={t("register.form.password")}
+        htmlFor="password"
+        hint={passwordError ? undefined : t("register.form.passwordHint", { min: minPasswordLength })}
+      >
         <input
           id="password"
           type="password"
@@ -297,7 +329,7 @@ function RegisterForm({ code, workspace, kind, role }: { code: string; workspace
         />
         {passwordError && <p className="mt-1 text-xs text-danger">{passwordError}</p>}
       </Field>
-      <Field label="确认密码" htmlFor="confirm">
+      <Field label={t("register.form.confirm")} htmlFor="confirm">
         <input
           id="confirm"
           type="password"
@@ -311,14 +343,22 @@ function RegisterForm({ code, workspace, kind, role }: { code: string; workspace
       </Field>
       <ErrorText>{error}</ErrorText>
       <button type="submit" disabled={!ready} className={`${btn.primary} w-full`}>
-        {busy ? "正在提交…" : "注册"}
+        {busy ? t("register.form.submitting") : t("register.form.submit")}
       </button>
       <p className="text-sm text-muted">
-        已有账号？
-        <Link to="/login" search={{ redirect: `/i/${encodeURIComponent(code)}` }} className="text-teal hover:underline">
-          登录后加入
-        </Link>
-        ，不用再注册一个。
+        <Trans
+          t={t}
+          i18nKey="register.form.haveAccount"
+          components={{
+            l: (
+              <Link
+                to="/login"
+                search={{ redirect: `/i/${encodeURIComponent(code)}` }}
+                className="text-teal hover:underline"
+              />
+            ),
+          }}
+        />
       </p>
     </form>
   );

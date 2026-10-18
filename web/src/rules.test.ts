@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { ApiError } from "./api";
+import i18n from "./i18n";
 import {
   adminNeedsPasswordLogin,
   authorizeAsText,
@@ -70,15 +71,36 @@ it("查询邀请时 429 是请求过频，不是邀请无效", () => {
   expect(inviteLookupFailure(new ApiError(502, "网关"))).toBe("error");
 });
 
-it("安装命令只指向本服务", () => {
+it("安装命令只指向本服务，地址带当前界面语言并加单引号（zsh 会把 ? 当通配符）", () => {
   expect(installCommands("https://cohive.example.com/")).toEqual({
-    unix: "curl -fsSL https://cohive.example.com/install.sh | sh",
-    windows: "irm https://cohive.example.com/install.ps1 | iex",
+    unix: "curl -fsSL 'https://cohive.example.com/install.sh?lang=zh-CN' | sh",
+    windows: "irm 'https://cohive.example.com/install.ps1?lang=zh-CN' | iex",
   });
   expect(installCommands("https://cohive.example.com", true)).toEqual({
-    unix: "curl -fsSL https://cohive.example.com/install.sh | sh -s -- --login",
-    windows: "$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex",
+    unix: "curl -fsSL 'https://cohive.example.com/install.sh?lang=zh-CN' | sh -s -- --login",
+    windows: "$env:COHIVE_LOGIN=1; irm 'https://cohive.example.com/install.ps1?lang=zh-CN' | iex",
   });
+});
+
+it("英文界面下文案与安装命令的语言参数随之切换", async () => {
+  await i18n.changeLanguage("en");
+  try {
+    expect(installCommands("https://cohive.example.com", true).unix).toBe(
+      "curl -fsSL 'https://cohive.example.com/install.sh?lang=en' | sh -s -- --login",
+    );
+    expect(installCommands("https://cohive.example.com").windows).toBe(
+      "irm 'https://cohive.example.com/install.ps1?lang=en' | iex",
+    );
+    expect(authorizeAsText({ name: "ann", display_name: "Ann" })).toBe(
+      "This computer will be authorized as account ann (Ann).",
+    );
+    expect(deviceScopeText(["pay", "ops"])).toBe("Once approved, this computer can be used for: pay, ops.");
+    expect(deviceScopeText([])).toContain("aren't in any workspace");
+    expect(revokeDeviceMessage("", true)).toContain("Unnamed");
+    expect(revokeDeviceMessage("mac", false)).toContain("cohive login");
+  } finally {
+    await i18n.changeLanguage("zh-CN");
+  }
 });
 
 it("一个工作空间时 cohive init 不用指定，多个时逐个列出", () => {

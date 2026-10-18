@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/notify"
 	"github.com/cohive-ai/cohive/internal/store"
 )
@@ -30,9 +31,9 @@ func dingtalkFromEnv() (*notify.DingTalkChannel, error) {
 	case id == "" && secret == "":
 		return nil, nil
 	case id == "":
-		return nil, errors.New("设置了 COHIVE_DINGTALK_CLIENT_SECRET，但缺少 COHIVE_DINGTALK_CLIENT_ID（钉钉应用的 Client ID）")
+		return nil, i18n.Errorf("server.notify.dingtalk_id_missing")
 	case secret == "":
-		return nil, errors.New("设置了 COHIVE_DINGTALK_CLIENT_ID，但缺少 COHIVE_DINGTALK_CLIENT_SECRET（钉钉应用的 Client Secret）")
+		return nil, i18n.Errorf("server.notify.dingtalk_secret_missing")
 	}
 	return &notify.DingTalkChannel{
 		API: &notify.DingTalk{ClientID: id, ClientSecret: secret, RobotCode: os.Getenv("COHIVE_DINGTALK_ROBOT_CODE"),
@@ -55,12 +56,12 @@ func notifyCmd(ctx context.Context, out io.Writer, args []string) error {
 		return notifyRetry(ctx, out, args[1:])
 	}
 	if len(args) == 0 || args[0] != "test" {
-		fmt.Fprint(out, usage)
-		return fmt.Errorf("未知命令 %q", "notify")
+		fmt.Fprint(out, usage())
+		return i18n.Errorf("server.unknown_command", i18n.D{"Command": strconv.Quote("notify")})
 	}
 	var name string
 	if err := parse("notify test", args[1:], func(fs *flag.FlagSet) {
-		fs.StringVar(&name, "workspace", "default", "工作空间名")
+		fs.StringVar(&name, "workspace", "default", i18n.T("server.flag.ws_name"))
 	}); err != nil {
 		return err
 	}
@@ -69,7 +70,7 @@ func notifyCmd(ctx context.Context, out io.Writer, args []string) error {
 		return err
 	}
 	if telegramFromEnv() == nil && dt == nil {
-		return errors.New("未设置环境变量 COHIVE_TELEGRAM_BOT_TOKEN（Telegram 机器人令牌）或钉钉应用凭据 COHIVE_DINGTALK_CLIENT_ID、COHIVE_DINGTALK_CLIENT_SECRET")
+		return i18n.Errorf("server.notify.no_credentials")
 	}
 	pool, err := openDB(ctx)
 	if err != nil {
@@ -89,24 +90,29 @@ func notifyCmd(ctx context.Context, out io.Writer, args []string) error {
 	case store.ProviderTelegram:
 		tg := telegramFromEnv()
 		if tg == nil {
-			return errors.New("未设置环境变量 COHIVE_TELEGRAM_BOT_TOKEN（Telegram 机器人令牌）")
+			return i18n.Errorf("server.notify.telegram_token_missing")
 		}
 		ch = &notify.Bot{TG: tg}
 	case store.ProviderDingTalk:
 		if dt == nil {
-			return errors.New("未设置钉钉应用凭据 COHIVE_DINGTALK_CLIENT_ID、COHIVE_DINGTALK_CLIENT_SECRET")
+			return i18n.Errorf("server.notify.dingtalk_credentials_missing")
 		}
 		ch = dt
 	default:
-		return fmt.Errorf("工作空间 %s 还没配置群通知：Telegram 群在群里发 /chatid 拿到群编号，再执行 workspace notify --workspace %s --telegram-chat <群编号>；钉钉群在网页“管理 → 工作空间”生成绑定码，在群里 @机器人 发“绑定群 绑定码”", name, name)
+		return i18n.Errorf("server.notify.not_configured", i18n.D{"Name": name})
 	}
 	sendCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	text := fmt.Sprintf("Cohive 测试消息：工作空间 %s 的群通知已接通。之后轮到谁处理问题单，会在这里 @ 到人。", ch.Format().Esc(name))
-	if err := ch.Send(sendCtx, ws.Notify.Target, notify.Rendered{Title: "Cohive 测试消息", Text: text}); err != nil {
+	// 测试消息发到群里，用服务器缺省语言，不跟随运维人员终端的语言
+	lang, err := defaultLanguage()
+	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "已发送测试消息到工作空间 %s 的群\n", name)
+	text := lang.T("server.notify.test_text", i18n.D{"Name": ch.Format().Esc(name)})
+	if err := ch.Send(sendCtx, ws.Notify.Target, notify.Rendered{Title: lang.T("server.notify.test_title"), Text: text}); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, i18n.T("server.notify.test_sent", i18n.D{"Name": name}))
 	return nil
 }
 
@@ -114,7 +120,7 @@ func notifyCmd(ctx context.Context, out io.Writer, args []string) error {
 func notifyRetry(ctx context.Context, out io.Writer, args []string) error {
 	var name string
 	if err := parse("notify retry", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&name, "workspace", "default", "工作空间名")
+		fs.StringVar(&name, "workspace", "default", i18n.T("server.flag.ws_name"))
 	}); err != nil {
 		return err
 	}
@@ -131,6 +137,6 @@ func notifyRetry(ctx context.Context, out io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "已把工作空间 %s 的 %d 条失败通知重新排队，服务会在几秒内重发（问题单已有新进展的会被跳过）\n", name, n)
+	fmt.Fprintln(out, i18n.T("server.notify.retried", i18n.D{"Name": name, "Count": n}))
 	return nil
 }

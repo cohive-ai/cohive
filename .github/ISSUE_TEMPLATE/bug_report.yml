@@ -1,0 +1,55 @@
+name: Bug report / 问题报告
+description: Something does not work as expected. 功能与预期不符。
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! English or Chinese are both fine. Please remove tokens, passwords, internal URLs and customer data from logs before pasting.
+        感谢反馈！中英文均可。贴日志前请删去令牌、密码、内部地址与客户数据。
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened / 发生了什么
+      description: Include the exact error message if there is one. 有报错请原样贴出。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected / 期望结果
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Cohive version / 版本
+      description: Output of `cohive version`, and the server version shown on the web UI or by `cohive-server version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 涉及部分
+      multiple: true
+      options:
+        - Web UI / 网页
+        - CLI (cohive) / 成员命令行
+        - Server, deployment / 服务端、部署
+        - MCP, coding tools / MCP、编程工具
+        - Chat notifications / 群通知
+        - Translations / 翻译
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment / 环境
+      description: OS, deployment method (Docker, single host), coding tool and version (Claude Code, Codex), chat platform.

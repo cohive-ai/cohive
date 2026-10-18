@@ -3,12 +3,13 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -34,13 +35,13 @@ func announce(opts Options, fn func(ctx context.Context, a Announcer) error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		if err := fn(ctx, opts.Announcer); err != nil {
-			log.Printf("通知管理员审批失败：%v", err)
+			log.Printf("failed to notify admins about approval: %v", err)
 		}
 	}()
 }
 
 func tooMany(w http.ResponseWriter) {
-	writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "请求过于频繁，请一分钟后再试"})
+	writeJSON(w, http.StatusTooManyRequests, apiErr(w, "too_many_requests", "api.too_many_requests"))
 }
 
 // publicRoutes 注册不需要身份的接口，均按来源地址限频。
@@ -66,18 +67,20 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		if d := guard.locked(in.Name); d > 0 {
 			svc.DummyPasswordCheck(r.Context(), in.Password) // 锁定时也耗同样的时间，不暴露登录名是否存在
-			writeJSON(w, http.StatusTooManyRequests, map[string]string{
-				"error": fmt.Sprintf("这个登录名连续登录失败次数过多，请 %d 秒后再试", int(d.Seconds())+1)})
+			writeJSON(w, http.StatusTooManyRequests, apiErr(w, "login_locked", "api.login_locked", i18n.D{"Seconds": int(d.Seconds()) + 1}))
 			return
 		}
 		sess, err := svc.Login(r.Context(), in.Name, in.Password)
 		switch {
 		case errors.Is(err, core.ErrBadLogin):
 			guard.failed(in.Name)
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusUnauthorized, errBody(w, "bad_login", err))
 			return
-		case errors.Is(err, core.ErrSignupPending), errors.Is(err, store.ErrAccountDisabled):
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		case errors.Is(err, core.ErrSignupPending):
+			writeJSON(w, http.StatusForbidden, errBody(w, "signup_pending", err))
+			return
+		case errors.Is(err, store.ErrAccountDisabled):
+			writeJSON(w, http.StatusForbidden, errBody(w, "account_disabled", err))
 			return
 		case err != nil:
 			writeError(w, err)
@@ -102,7 +105,7 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 	handlePublic(mux, "POST /api/v1/auth/logout", func(w http.ResponseWriter, r *http.Request) {
 		if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
 			if !sameOrigin(r) {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "跨站请求已拒绝"})
+				writeJSON(w, http.StatusForbidden, apiErr(w, "cross_site", "api.auth.cross_site"))
 				return
 			}
 			if err := svc.Logout(r.Context(), c.Value); err != nil {
@@ -120,7 +123,9 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if errors.Is(err, core.ErrWebLoginCode) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`<!doctype html><meta charset="utf-8"><title>Cohive</title><p>` + err.Error() + `</p><p><a href="/login">用账号密码登录</a></p>`))
+			l := i18n.FromContext(r.Context())
+			_, _ = w.Write([]byte(`<!doctype html><meta charset="utf-8"><title>Cohive</title><p>` +
+				html.EscapeString(i18n.Message(l, err)) + `</p><p><a href="/login">` + l.T("api.once.password_login") + `</a></p>`))
 			return
 		}
 		if err != nil {

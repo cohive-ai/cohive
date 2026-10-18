@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { api, ApiError, needsPasswordLogin } from "../api";
 import { NeedPasswordLogin, Notice } from "../components";
-import { absoluteTime, deviceAuthStatusLabel, relativeTime, toolsText } from "../format";
+import { absoluteTime, relativeTime, toolsText } from "../format";
+import i18n from "../i18n";
 import { btn, Callout, ErrorText, errMsg } from "../ui";
-import { authorizeAsText, deviceScopeText } from "../rules";
+import { authorizeAsText, deviceScopeText, joinNames } from "../rules";
 
 // 终端执行 cohive login 后打开的授权页
 export function DeviceAuthPage() {
+  const { t } = useTranslation("auth");
   const { nonce } = useParams({ from: "/layout/device/$nonce" });
   const auth = useQuery({ queryKey: ["device-auth", nonce], queryFn: () => api.deviceAuth(nonce), retry: false });
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
@@ -36,20 +39,20 @@ export function DeviceAuthPage() {
     body = (
       <NeedPasswordLogin
         redirectTo={`/device/${encodeURIComponent(nonce)}`}
-        message="授权新电脑需要用账号密码登录。你现在是用已配对电脑免密打开的网页（cohive web），为安全起见不能在这里授权。用账号密码登录后会回到这个页面。"
+        message={t("device.needPassword")}
       />
     );
   } else if (auth.isPending) {
-    body = <Notice>正在读取授权请求…</Notice>;
+    body = <Notice>{t("device.loading")}</Notice>;
   } else if (auth.isError) {
     const gone = auth.error instanceof ApiError && [400, 404, 410].includes(auth.error.status);
     body = gone ? (
-      <Notice tone="danger">这个授权链接无效或已过期。回到终端重新执行 cohive login 获取新的链接。</Notice>
+      <Notice tone="danger">{t("device.gone")}</Notice>
     ) : (
       <div>
-        <Notice tone="danger">读取失败：{auth.error.message}</Notice>
+        <Notice tone="danger">{t("device.loadFailed", { message: auth.error.message })}</Notice>
         <button type="button" onClick={() => auth.refetch()} className={`${btn.secondary} mt-3`}>
-          重试
+          {t("device.retry")}
         </button>
       </div>
     );
@@ -59,22 +62,22 @@ export function DeviceAuthPage() {
     body = (
       <div className="space-y-4">
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-lg border border-line bg-surface p-4 text-sm">
-          <dt className="text-muted">设备名</dt>
+          <dt className="text-muted">{t("device.name")}</dt>
           <dd className="min-w-0 break-words">
-            <span className="font-medium">{d.device_name || "未命名"}</span>
-            <span className="ml-2 text-xs text-muted">（终端自报）</span>
+            <span className="font-medium">{d.device_name || t("device.unnamed")}</span>
+            <span className="ml-2 text-xs text-muted">{t("device.selfReported")}</span>
           </dd>
-          <dt className="text-muted">编程工具</dt>
+          <dt className="text-muted">{t("device.tools")}</dt>
           <dd>{toolsText(d.tools)}</dd>
-          <dt className="text-muted">批准后可用于</dt>
+          <dt className="text-muted">{t("device.scope")}</dt>
           <dd>
             {d.workspaces && d.workspaces.length ? (
-              d.workspaces.join("、")
+              joinNames(d.workspaces)
             ) : (
               <span className="text-muted">{deviceScopeText(d.workspaces)}</span>
             )}
           </dd>
-          <dt className="text-muted">发起时间</dt>
+          <dt className="text-muted">{t("device.created")}</dt>
           <dd>
             {absoluteTime(d.created_at)}
             <span className="ml-2 text-muted">{relativeTime(d.created_at)}</span>
@@ -83,24 +86,20 @@ export function DeviceAuthPage() {
         {status === "pending" ? (
           <>
             <Callout>
-              <p className="font-medium">只授权你自己刚刚在终端发起的登录。</p>
-              <p className="mt-1">
-                如果你没有在自己的电脑上执行 cohive login，或者这个链接是别人发给你的，请点“拒绝”。授权后这台设备就能以你的身份操作问题单。
-              </p>
+              <p className="font-medium">{t("device.warnTitle")}</p>
+              <p className="mt-1">{t("device.warnBody")}</p>
             </Callout>
             <p className="text-sm text-muted">
-              {d.first_device
-                ? "这是你的第一台设备，授权后立即生效。"
-                : "你之前配对过设备（包括已吊销的），这台新设备授权后还需要你所在工作空间的管理员批准才能使用。"}
+              {d.first_device ? t("device.firstDevice") : t("device.needsAdmin")}
             </p>
             {me.data && <p className="text-sm font-medium">{authorizeAsText(me.data.account)}</p>}
             <ErrorText>{error}</ErrorText>
             <div className="flex flex-wrap gap-3">
               <button type="button" onClick={() => decide(true)} disabled={!!busy} className={btn.primary}>
-                {busy === "approve" ? "正在授权…" : "授权"}
+                {busy === "approve" ? t("device.approving") : t("device.approve")}
               </button>
               <button type="button" onClick={() => decide(false)} disabled={!!busy} className={btn.danger}>
-                {busy === "deny" ? "正在拒绝…" : "拒绝"}
+                {busy === "deny" ? t("device.denying") : t("device.deny")}
               </button>
             </div>
           </>
@@ -113,19 +112,30 @@ export function DeviceAuthPage() {
 
   return (
     <div className="mx-auto max-w-xl">
-      <h1 className="mb-4 text-lg font-semibold">授权这台电脑登录</h1>
+      <h1 className="mb-4 text-lg font-semibold">{t("device.title")}</h1>
       {body}
     </div>
   );
 }
 
+// 授权请求的状态名（服务端给出）对应的说明；没见过的状态原样显示
+const statusLabels: Record<string, () => string> = {
+  pending: () => i18n.t("auth:device.status.pending"),
+  awaiting_admin: () => i18n.t("auth:device.status.awaiting_admin"),
+  approved: () => i18n.t("auth:device.status.approved"),
+  delivered: () => i18n.t("auth:device.status.delivered"),
+  denied: () => i18n.t("auth:device.status.denied"),
+  expired: () => i18n.t("auth:device.status.expired"),
+};
+
 function ResultMessage({ status }: { status: string }) {
-  const msg: Record<string, React.ReactNode> = {
-    approved: "已授权，回到终端即可。",
-    delivered: "已授权，终端已经完成登录。",
-    awaiting_admin: "已提交，等待你所在工作空间的管理员批准。终端开着的话批准后会自动完成；终端已经关掉的话，批准后在那台电脑上执行 cohive login --resume 领取。",
-    denied: "已拒绝。这次登录不会生效。",
-    expired: "这个授权请求已过期。回到终端重新执行 cohive login。",
+  const { t } = useTranslation("auth");
+  const msg: Record<string, string> = {
+    approved: t("device.result.approved"),
+    delivered: t("device.result.delivered"),
+    awaiting_admin: t("device.result.awaiting_admin"),
+    denied: t("device.result.denied"),
+    expired: t("device.result.expired"),
   };
   const ok = status === "approved" || status === "delivered" || status === "awaiting_admin";
   return (
@@ -134,11 +144,11 @@ function ResultMessage({ status }: { status: string }) {
         <Callout tone="teal">{msg[status]}</Callout>
       ) : (
         <Notice tone={status === "denied" ? "muted" : "danger"}>
-          {msg[status] ?? `当前状态：${deviceAuthStatusLabel[status] ?? status}`}
+          {msg[status] ?? t("device.currentStatus", { status: statusLabels[status]?.() ?? status })}
         </Notice>
       )}
       <Link to="/me" className="inline-block text-sm text-teal hover:underline">
-        去个人中心查看我的设备
+        {t("device.viewDevices")}
       </Link>
     </div>
   );

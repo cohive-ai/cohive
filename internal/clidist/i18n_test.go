@@ -1,0 +1,14 @@
+package clidist_test
+
+import (
+	"os"
+	"testing"
+
+	"github.com/cohive-ai/cohive/internal/i18n"
+)
+
+// TestMain：现有测试断言中文文案，服务器缺省语言固定为中文；英文另有用例。
+func TestMain(m *testing.M) {
+	i18n.SetDefault(i18n.ZhCN)
+	os.Exit(m.Run())
+}

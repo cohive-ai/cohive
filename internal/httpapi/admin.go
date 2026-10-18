@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -289,7 +290,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			return
 		}
 		if !providerEnabled(opts, in.Provider) {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "协作服务没有启用这种通讯工具"})
+			writeJSON(w, http.StatusServiceUnavailable, apiErr(w, "service_unavailable", "api.chat_provider_disabled"))
 			return
 		}
 		b, err := svc.StartChatBind(r.Context(), core.WebActor(*actor), ws.ID, in.Provider)
@@ -333,7 +334,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		// 群消息里问题单链接的样子：对外地址是服务器级的，这里只读显示；没设时为空，页面提示去服务器管理设置
 		example := ""
 		if ext.URL != "" {
-			example = core.WorkspaceLink(ext.URL, ws.Name) + "/issues/编号"
+			example = core.WorkspaceLink(ext.URL, ws.Name) + "/issues/" + i18n.FromContext(r.Context()).T("api.issue_number_placeholder")
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"name": ws.Name, "path": ws.Name, "display_name": ws.Label(),
 			"telegram_chat": telegramChat(ws), "show_title": ws.Notify.ShowTitle, "show_brief": ws.Notify.ShowBrief,

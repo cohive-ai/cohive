@@ -1,5 +1,7 @@
 # 不用 Docker 的单机运行
 
+[English](single-host.en.md)
+
 在一台机器上直接运行 `cohive-server`，用仓库里的脚本管理它。想省事的话用 [Docker 部署](deploy-docker.md)；本文适合想直接跑程序、或者在自己的 Mac 上长期放一台测试服的情况。
 
 - `scripts/cohive-server.sh start|stop|restart|status|run`：启动、停止、查看状态
@@ -40,6 +42,7 @@
    ```
 
    按实际修改 `COHIVE_DATABASE_URL`、`COHIVE_ADDR`。对外地址可以在网页“服务器管理 → 设置”里填，也可以写 `COHIVE_EXTERNAL_URL` 锁定；它的主机名自动加入 MCP 白名单，`COHIVE_ALLOWED_HOSTS` 只在还要用别的域名访问时才需要。**环境变量里已有的值优先于文件**：终端里残留的 `COHIVE_DATABASE_URL` 会让服务连到别的库，手动启动时可以用 `env -u COHIVE_DATABASE_URL scripts/cohive-server.sh start`。
+   服务器缺省语言用 `COHIVE_DEFAULT_LANGUAGE` 设置（`en` 或 `zh-CN`；不设时为英文，团队以中文为主时设为 `zh-CN`），成员命令行可用 `COHIVE_LANG` 覆盖自己的语言。
 3. Telegram 机器人令牌：用 `scripts/set-telegram-token.sh` 保存到 `~/.config/cohive/telegram.env`。启动脚本只在服务进程里加载它，不打印、不写日志、不进 `server.env`。要换文件用 `COHIVE_TELEGRAM_ENV` 指定。
    钉钉应用凭据同理：用 `scripts/set-dingtalk-credentials.sh` 保存到 `~/.config/cohive/dingtalk.env`（要换文件用 `COHIVE_DINGTALK_ENV`），见 [钉钉接入](dingtalk.md)。
 
@@ -163,7 +166,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://cohive.example.com/healthz     
 env -u COHIVE_DATABASE_URL scripts/cohive-server.sh stop
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.anormlylee.cohive.server.plist
 curl -s http://127.0.0.1:8787/api/v1/version
-grep 'Telegram 已启用' ~/.local/share/cohive-server/logs/server.log | tail -1
+grep 'Telegram enabled' ~/.local/share/cohive-server/logs/server.log | tail -1
 ```
 
 装好 plist 之后，`scripts/cohive-server.sh start` 也会自动先停后台进程再装载，效果相同。

@@ -1,20 +1,21 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { api, type ServerAccount, type ServerSettings, type ServerWorkspace } from "../api";
 import { NeedPasswordLogin, Notice } from "../components";
 import { absoluteTime, memberNamePattern, roleLabel, workspaceName } from "../format";
 import { btn, Callout, ConfirmButton, ErrorText, errMsg, Field, inputClass, Section, SuccessText } from "../ui";
-import { adminNeedsPasswordLogin } from "../rules";
+import { adminNeedsPasswordLogin, joinNames } from "../rules";
 import { PendingDeviceRow } from "./Admin";
 import { EventLog } from "./EventLog";
 
 export const serverTabs = [
-  { id: "workspaces", label: "工作空间" },
-  { id: "accounts", label: "账号" },
-  { id: "devices", label: "待批设备" },
-  { id: "settings", label: "设置" },
-  { id: "events", label: "记录" },
+  { id: "workspaces" },
+  { id: "accounts" },
+  { id: "devices" },
+  { id: "settings" },
+  { id: "events" },
 ] as const;
 
 export type ServerTab = (typeof serverTabs)[number]["id"];
@@ -25,38 +26,43 @@ const tag = "rounded px-1.5 py-px text-xs";
 
 // 服务器管理：工作空间、账号、待批设备、管理操作记录。只有服务器管理员能用，且要求账号密码登录。
 export function ServerPage() {
+  const { t } = useTranslation("server");
+  const tabLabel: Record<ServerTab, string> = {
+    workspaces: t("tabs.workspaces"),
+    accounts: t("tabs.accounts"),
+    devices: t("tabs.devices"),
+    settings: t("tabs.settings"),
+    events: t("tabs.events"),
+  };
   const { tab = "workspaces" } = useSearch({ from: "/layout/server" });
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
 
-  if (me.isPending) return <Notice>正在读取…</Notice>;
-  if (me.isError) return <Notice tone="danger">读取失败：{me.error.message}</Notice>;
+  if (me.isPending) return <Notice>{t("loading")}</Notice>;
+  if (me.isError) return <Notice tone="danger">{t("loadFailed", { message: me.error.message })}</Notice>;
   if (!me.data.account.server_admin) {
-    return <Notice tone="danger">你没有服务器管理权限。工作空间与账号由服务器管理员管理。</Notice>;
+    return <Notice tone="danger">{t("noPermission")}</Notice>;
   }
   if (adminNeedsPasswordLogin(me.data)) {
     return (
-      <NeedPasswordLogin
-        redirectTo="/server"
-        message="服务器管理请在网页上用账号密码登录后进行。你现在是用已配对电脑免密打开的网页（cohive web），为安全起见不能做管理操作。"
-      />
+      <NeedPasswordLogin redirectTo="/server" message={t("needPassword")} />
     );
   }
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="mb-3 text-lg font-semibold">服务器管理</h1>
-      <nav aria-label="服务器管理分类" className="mb-5 flex flex-wrap gap-1 border-b border-line">
-        {serverTabs.map((t) => (
+      <h1 className="mb-3 text-lg font-semibold">{t("title")}</h1>
+      <nav aria-label={t("navLabel")} className="mb-5 flex flex-wrap gap-1 border-b border-line">
+        {serverTabs.map((x) => (
           <Link
-            key={t.id}
+            key={x.id}
             to="/server"
-            search={{ tab: t.id }}
-            aria-current={tab === t.id ? "page" : undefined}
+            search={{ tab: x.id }}
+            aria-current={tab === x.id ? "page" : undefined}
             className={`-mb-px border-b-2 px-3 py-2 text-sm ${
-              tab === t.id ? "border-teal text-ink" : "border-transparent text-muted hover:text-ink"
+              tab === x.id ? "border-teal text-ink" : "border-transparent text-muted hover:text-ink"
             }`}
           >
-            {t.label}
+            {tabLabel[x.id]}
           </Link>
         ))}
       </nav>
@@ -70,6 +76,7 @@ export function ServerPage() {
 }
 
 function WorkspacesTab({ self }: { self: string }) {
+  const { t } = useTranslation("server");
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["server", "workspaces"], queryFn: api.serverWorkspaces });
 
@@ -77,13 +84,13 @@ function WorkspacesTab({ self }: { self: string }) {
     <div className="space-y-6">
       <NewWorkspaceForm self={self} />
       <section>
-        <h2 className="mb-2 font-semibold">全部工作空间</h2>
+        <h2 className="mb-2 font-semibold">{t("workspaces.all")}</h2>
         {q.isPending ? (
-          <Notice>正在读取…</Notice>
+          <Notice>{t("loading")}</Notice>
         ) : q.isError ? (
-          <Notice tone="danger">读取失败：{q.error.message}</Notice>
+          <Notice tone="danger">{t("loadFailed", { message: q.error.message })}</Notice>
         ) : q.data.items.length === 0 ? (
-          <Notice>还没有工作空间。用上面的表单新建一个。</Notice>
+          <Notice>{t("workspaces.empty")}</Notice>
         ) : (
           <ul className={listClass}>
             {q.data.items.map((w) => (
@@ -104,6 +111,7 @@ function WorkspacesTab({ self }: { self: string }) {
 }
 
 function WorkspaceRow({ w, onDeleted }: { w: ServerWorkspace; onDeleted: () => Promise<void> }) {
+  const { t } = useTranslation("server");
   const admins = w.admins ?? [];
   return (
     <li className={rowClass}>
@@ -111,37 +119,39 @@ function WorkspaceRow({ w, onDeleted }: { w: ServerWorkspace; onDeleted: () => P
         <p className="flex flex-wrap items-center gap-x-2">
           <span className="font-medium">{workspaceName(w)}</span>
           {workspaceName(w) !== w.name && <span className="font-mono text-xs text-muted">{w.name}</span>}
-          {w.i_am_member && <span className={`${tag} bg-teal-soft text-teal`}>你是成员</span>}
+          {w.i_am_member && <span className={`${tag} bg-teal-soft text-teal`}>{t("workspaces.member")}</span>}
           <span className={`${tag} ${w.telegram_bound ? "bg-sunken text-muted" : "bg-amber-soft text-amber"}`}>
-            {w.telegram_bound ? "已绑定群" : "未绑定群"}
+            {w.telegram_bound ? t("workspaces.bound") : t("workspaces.unbound")}
           </span>
         </p>
         <p className="text-xs text-muted">
-          {w.members} 名成员 · 管理员 {admins.length ? admins.join("、") : "无"} · 未结束的问题单 {w.open_issues} 张 ·{" "}
-          {absoluteTime(w.created_at)} 创建
+          {[
+            t("workspaces.members", { count: w.members }),
+            t("workspaces.admins", { names: admins.length ? joinNames(admins) : t("workspaces.noAdmins") }),
+            t("workspaces.openIssues", { count: w.open_issues }),
+            t("workspaces.created", { time: absoluteTime(w.created_at) }),
+          ].join(" · ")}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
         {w.i_am_member && (
           <Link to="/w/$ws" params={{ ws: w.name }} className={btn.secondary}>
-            看板
+            {t("workspaces.board")}
           </Link>
         )}
         <Link to="/w/$ws/admin" params={{ ws: w.name }} className={btn.secondary}>
-          进入管理
+          {t("workspaces.manage")}
         </Link>
         <ConfirmButton
-          label="删除"
-          title={`删除工作空间 ${w.name}？`}
+          label={t("workspaces.delete")}
+          title={t("workspaces.deleteTitle", { name: w.name })}
           message={
             <>
-              <p>只能删除没有任何问题单（含草稿）的工作空间，例如建错了名字。</p>
-              <p className="mt-2">
-                会一并删除它的邀请、待审申请、服务、成员资格及令牌、群绑定。成员的账号与设备不受影响。删除后不能恢复。
-              </p>
+              <p>{t("workspaces.deleteMessage1")}</p>
+              <p className="mt-2">{t("workspaces.deleteMessage2")}</p>
             </>
           }
-          confirmLabel="确认删除"
+          confirmLabel={t("workspaces.deleteConfirm")}
           action={async () => {
             await api.deleteWorkspace(w.name);
             await onDeleted();
@@ -153,6 +163,7 @@ function WorkspaceRow({ w, onDeleted }: { w: ServerWorkspace; onDeleted: () => P
 }
 
 function NewWorkspaceForm({ self }: { self: string }) {
+  const { t } = useTranslation("server");
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [name, setName] = useState("");
@@ -163,8 +174,8 @@ function NewWorkspaceForm({ self }: { self: string }) {
 
   const trimmed = name.trim();
   const adminName = admin.trim();
-  const nameError = trimmed && !memberNamePattern.test(trimmed) ? "只能用小写字母、数字、下划线和横线，1 到 32 位，第一个字符须是字母或数字。" : "";
-  const adminError = adminName && !memberNamePattern.test(adminName) ? "请填一个登录名。" : "";
+  const nameError = trimmed && !memberNamePattern.test(trimmed) ? t("new.nameError") : "";
+  const adminError = adminName && !memberNamePattern.test(adminName) ? t("new.adminError") : "";
   const ready = memberNamePattern.test(trimmed) && !adminError && !busy;
 
   const submit = async (e: React.FormEvent) => {
@@ -191,12 +202,12 @@ function NewWorkspaceForm({ self }: { self: string }) {
 
   return (
     <Section
-      title="新建工作空间"
-      description="一个项目组一个工作空间。路径建好后不能修改，会出现在链接和项目配置里；显示名可以随时改。"
+      title={t("new.title")}
+      description={t("new.description")}
     >
       <form onSubmit={submit} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="路径" htmlFor="ws-name" hint={nameError ? undefined : "规则同登录名，例如 payments。"}>
+          <Field label={t("new.path")} htmlFor="ws-name" hint={nameError ? undefined : t("new.pathHint")}>
             <input
               id="ws-name"
               autoCapitalize="none"
@@ -209,7 +220,7 @@ function NewWorkspaceForm({ self }: { self: string }) {
             />
             {nameError && <p className="mt-1 text-xs text-danger">{nameError}</p>}
           </Field>
-          <Field label="显示名（可选）" htmlFor="ws-display" hint="给人看的名字，例如“支付组”；留空则显示路径。">
+          <Field label={t("new.display")} htmlFor="ws-display" hint={t("new.displayHint")}>
             <input
               id="ws-display"
               maxLength={40}
@@ -219,9 +230,9 @@ function NewWorkspaceForm({ self }: { self: string }) {
             />
           </Field>
           <Field
-            label="首位管理员（可选）"
+            label={t("new.admin")}
             htmlFor="ws-admin"
-            hint={adminError ? undefined : `填已有账号的登录名；留空则是你自己（${self}）。`}
+            hint={adminError ? undefined : t("new.adminHint", { self })}
           >
             <input
               id="ws-admin"
@@ -239,7 +250,7 @@ function NewWorkspaceForm({ self }: { self: string }) {
         </div>
         <ErrorText>{error}</ErrorText>
         <button type="submit" disabled={!ready} className={btn.primary}>
-          {busy ? "正在新建…" : "新建"}
+          {busy ? t("new.submitting") : t("new.submit")}
         </button>
       </form>
     </Section>
@@ -247,6 +258,7 @@ function NewWorkspaceForm({ self }: { self: string }) {
 }
 
 function AccountsTab({ self }: { self: string }) {
+  const { t } = useTranslation("server");
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const query = q.trim();
@@ -263,7 +275,7 @@ function AccountsTab({ self }: { self: string }) {
   return (
     <div className="space-y-3">
       <label className="sr-only" htmlFor="account-q">
-        按登录名前缀搜索
+        {t("accounts.searchLabel")}
       </label>
       <input
         id="account-q"
@@ -271,15 +283,15 @@ function AccountsTab({ self }: { self: string }) {
         spellCheck={false}
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="按登录名前缀搜索"
+        placeholder={t("accounts.searchPlaceholder")}
         className={`${inputClass} sm:max-w-sm`}
       />
       {list.isPending ? (
-        <Notice>正在读取…</Notice>
+        <Notice>{t("loading")}</Notice>
       ) : list.isError ? (
-        <Notice tone="danger">读取失败：{list.error.message}</Notice>
+        <Notice tone="danger">{t("loadFailed", { message: list.error.message })}</Notice>
       ) : list.data.items.length === 0 ? (
-        <Notice>{query ? "没有以这个前缀开头的账号。" : "还没有账号。"}</Notice>
+        <Notice>{query ? t("accounts.noMatch") : t("accounts.none")}</Notice>
       ) : (
         <ul className={listClass}>
           {list.data.items.map((a) => (
@@ -292,7 +304,8 @@ function AccountsTab({ self }: { self: string }) {
 }
 
 function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolean; onChanged: () => Promise<void> }) {
-  const label = a.display_name && a.display_name !== a.name ? `${a.display_name}（${a.name}）` : a.name;
+  const { t } = useTranslation("server");
+  const label = a.display_name && a.display_name !== a.name ? t("accounts.label", { display: a.display_name, name: a.name }) : a.name;
   const memberships = a.workspaces ?? [];
   return (
     <li className={rowClass}>
@@ -300,40 +313,45 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
         <p className="flex flex-wrap items-center gap-x-2">
           <span className="font-mono font-medium">{a.name}</span>
           {a.display_name && <span>{a.display_name}</span>}
-          {isSelf && <span className="text-xs text-muted">（你）</span>}
-          {a.server_admin && <span className={`${tag} bg-amber-soft text-amber`}>服务器管理员</span>}
-          {a.disabled && <span className={`${tag} bg-sunken text-danger`}>已停用</span>}
+          {isSelf && <span className="text-xs text-muted">{t("accounts.you")}</span>}
+          {a.server_admin && <span className={`${tag} bg-amber-soft text-amber`}>{t("accounts.serverAdmin")}</span>}
+          {a.disabled && <span className={`${tag} bg-sunken text-danger`}>{t("accounts.disabled")}</span>}
         </p>
         <p className="text-xs text-muted">
-          Telegram {a.telegram_linked ? "已连接" : "未连接"}
-          {a.dingtalk_linked ? " · 钉钉已连接" : ""} · {a.devices} 台设备
+          {[
+            a.telegram_linked ? t("accounts.telegramLinked") : t("accounts.telegramNotLinked"),
+            a.dingtalk_linked ? t("accounts.dingtalkLinked") : "",
+            t("accounts.devices", { count: a.devices }),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
         <p className="text-xs text-muted">
-          工作空间：
+          {t("accounts.workspacesLabel")}
           {memberships.length === 0
-            ? "无"
+            ? t("accounts.noWorkspaces")
             : memberships.map((m, i) => (
                 <span key={m.name}>
-                  {i > 0 && "、"}
+                  {i > 0 && t("accounts.listSeparator")}
                   <span className={m.status === "removed" ? "line-through" : "text-ink"}>{m.name}</span>
-                  （{m.status === "removed" ? "已移出" : roleLabel(m.role)}）
+                  {t("accounts.roleSuffix", { role: m.status === "removed" ? t("accounts.removed") : roleLabel(m.role) })}
                 </span>
               ))}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
         <ConfirmButton
-          label={a.server_admin ? "取消服务器管理员" : "设为服务器管理员"}
+          label={a.server_admin ? t("accounts.unsetAdmin") : t("accounts.setAdmin")}
           danger={a.server_admin}
-          title={a.server_admin ? "取消服务器管理员？" : "设为服务器管理员？"}
+          title={a.server_admin ? t("accounts.unsetAdminTitle") : t("accounts.setAdminTitle")}
           message={
             a.server_admin
               ? isSelf
-                ? "你将失去服务器管理权限，之后无法再打开这个页面。服务器上至少要保留一名服务器管理员。"
-                : `“${label}”将不再能管理全部工作空间与账号。`
-              : `“${label}”将可以新建、删除工作空间，管理全部工作空间与账号，停用任何人。`
+                ? t("accounts.unsetSelfMessage")
+                : t("accounts.unsetOtherMessage", { label })
+              : t("accounts.setAdminMessage", { label })
           }
-          confirmLabel="确认"
+          confirmLabel={t("accounts.confirm")}
           action={async () => {
             await api.setServerAdmin(a.name, !a.server_admin);
             await onChanged();
@@ -341,10 +359,10 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
         />
         {a.disabled ? (
           <ConfirmButton
-            label="启用"
-            title="启用这个账号？"
-            message={`“${label}”可以重新登录。他之前的设备不会恢复：要重新执行 cohive login 并等管理员批准；Telegram 也要重新连接。`}
-            confirmLabel="确认启用"
+            label={t("accounts.enable")}
+            title={t("accounts.enableTitle")}
+            message={t("accounts.enableMessage", { label })}
+            confirmLabel={t("accounts.enableConfirm")}
             danger={false}
             action={async () => {
               await api.enableAccount(a.name);
@@ -354,10 +372,10 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
         ) : (
           !isSelf && (
             <ConfirmButton
-              label="停用"
-              title="停用这个账号？"
-              message={`停用作用于“${label}”所在的全部工作空间：立即吊销他的全部设备与令牌、注销网页登录、断开 Telegram，待批的设备申请一并拒绝。成员资格保留，手上的单子不会自动转交，可以到各工作空间的管理页改派。`}
-              confirmLabel="确认停用"
+              label={t("accounts.disable")}
+              title={t("accounts.disableTitle")}
+              message={t("accounts.disableMessage", { label })}
+              confirmLabel={t("accounts.disableConfirm")}
               action={async () => {
                 await api.disableAccount(a.name);
                 await onChanged();
@@ -367,10 +385,10 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
         )}
         {a.dingtalk_linked && (
           <ConfirmButton
-            label="断开钉钉"
-            title="断开他的钉钉连接？"
-            message={`断开后钉钉群里的通知不会再 @ 到“${label}”，他也不能再在钉钉群里点按钮审批。他可以在个人中心重新连接。`}
-            confirmLabel="确认断开"
+            label={t("accounts.unlinkDingtalk")}
+            title={t("accounts.unlinkDingtalkTitle")}
+            message={t("accounts.unlinkDingtalkMessage", { label })}
+            confirmLabel={t("accounts.unlinkConfirm")}
             action={async () => {
               await api.serverUnlink(a.name, "dingtalk");
               await onChanged();
@@ -379,10 +397,10 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
         )}
         {a.telegram_linked && (
           <ConfirmButton
-            label="断开 Telegram"
-            title="断开他的 Telegram 连接？"
-            message={`断开后群里的通知不会再 @ 到“${label}”，他也不能再在群里点按钮审批。他可以在个人中心重新连接。`}
-            confirmLabel="确认断开"
+            label={t("accounts.unlinkTelegram")}
+            title={t("accounts.unlinkTelegramTitle")}
+            message={t("accounts.unlinkTelegramMessage", { label })}
+            confirmLabel={t("accounts.unlinkConfirm")}
             action={async () => {
               await api.serverUnlinkTelegram(a.name);
               await onChanged();
@@ -395,20 +413,19 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
 }
 
 function DevicesTab() {
+  const { t } = useTranslation("server");
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["server", "pending-devices"], queryFn: api.serverPendingDevices, refetchInterval: 10000 });
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-muted">
-        全部待批的设备申请。一般由申请人所在工作空间的管理员批准；申请人不在任何工作空间时只能在这里批。
-      </p>
+      <p className="text-sm text-muted">{t("devices.description")}</p>
       {q.isPending ? (
-        <Notice>正在读取…</Notice>
+        <Notice>{t("loading")}</Notice>
       ) : q.isError ? (
-        <Notice tone="danger">读取失败：{q.error.message}</Notice>
+        <Notice tone="danger">{t("loadFailed", { message: q.error.message })}</Notice>
       ) : q.data.items.length === 0 ? (
-        <Notice>没有待批的设备申请。</Notice>
+        <Notice>{t("devices.empty")}</Notice>
       ) : (
         <ul className={listClass}>
           {q.data.items.map((v) => (
@@ -429,9 +446,10 @@ function DevicesTab() {
 
 // 服务器设置：对外地址（参照 GitLab 的 external_url）。群消息里的链接与编程工具经隧道访问 MCP 时的主机名都用它。
 function SettingsTab() {
+  const { t } = useTranslation("server");
   const q = useQuery({ queryKey: ["server", "settings"], queryFn: api.serverSettings });
-  if (q.isPending) return <Notice>正在读取…</Notice>;
-  if (q.isError) return <Notice tone="danger">读取失败：{q.error.message}</Notice>;
+  if (q.isPending) return <Notice>{t("loading")}</Notice>;
+  if (q.isError) return <Notice tone="danger">{t("loadFailed", { message: q.error.message })}</Notice>;
   return (
     <div className="space-y-4">
       <ExternalURLForm initial={q.data} />
@@ -442,27 +460,28 @@ function SettingsTab() {
 
 // ChannelsPanel 显示服务器启用的通讯工具与连接状态（钉钉的 Stream 掉线、额度用完等原因在这里看）。
 function ChannelsPanel() {
+  const { t } = useTranslation("server");
   const q = useQuery({ queryKey: ["server", "channels"], queryFn: api.serverChannels, refetchInterval: 30_000 });
   return (
-    <Section title="通讯工具" description="在服务器上配置机器人令牌或钉钉应用凭据后重启协作服务即启用。">
+    <Section title={t("channels.title")} description={t("channels.description")}>
       {q.isPending ? (
-        <p className="text-sm text-muted">正在读取…</p>
+        <p className="text-sm text-muted">{t("loading")}</p>
       ) : q.isError ? (
-        <p className="text-sm text-danger">读取失败：{q.error.message}</p>
+        <p className="text-sm text-danger">{t("loadFailed", { message: q.error.message })}</p>
       ) : q.data.channels.length === 0 ? (
-        <p className="text-sm text-muted">还没有启用任何通讯工具，群通知暂不发送（待发记录会保留）。</p>
+        <p className="text-sm text-muted">{t("channels.none")}</p>
       ) : (
         <ul className="divide-y divide-line rounded border border-line text-sm">
           {q.data.channels.map((c) => (
             <li key={c.provider} className="space-y-1 px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{c.provider === "dingtalk" ? "钉钉" : "Telegram"}</span>
+                <span className="font-medium">{c.provider === "dingtalk" ? t("channels.dingtalk") : "Telegram"}</span>
                 {c.bot_name && <span className="text-muted">@{c.bot_name}</span>}
-                {c.app_id && <span className="text-muted">应用 Client ID {c.app_id}</span>}
+                {c.app_id && <span className="text-muted">{t("channels.appClientId", { id: c.app_id })}</span>}
                 <span
                   className={`rounded px-1.5 py-px text-xs ${c.online ? "bg-teal-soft text-teal" : "bg-amber-soft text-amber"}`}
                 >
-                  {c.online ? "在线" : "离线"}
+                  {c.online ? t("channels.online") : t("channels.offline")}
                 </span>
               </div>
               {c.detail && <p className="break-words text-xs text-muted">{c.detail}</p>}
@@ -475,6 +494,7 @@ function ChannelsPanel() {
 }
 
 export function ExternalURLForm({ initial }: { initial: ServerSettings }) {
+  const { t } = useTranslation("server");
   const qc = useQueryClient();
   // 还没设时用当前访问地址预填，但明确告诉人这还没保存
   const [saved, setSaved] = useState(initial.external_url);
@@ -496,7 +516,7 @@ export function ExternalURLForm({ initial }: { initial: ServerSettings }) {
       const res = await api.saveServerSettings(trimmed);
       setValue(res.external_url);
       setSaved(res.external_url);
-      setOk(res.external_url ? "已保存，立即生效。" : "已清除：群消息里不再带链接。");
+      setOk(res.external_url ? t("external.saved") : t("external.cleared"));
       await qc.invalidateQueries({ queryKey: ["server", "settings"] });
     } catch (err) {
       setError(errMsg(err));
@@ -507,25 +527,23 @@ export function ExternalURLForm({ initial }: { initial: ServerSettings }) {
 
   return (
     <Section
-      title="对外地址"
-      description="同事和编程工具访问协作服务用的地址，整个服务器只设一个。群消息里的问题单链接用它拼成“对外地址/w/路径/issues/编号”；编程工具经隧道访问时，它的主机名自动加入允许名单。邀请、授权链接仍按你当时打开网页用的地址生成。"
+      title={t("external.title")}
+      description={t("external.description")}
     >
       {initial.locked ? (
         <div className="space-y-2 text-sm">
           <p className="break-all font-mono">{initial.external_url}</p>
-          <Callout>由环境变量 COHIVE_EXTERNAL_URL 锁定，网页上不能修改。要改请在服务器上改环境变量后重启协作服务。</Callout>
+          <Callout>{t("external.locked")}</Callout>
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-4">
           {unset && (
-            <Callout>
-              尚未设置：群消息里现在不带链接。下面预填的是你当前访问用的地址，请确认它是同事能打开的地址（不是 localhost）后点“保存”。
-            </Callout>
+            <Callout>{t("external.unsetWarn")}</Callout>
           )}
           <Field
-            label="对外地址"
+            label={t("external.title")}
             htmlFor="external-url"
-            hint={shapeOk ? "只写协议、主机名和端口，不带路径，例如 https://cohive.example.com。留空并保存则清除。" : undefined}
+            hint={shapeOk ? t("external.hint") : undefined}
           >
             <input
               id="external-url"
@@ -537,12 +555,12 @@ export function ExternalURLForm({ initial }: { initial: ServerSettings }) {
               onChange={(e) => setValue(e.target.value)}
               className={`${inputClass} font-mono`}
             />
-            {!shapeOk && <p className="mt-1 text-xs text-danger">请填 http:// 或 https:// 加主机名（可带端口），不带路径。</p>}
+            {!shapeOk && <p className="mt-1 text-xs text-danger">{t("external.shapeError")}</p>}
           </Field>
           <ErrorText>{error}</ErrorText>
           <SuccessText>{ok}</SuccessText>
           <button type="submit" disabled={busy || !shapeOk} className={btn.primary}>
-            {busy ? "正在保存…" : "保存"}
+            {busy ? t("external.saving") : t("external.save")}
           </button>
         </form>
       )}

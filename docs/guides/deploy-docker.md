@@ -1,5 +1,7 @@
 # 用 Docker 部署协作服务
 
+[English](deploy-docker.en.md)
+
 协作服务是一个 `cohive-server` 程序，网页和五个平台的 `cohive` 命令行安装包都嵌在里面；数据只存在 Postgres 里。仓库里的 `deploy/docker-compose.yml` 把它和 Postgres 17 一起起来，数据放在两个 Docker 数据卷里。
 
 需要：一台装了 Docker（含 Compose 插件）的机器。不需要装 Go、Node 或 pnpm，构建在镜像里完成。
@@ -119,6 +121,7 @@ docker compose exec cohive cohive-server audit list
 |---|---|
 | `POSTGRES_PASSWORD` | 数据库密码，必填 |
 | `COHIVE_EXTERNAL_URL` | 对外地址；设了就锁定，网页上不能改 |
+| `COHIVE_DEFAULT_LANGUAGE` | 服务器缺省语言，`en` 或 `zh-CN`；不设时为英文，团队以中文为主时设为 `zh-CN`。成员命令行可用 `COHIVE_LANG` 覆盖自己的语言 |
 | `COHIVE_TELEGRAM_BOT_TOKEN` | Telegram 机器人令牌 |
 | `COHIVE_DINGTALK_CLIENT_ID`、`COHIVE_DINGTALK_CLIENT_SECRET` | 钉钉企业内部应用凭据，一起设置即启用钉钉（见 [钉钉接入](dingtalk.md)） |
 | `COHIVE_DINGTALK_NOTICE_TEMPLATE`、`COHIVE_DINGTALK_APPROVAL_TEMPLATE` | 钉钉通知卡片、审批卡片模板编号；不设时降级 |

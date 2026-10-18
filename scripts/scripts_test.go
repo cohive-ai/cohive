@@ -34,10 +34,11 @@ func needBash(t *testing.T) {
 }
 
 // script 在干净的环境里运行脚本：只给定的环境变量，HOME 指向临时目录，避免读到本机真实配置。
+// 现有断言都是中文提示，缺省固定 COHIVE_LANG=zh-CN；env 里给出 COHIVE_LANG（含空值）则以它为准。
 func script(t *testing.T, name string, env map[string]string, args ...string) (string, error) {
 	t.Helper()
 	cmd := exec.Command("bash", append([]string{name}, args...)...)
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "COHIVE_LANG=zh-CN"}
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
@@ -524,7 +525,7 @@ func TestServerScriptRunsUnderUTF8Locale(t *testing.T) {
 	cmd := exec.Command(bash, "cohive-server.sh", "run")
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + tmp, "COHIVE_HOME=" + home, "COHIVE_BIN=" + fake,
 		"COHIVE_TELEGRAM_ENV=" + filepath.Join(tmp, "none.env"), "COHIVE_LAUNCHD_PLIST=" + filepath.Join(tmp, "none.plist"),
-		"LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8"}
+		"COHIVE_LANG=zh-CN", "LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8"}
 	b, err := cmd.CombinedOutput()
 	out := string(b)
 	if err != nil || !strings.Contains(out, "监听 127.0.0.1:18799）") || !strings.Contains(out, "fake serve --addr 127.0.0.1:18799") {
@@ -538,7 +539,7 @@ func TestSetDingTalkCredentials(t *testing.T) {
 	secret := "Sec" + strings.Repeat("z", 30)
 	run := func(input string) (string, error) {
 		cmd := exec.Command("bash", "set-dingtalk-credentials.sh")
-		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + tmp}
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + tmp, "COHIVE_LANG=zh-CN"}
 		cmd.Stdin = strings.NewReader(input)
 		b, err := cmd.CombinedOutput()
 		return string(b), err
@@ -561,5 +562,167 @@ func TestSetDingTalkCredentials(t *testing.T) {
 	}
 	if out, err := run("dingabc123\nshort\n\n\n"); err == nil || !strings.Contains(out, "Client Secret 格式不对") {
 		t.Fatalf("密钥格式不对应拒绝：%v %s", err, out)
+	}
+}
+
+// shellLang 在给定环境下 source 语言库，返回脚本判断出的语言（zh 或 en）。
+func shellLang(t *testing.T, env ...string) string {
+	t.Helper()
+	cmd := exec.Command("bash", "-c", `. lib/cohive-i18n.sh; printf '%s' "$COHIVE_SCRIPT_LANG"; cohive_t 中 en`)
+	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH")}, env...)
+	b, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, b)
+	}
+	return string(b)
+}
+
+// 提示语言：COHIVE_LANG > LC_ALL > LC_MESSAGES > LANG，取第一个非空的；zh 开头为中文，其余（含 C）为英文，都没有时英文。
+func TestScriptLanguageDetection(t *testing.T) {
+	needBash(t)
+	for _, c := range []struct {
+		env  []string
+		want string
+	}{
+		{nil, "en"},
+		{[]string{"LANG=zh_CN.UTF-8"}, "zh"},
+		{[]string{"LANG=zh_TW.UTF-8"}, "zh"},
+		{[]string{"LANG=en_US.UTF-8"}, "en"},
+		{[]string{"LANG=ja_JP.UTF-8"}, "en"},
+		{[]string{"LANG=zh_CN.UTF-8", "LC_ALL=en_US.UTF-8"}, "en"},
+		{[]string{"LANG=en_US.UTF-8", "LC_MESSAGES=zh_CN.UTF-8"}, "zh"},
+		{[]string{"LANG=en_US.UTF-8", "COHIVE_LANG=zh-CN"}, "zh"},
+		{[]string{"LANG=zh_CN.UTF-8", "COHIVE_LANG=en"}, "en"},
+		{[]string{"LANG=zh_CN.UTF-8", "COHIVE_LANG="}, "zh"},
+		{[]string{"LC_ALL=C", "LANG=zh_CN.UTF-8"}, "zh"},
+		{[]string{"LC_ALL=POSIX"}, "en"},
+	} {
+		got := shellLang(t, c.env...)
+		want := c.want + map[string]string{"zh": "中", "en": "en"}[c.want]
+		if got != want {
+			t.Errorf("%v：得到 %q，期望 %q", c.env, got, want)
+		}
+	}
+}
+
+// 英文环境：备份脚本的提示与报错都是英文，库名等信息照常。
+func TestBackupMessagesEnglish(t *testing.T) {
+	needBash(t)
+	url, db := tempDatabase(t)
+	dir := t.TempDir()
+	env := backupEnv(t, url, dir)
+	env["COHIVE_LANG"] = "en"
+	out, err := script(t, "backup-db.sh", env)
+	if err != nil || !strings.Contains(out, "Backed up database "+db) || !strings.Contains(out, "removed 0 old backup(s)") {
+		t.Fatalf("英文提示：%v\n%s", err, out)
+	}
+	if strings.ContainsAny(out, "已备份删除") {
+		t.Fatalf("英文输出里不应有中文：%s", out)
+	}
+	bad := map[string]string{"HOME": t.TempDir(), "COHIVE_LANG": "en"}
+	if out, err := script(t, "backup-db.sh", bad); err == nil || !strings.Contains(out, "Error: COHIVE_DATABASE_URL is not set") {
+		t.Fatalf("缺少数据库地址时应报英文错误：%v\n%s", err, out)
+	}
+	// 只靠 LANG：中文系统用中文，其他用英文
+	bad["COHIVE_LANG"] = ""
+	bad["LANG"] = "zh_CN.UTF-8"
+	if out, _ := script(t, "backup-db.sh", bad); !strings.Contains(out, "错误：没有设置 COHIVE_DATABASE_URL") {
+		t.Fatalf("LANG=zh_CN 时应报中文错误：%s", out)
+	}
+	bad["LANG"] = "en_US.UTF-8"
+	if out, _ := script(t, "backup-db.sh", bad); !strings.Contains(out, "Error: COHIVE_DATABASE_URL is not set") {
+		t.Fatalf("LANG=en_US 时应报英文错误：%s", out)
+	}
+}
+
+// 英文环境：启动脚本的状态、重复启动、停止、端口占用提示与用法都是英文。
+func TestServerScriptMessagesEnglish(t *testing.T) {
+	needBash(t)
+	if _, err := exec.LookPath("lsof"); err != nil {
+		t.Skip("需要 lsof")
+	}
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "cohive-home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	port := freePort(t)
+	conf := fmt.Sprintf("COHIVE_DATABASE_URL=postgres://u:pw@localhost:1/demo\nCOHIVE_ADDR=127.0.0.1:%d\n", port)
+	if err := os.WriteFile(filepath.Join(home, "server.env"), []byte(conf), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"HOME": tmp, "COHIVE_HOME": home, "COHIVE_BIN": fakeServer(t, tmp),
+		"COHIVE_TELEGRAM_ENV": filepath.Join(tmp, "none"), "COHIVE_DINGTALK_ENV": filepath.Join(tmp, "none"),
+		"COHIVE_LAUNCHD_PLIST": filepath.Join(tmp, "none.plist"),
+		"COHIVE_LANG":          "", "LANG": "en_US.UTF-8"} // 不设 COHIVE_LANG，只靠系统语言
+	t.Cleanup(func() { _, _ = script(t, "cohive-server.sh", env, "stop") })
+
+	if out, err := script(t, "cohive-server.sh", env, "status"); err == nil || !strings.Contains(out, "Not running") || !strings.Contains(out, "Database: demo") {
+		t.Fatalf("未运行时的状态：%v\n%s", err, out)
+	}
+	if out, err := script(t, "cohive-server.sh", env, "start"); err != nil || !strings.Contains(out, "Started, pid ") {
+		t.Fatalf("启动：%v\n%s", err, out)
+	}
+	if out, _ := script(t, "cohive-server.sh", env, "start"); !strings.Contains(out, "Already running, pid ") {
+		t.Fatalf("重复启动：%s", out)
+	}
+	if out, err := script(t, "cohive-server.sh", env, "status"); err != nil || !strings.Contains(out, "Running, pid ") {
+		t.Fatalf("运行中的状态：%v\n%s", err, out)
+	}
+	if out, err := script(t, "cohive-server.sh", env, "stop"); err != nil || !strings.Contains(out, "Stopped (pid ") {
+		t.Fatalf("停止：%v\n%s", err, out)
+	}
+	logB, _ := os.ReadFile(filepath.Join(home, "logs", "server.log"))
+	if !strings.Contains(string(logB), "starting (database demo, listening on 127.0.0.1:") {
+		t.Fatalf("日志里的启动行应为英文：%s", logB)
+	}
+	// 没有子命令：打印英文用法
+	if out, err := script(t, "cohive-server.sh", env); err == nil || !strings.Contains(out, "Usage: scripts/cohive-server.sh start|stop|restart|status|run") {
+		t.Fatalf("用法应为英文：%v\n%s", err, out)
+	}
+	// 端口被占：英文报错
+	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}()
+	if out, err := script(t, "cohive-server.sh", env, "start"); err == nil || !strings.Contains(out, "is already in use by process") {
+		t.Fatalf("端口被占：%v\n%s", err, out)
+	}
+	// 同样的环境换成中文系统语言：用法是中文
+	env["LANG"] = "zh_CN.UTF-8"
+	if out, err := script(t, "cohive-server.sh", env); err == nil || !strings.Contains(out, "用法：scripts/cohive-server.sh start|stop|restart|status|run") {
+		t.Fatalf("中文系统的用法应为中文：%v\n%s", err, out)
+	}
+}
+
+// 英文环境：保存令牌的脚本提示与报错为英文。
+func TestSetCredentialsScriptsEnglish(t *testing.T) {
+	needBash(t)
+	run := func(name, input string) (string, error) {
+		cmd := exec.Command("bash", name)
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "LANG=en_US.UTF-8"}
+		cmd.Stdin = strings.NewReader(input)
+		b, err := cmd.CombinedOutput()
+		return string(b), err
+	}
+	if out, err := run("set-dingtalk-credentials.sh", "dingabc123\nshort\n\n\n"); err == nil || !strings.Contains(out, "Invalid Client Secret format") || !strings.Contains(out, "Client ID (DingTalk developer console") {
+		t.Fatalf("英文提示：%v\n%s", err, out)
+	}
+	if out, err := run("set-telegram-token.sh", "nonsense\n"); err == nil || !strings.Contains(out, "Invalid format: a bot token looks like") {
+		t.Fatalf("英文提示：%v\n%s", err, out)
+	}
+	tok := "123456789:AA" + strings.Repeat("x", 30)
+	if out, err := run("set-telegram-token.sh", tok+"\n"); err != nil || !strings.Contains(out, "Saved to ") || strings.Contains(out, tok) {
+		t.Fatalf("保存成功应为英文且不回显令牌：%v\n%s", err, out)
 	}
 }

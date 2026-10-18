@@ -29,3 +29,20 @@ it("请求 15 秒没有响应就超时", async () => {
   expect((settled as ApiError).status).toBe(0);
   expect((settled as ApiError).message).toContain("超时");
 });
+
+it("请求带上界面语言，服务端据此决定报错语言；英文界面的兜底报错也是英文", async () => {
+  const i18n = (await import("./i18n")).default;
+  await i18n.changeLanguage("en");
+  try {
+    let lang = "";
+    vi.stubGlobal("fetch", async (_: string, init: RequestInit) => {
+      lang = (init.headers as Record<string, string>)["Accept-Language"];
+      return new Response("{}", { status: 503, headers: { "Content-Type": "application/json" } });
+    });
+    const err = await api.me().catch((e) => e);
+    expect(lang).toBe("en");
+    expect((err as ApiError).message).toBe("Request failed (503)");
+  } finally {
+    await i18n.changeLanguage("zh-CN");
+  }
+});

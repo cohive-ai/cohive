@@ -100,7 +100,7 @@ func TestEveryCommandClassified(t *testing.T) {
 	}
 	re := regexp.MustCompile(`(?m)^  ([a-z][a-z-]*(?: [a-z][a-z-]*)?)(?:\s|$)`)
 	n := 0
-	for _, m := range re.FindAllStringSubmatch(usage, -1) {
+	for _, m := range re.FindAllStringSubmatch(usage(), -1) {
 		cmd := strings.TrimSpace(m[1])
 		n++
 		if !listed[cmd] && notAdminCommands[cmd] == "" {

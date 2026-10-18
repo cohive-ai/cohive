@@ -1,12 +1,14 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { Notice, StatusTag, ToolMark } from "../components";
-import { relativeTime, statusOptions } from "../format";
+import { relativeTime, statusLabel, statusOptions } from "../format";
 import { useWs, WorkspaceLoadError } from "./WorkspaceShell";
 
 export function IssuesPage() {
+  const { t } = useTranslation("issues");
   const ws = useWs();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
@@ -21,17 +23,17 @@ export function IssuesPage() {
     <div>
       <div className="mb-4 flex flex-wrap gap-3">
         <label className="sr-only" htmlFor="q">
-          搜索标题、概述或实际结果
+          {t("list.searchLabel")}
         </label>
         <input
           id="q"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索标题、概述或实际结果"
+          placeholder={t("list.searchLabel")}
           className="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-2 text-sm placeholder:text-muted sm:max-w-sm"
         />
         <label className="sr-only" htmlFor="status">
-          按状态筛选
+          {t("list.filterStatus")}
         </label>
         <select
           id="status"
@@ -39,7 +41,7 @@ export function IssuesPage() {
           onChange={(e) => setStatus(e.target.value)}
           className="rounded border border-line bg-surface px-3 py-2 text-sm"
         >
-          {statusOptions.map((o) => (
+          {statusOptions().map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -48,23 +50,23 @@ export function IssuesPage() {
       </div>
 
       {list.isPending ? (
-        <Notice>正在读取…</Notice>
+        <Notice>{t("loading")}</Notice>
       ) : list.isError ? (
-        <WorkspaceLoadError error={list.error} what="问题单" />
+        <WorkspaceLoadError error={list.error} what="issues" />
       ) : list.data.items.length === 0 ? (
-        <Notice>{q || status ? "没有符合条件的问题单，换个关键词或状态试试。" : "还没有问题单。在编程工具里让智能体起草第一张。"}</Notice>
+        <Notice>{q || status ? t("list.emptyFiltered") : t("list.empty")}</Notice>
       ) : (
         <div className="overflow-hidden rounded-lg border border-line bg-surface">
           <table className="w-full text-sm">
             <thead className="hidden bg-sunken text-left text-muted sm:table-header-group">
               <tr>
-                <th className="px-3 py-2 font-normal">编号</th>
-                <th className="px-3 py-2 font-normal">标题</th>
-                <th className="px-3 py-2 font-normal">状态</th>
-                <th className="px-3 py-2 font-normal">服务</th>
-                <th className="px-3 py-2 font-normal">发起人</th>
-                <th className="px-3 py-2 font-normal">负责人</th>
-                <th className="px-3 py-2 font-normal">更新</th>
+                <th className="px-3 py-2 font-normal">{t("list.col.id")}</th>
+                <th className="px-3 py-2 font-normal">{t("list.col.title")}</th>
+                <th className="px-3 py-2 font-normal">{t("list.col.status")}</th>
+                <th className="px-3 py-2 font-normal">{t("list.col.service")}</th>
+                <th className="px-3 py-2 font-normal">{t("list.col.reporter")}</th>
+                <th className="px-3 py-2 font-normal">{t("list.col.owner")}</th>
+                <th className="px-3 py-2 font-normal">{t("list.col.updated")}</th>
               </tr>
             </thead>
             <tbody>
@@ -78,34 +80,34 @@ export function IssuesPage() {
                     </Link>
                     {/* 窄屏时把其余列合成一行带说明的摘要 */}
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted sm:hidden">
-                      <StatusTag status={is.status} label={is.status_label} />
+                      <StatusTag status={is.status} label={statusLabel(is.status, is.status_label)} />
                       <span className="inline-flex items-center gap-1">
                         <ToolMark tool={is.source_tool} withLabel={false} />
-                        {is.source} 发起
+                        {t("list.reportedBy", { name: is.source })}
                       </span>
-                      <span>负责人 {is.owner || "未指定"}</span>
+                      <span>{t("list.ownerLine", { name: is.owner || t("unset") })}</span>
                       {is.target_service && <span>{is.target_service}</span>}
                       <span>{relativeTime(is.updated_at)}</span>
                     </div>
                   </td>
                   <td className="hidden px-3 py-2 sm:table-cell">
-                    <StatusTag status={is.status} label={is.status_label} />
+                    <StatusTag status={is.status} label={statusLabel(is.status, is.status_label)} />
                   </td>
-                  <td className="hidden px-3 py-2 text-muted sm:table-cell">{is.target_service || "未指定"}</td>
+                  <td className="hidden px-3 py-2 text-muted sm:table-cell">{is.target_service || t("unset")}</td>
                   <td className="hidden px-3 py-2 sm:table-cell">
                     <span className="inline-flex items-center gap-1.5">
                       <ToolMark tool={is.source_tool} withLabel={false} />
                       {is.source}
                     </span>
                   </td>
-                  <td className="hidden px-3 py-2 sm:table-cell">{is.owner || <span className="text-muted">未指定</span>}</td>
+                  <td className="hidden px-3 py-2 sm:table-cell">{is.owner || <span className="text-muted">{t("unset")}</span>}</td>
                   <td className="hidden px-3 py-2 text-muted sm:table-cell">{relativeTime(is.updated_at)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {list.data.items.length >= 50 && (
-            <p className="border-t border-line px-3 py-2 text-sm text-muted">只显示最近更新的 50 张，用关键词或状态缩小范围。</p>
+            <p className="border-t border-line px-3 py-2 text-sm text-muted">{t("list.limit")}</p>
           )}
         </div>
       )}

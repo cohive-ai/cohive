@@ -3,6 +3,8 @@ package secretscan
 import (
 	"regexp"
 	"strings"
+
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // Cohive 在 gitleaks 默认规则之外追加的规则与放行。每一条都有对应的命中或误报样例测试。
@@ -38,7 +40,7 @@ func (rs *ruleset) addCohive() error {
 		{
 			// 明显的占位值：已脱敏标记、变量引用、示例值
 			regexes: []*regexp.Regexp{regexp.MustCompile(
-				`(?i)^(?:<[^>]*>|\[[^\]]*\]|\(redacted\)|redacted|[*x•]{3,}|changeme|change[_-]?me|your[_-]?(?:api[_-]?)?(?:key|token|secret)[_-]?here|example[_-]?(?:key|token|secret)|dummy[_-]?(?:key|token|secret)|placeholder|已脱敏|已隐藏|略)$`)},
+				`(?i)^(?:<[^>]*>|\[[^\]]*\]|\(redacted\)|redacted|[*x•]{3,}|changeme|change[_-]?me|your[_-]?(?:api[_-]?)?(?:key|token|secret)[_-]?here|example[_-]?(?:key|token|secret)|dummy[_-]?(?:key|token|secret)|placeholder|已脱敏|已隐藏|略)$`)}, // i18n-ignore：匹配内容里写的中文占位词，不是展示文案
 		},
 	}
 	for _, r := range rs.rules {
@@ -49,52 +51,56 @@ func (rs *ruleset) addCohive() error {
 	return nil
 }
 
-// categories 把常见规则编号前缀映射为中文类别，按前缀长度从长到短匹配。
-var categories = []struct{ prefix, label string }{
-	{"cohive-token", "Cohive 令牌"},
-	{"generic-api-key", "通用密钥赋值"},
-	{"private-key", "私钥"},
-	{"jwt", "JWT 令牌"},
-	{"aws", "AWS 密钥"},
-	{"github", "GitHub 令牌"},
-	{"gitlab", "GitLab 令牌"},
-	{"bitbucket", "Bitbucket 凭据"},
-	{"slack", "Slack 令牌"},
-	{"stripe", "Stripe 密钥"},
-	{"gcp", "Google Cloud 凭据"},
-	{"google", "Google 密钥"},
-	{"openai", "OpenAI 密钥"},
-	{"anthropic", "Anthropic 密钥"},
-	{"telegram", "Telegram 机器人令牌"},
-	{"azure", "Azure 凭据"},
-	{"alibaba", "阿里云密钥"},
-	{"tencent", "腾讯云密钥"},
-	{"npm", "npm 令牌"},
-	{"pypi", "PyPI 令牌"},
-	{"docker", "Docker 凭据"},
-	{"heroku", "Heroku 密钥"},
-	{"twilio", "Twilio 密钥"},
-	{"sendgrid", "SendGrid 密钥"},
-	{"mailgun", "Mailgun 密钥"},
-	{"discord", "Discord 令牌"},
-	{"hashicorp", "HashiCorp 令牌"},
-	{"vault", "Vault 令牌"},
-	{"cloudflare", "Cloudflare 密钥"},
-	{"digitalocean", "DigitalOcean 令牌"},
-	{"huggingface", "Hugging Face 令牌"},
-	{"sentry", "Sentry 令牌"},
-	{"shopify", "Shopify 令牌"},
-	{"square", "Square 令牌"},
-	{"sourcegraph", "Sourcegraph 令牌"},
+// categories 把常见规则编号前缀映射为类别的文案键（语言包里的名称），按前缀长度从长到短匹配。
+var categories = []struct{ prefix, key string }{
+	{"cohive-token", "secretscan.rule.cohive_token"},
+	{"generic-api-key", "secretscan.rule.generic_api_key"},
+	{"private-key", "secretscan.rule.private_key"},
+	{"jwt", "secretscan.rule.jwt"},
+	{"aws", "secretscan.rule.aws"},
+	{"github", "secretscan.rule.github"},
+	{"gitlab", "secretscan.rule.gitlab"},
+	{"bitbucket", "secretscan.rule.bitbucket"},
+	{"slack", "secretscan.rule.slack"},
+	{"stripe", "secretscan.rule.stripe"},
+	{"gcp", "secretscan.rule.gcp"},
+	{"google", "secretscan.rule.google"},
+	{"openai", "secretscan.rule.openai"},
+	{"anthropic", "secretscan.rule.anthropic"},
+	{"telegram", "secretscan.rule.telegram"},
+	{"azure", "secretscan.rule.azure"},
+	{"alibaba", "secretscan.rule.alibaba"},
+	{"tencent", "secretscan.rule.tencent"},
+	{"npm", "secretscan.rule.npm"},
+	{"pypi", "secretscan.rule.pypi"},
+	{"docker", "secretscan.rule.docker"},
+	{"heroku", "secretscan.rule.heroku"},
+	{"twilio", "secretscan.rule.twilio"},
+	{"sendgrid", "secretscan.rule.sendgrid"},
+	{"mailgun", "secretscan.rule.mailgun"},
+	{"discord", "secretscan.rule.discord"},
+	{"hashicorp", "secretscan.rule.hashicorp"},
+	{"vault", "secretscan.rule.vault"},
+	{"cloudflare", "secretscan.rule.cloudflare"},
+	{"digitalocean", "secretscan.rule.digitalocean"},
+	{"huggingface", "secretscan.rule.huggingface"},
+	{"sentry", "secretscan.rule.sentry"},
+	{"shopify", "secretscan.rule.shopify"},
+	{"square", "secretscan.rule.square"},
+	{"sourcegraph", "secretscan.rule.sourcegraph"},
 }
 
-func category(id string) string {
+// CategoryIn 返回规则所属类别的名称，按指定语言；认不出的规则归为“密钥或令牌”。
+func CategoryIn(l i18n.Lang, ruleID string) string {
 	best := ""
-	label := "密钥或令牌"
+	key := "secretscan.rule.default"
 	for _, c := range categories {
-		if strings.HasPrefix(id, c.prefix) && len(c.prefix) > len(best) {
-			best, label = c.prefix, c.label
+		if strings.HasPrefix(ruleID, c.prefix) && len(c.prefix) > len(best) {
+			best, key = c.prefix, c.key
 		}
 	}
-	return label
+	return l.T(key)
 }
+
+// category 是固定中文的旧函数，调用方迁移到 CategoryIn 后删除。
+func category(id string) string { return CategoryIn(i18n.ZhCN, id) }

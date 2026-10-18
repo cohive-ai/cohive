@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearch } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { api, type Me } from "../api";
 import { minPasswordLength, safeRedirect } from "../format";
 import { btn, Callout, ErrorText, Field, inputClass, errMsg, SuccessText } from "../ui";
 
 // 首次登录或被重置密码后必须先改密码；也作为个人中心里的改密码区块
 export function PasswordPage() {
+  const { t } = useTranslation("auth");
   const { redirect } = useSearch({ from: "/layout/password" });
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const router = useRouter();
@@ -14,8 +16,8 @@ export function PasswordPage() {
 
   return (
     <div className="mx-auto max-w-md space-y-4">
-      <h1 className="text-lg font-semibold">修改密码</h1>
-      {forced && <Callout>为了账号安全，请先设置一个新密码，之后才能使用其他页面。</Callout>}
+      <h1 className="text-lg font-semibold">{t("password.title")}</h1>
+      {forced && <Callout>{t("password.forced")}</Callout>}
       <div className="rounded-lg border border-line bg-surface p-4 sm:p-5">
         <ChangePasswordForm
           hasPassword={me.data?.account.has_password ?? true}
@@ -29,6 +31,7 @@ export function PasswordPage() {
 }
 
 export function ChangePasswordForm({ hasPassword, onDone }: { hasPassword: boolean; onDone?: () => void }) {
+  const { t } = useTranslation("auth");
   const qc = useQueryClient();
   const [oldPassword, setOld] = useState("");
   const [next, setNext] = useState("");
@@ -37,8 +40,8 @@ export function ChangePasswordForm({ hasPassword, onDone }: { hasPassword: boole
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const nextError = next && next.length < minPasswordLength ? `新密码至少 ${minPasswordLength} 位。` : "";
-  const confirmError = confirm && confirm !== next ? "两次输入的新密码不一致。" : "";
+  const nextError = next && next.length < minPasswordLength ? t("password.nextError", { min: minPasswordLength }) : "";
+  const confirmError = confirm && confirm !== next ? t("password.confirmError") : "";
   const ready =
     (!hasPassword || oldPassword.length > 0) && next.length >= minPasswordLength && confirm === next && !busy;
 
@@ -57,7 +60,7 @@ export function ChangePasswordForm({ hasPassword, onDone }: { hasPassword: boole
       setOld("");
       setNext("");
       setConfirm("");
-      setOk("密码已修改。其他浏览器上的登录已失效，需要用新密码重新登录。");
+      setOk(t("password.done"));
       onDone?.();
     } catch (err) {
       setError(errMsg(err));
@@ -69,9 +72,9 @@ export function ChangePasswordForm({ hasPassword, onDone }: { hasPassword: boole
   return (
     <form onSubmit={submit} className="space-y-4">
       <Field
-        label="旧密码"
+        label={t("password.old")}
         htmlFor="old-password"
-        hint={hasPassword ? undefined : "你还没有设过密码（例如通过免密链接登录），旧密码可以留空。"}
+        hint={hasPassword ? undefined : t("password.oldHint")}
       >
         <input
           id="old-password"
@@ -82,7 +85,11 @@ export function ChangePasswordForm({ hasPassword, onDone }: { hasPassword: boole
           className={inputClass}
         />
       </Field>
-      <Field label="新密码" htmlFor="new-password" hint={nextError ? undefined : `至少 ${minPasswordLength} 位。`}>
+      <Field
+        label={t("password.new")}
+        htmlFor="new-password"
+        hint={nextError ? undefined : t("password.newHint", { min: minPasswordLength })}
+      >
         <input
           id="new-password"
           type="password"
@@ -94,7 +101,7 @@ export function ChangePasswordForm({ hasPassword, onDone }: { hasPassword: boole
         />
         {nextError && <p className="mt-1 text-xs text-danger">{nextError}</p>}
       </Field>
-      <Field label="确认新密码" htmlFor="confirm-password">
+      <Field label={t("password.confirm")} htmlFor="confirm-password">
         <input
           id="confirm-password"
           type="password"
@@ -109,7 +116,7 @@ export function ChangePasswordForm({ hasPassword, onDone }: { hasPassword: boole
       <ErrorText>{error}</ErrorText>
       <SuccessText>{ok}</SuccessText>
       <button type="submit" disabled={!ready} className={btn.primary}>
-        {busy ? "正在保存…" : "修改密码"}
+        {busy ? t("password.saving") : t("password.submit")}
       </button>
     </form>
   );

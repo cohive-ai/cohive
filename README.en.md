@@ -6,7 +6,7 @@
 
 Team members write code with their own tools, such as Claude Code and Codex. Cohive lets these agents hand off issues to each other over remote MCP: whoever finds a problem drafts an issue, the owner accepts it, fixes it and asks for verification from inside their own coding tool, and the reporter confirms and closes it. Submitting, accepting and closing are confirmed by a person. The team chat only gets a signal ("whose turn it is, and what to do") with an @-mention. Teams host Cohive themselves.
 
-The interface and messages are currently in Chinese only.
+English support is in progress: the web UI, CLI and MCP tool descriptions are available in English and Simplified Chinese, while the workspace admin page, chat notifications and some server messages are still Chinese only. More languages are welcome; see [Languages and translations](CONTRIBUTING.md#languages-and-translations).
 
 ![Board](docs/images/board.png)
 
@@ -54,14 +54,14 @@ docker compose up -d --build
 docker compose exec cohive cat /data/initial_admin_password
 ```
 
-The last command shows the random password of the initial admin `admin`. It is written only to this file in the data volume, never to the logs. Open `http://localhost:8787`, sign in and change the password when asked; the file is then deleted. Next, set the external URL under "服务器管理 → 设置" (Server admin → Settings) and create an invite link under the workspace's "管理 → 邀请" (Admin → Invites).
+The last command shows the random password of the initial admin `admin`. It is written only to this file in the data volume, never to the logs. Open `http://localhost:8787`, sign in and change the password when asked; the file is then deleted. Next, set the external URL under Server admin → Settings (服务器管理 → 设置) and create an invite link under the workspace's Admin → Invites (管理 → 邀请).
 
-Chat notifications, Cloudflare Tunnel, backups and upgrades: see [Deploying with Docker](docs/guides/deploy-docker.md) (Chinese).
+Chat notifications, Cloudflare Tunnel, backups and upgrades: see [Deploying with Docker](docs/guides/deploy-docker.en.md).
 
 ### For team members: three steps
 
 1. **Open the invite link and register.**
-2. **Install the CLI and pair your computer.** Copy the command from "个人中心 → 绑定新电脑" (Profile → Pair a new computer). After installing it opens the browser; click "授权" (Authorize).
+2. **Install the CLI and pair your computer.** Copy the command from Profile → Pair a new computer (个人中心 → 绑定新电脑). After installing it opens the browser; click Authorize (授权).
 
    ```bash
    curl -fsSL https://cohive.example.com/install.sh | sh -s -- --login
@@ -70,7 +70,7 @@ Chat notifications, Cloudflare Tunnel, backups and upgrades: see [Deploying with
    On Windows, in PowerShell: `$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex`. The CLI is served by your own Cohive server; no Go toolchain needed.
 3. **Run `cohive init` in the project directory** (skip it if a teammate already committed the generated config). Then use `/cohive` in Claude Code and `$cohive` in Codex.
 
-The first time you open the project in a coding tool, trust the project. For Codex, also run the `codex` CLI once in the project directory and trust Cohive's two hooks. Details: [Onboarding](docs/guides/onboarding.md) (Chinese).
+The first time you open the project in a coding tool, trust the project. For Codex, also run the `codex` CLI once in the project directory and trust Cohive's two hooks. Details: [Onboarding](docs/guides/onboarding.en.md).
 
 ## Concepts
 
@@ -114,6 +114,14 @@ make db-up      # local development Postgres on localhost:55432
 make build      # web UI, CLI packages for five platforms, and the server, in bin/
 go test ./...
 ```
+
+## Contributing
+
+Bug reports, fixes, docs and translations are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) to get started, and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report security problems privately as described in [SECURITY.md](SECURITY.md).
+
+<a href="https://github.com/cohive-ai/cohive/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=cohive-ai/cohive" alt="Contributors" />
+</a>
 
 ## License
 

@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // Proxy 把编程工具通过标准输入输出发来的 MCP 消息（每行一条 JSON-RPC）转发到协作服务的 /mcp，
@@ -54,7 +56,7 @@ func (p *Proxy) Run(ctx context.Context, in io.Reader, out io.Writer) error {
 		if msg := bytes.TrimSpace(line); len(msg) > 0 {
 			var head rpcHead
 			if err := json.Unmarshal(msg, &head); err != nil {
-				p.write(out, []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"解析错误：输入不是合法的 JSON"}}`))
+				p.write(out, parseErrorResponse())
 				continue
 			}
 			if head.Method == "initialize" {
@@ -129,11 +131,11 @@ func (p *Proxy) renew(ctx context.Context, used string) bool {
 	p.refreshed = true
 	tok, err := p.Refresh(ctx)
 	if err != nil {
-		p.logf("重新签发令牌失败：%v", err)
+		p.logf("%s", i18n.T("cli.client.proxy.renew_failed", i18n.D{"Err": err.Error()}))
 		p.refreshErr = err
 		return false
 	}
-	p.logf("令牌已失效，已用这台电脑的设备密钥重新签发")
+	p.logf("%s", i18n.T("cli.client.proxy.renewed"))
 	p.Token = tok
 	return true
 }
@@ -150,13 +152,13 @@ func (p *Proxy) forward(ctx context.Context, msg []byte, head rpcHead, out io.Wr
 		if p.renew(ctx, strings.TrimPrefix(used, "Bearer ")) {
 			resp, err = p.send(ctx, msg)
 		} else {
-			msg := "Cohive 令牌无效或已吊销：如果你已被移出这个工作空间，请联系管理员；否则请执行 cohive login --force 重新配对这台电脑"
+			msg := i18n.T("cli.client.proxy.token_invalid")
 			p.stateMu.Lock()
 			switch {
 			case errors.Is(p.refreshErr, ErrNotMember):
-				msg = "Cohive 令牌已失效：你已不是这个工作空间的成员（可能已被移出），请联系它的管理员"
+				msg = i18n.T("cli.client.proxy.not_member_now")
 			case p.refreshErr != nil:
-				msg = "Cohive 令牌已失效，重新签发也失败：" + p.refreshErr.Error()
+				msg = i18n.T("cli.client.proxy.reissue_failed", i18n.D{"Err": i18n.Message(i18n.Default(), p.refreshErr)})
 			}
 			p.stateMu.Unlock()
 			p.fail(out, head, msg)
@@ -168,7 +170,7 @@ func (p *Proxy) forward(ctx context.Context, msg []byte, head rpcHead, out io.Wr
 		if errors.As(err, &ue) {
 			err = ue.Err
 		}
-		p.fail(out, head, fmt.Sprintf("连接 Cohive 协作服务 %s 失败：%v", p.Server, err))
+		p.fail(out, head, i18n.T("cli.client.proxy.connect_failed", i18n.D{"Server": p.Server, "Err": err.Error()}))
 		return
 	}
 	p.handle(resp, head, out)
@@ -205,11 +207,11 @@ func (p *Proxy) handle(resp *http.Response, head rpcHead, out io.Writer) {
 	case resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusNoContent:
 		return
 	case resp.StatusCode == http.StatusUnauthorized:
-		p.fail(out, head, "Cohive 令牌无效或已吊销：如果你已被移出这个工作空间，请联系管理员；否则请执行 cohive login --force 重新配对这台电脑")
+		p.fail(out, head, i18n.T("cli.client.proxy.token_invalid"))
 		return
 	case resp.StatusCode >= 300:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		p.fail(out, head, fmt.Sprintf("Cohive 协作服务返回 HTTP %d：%s", resp.StatusCode, p.sanitize(string(body))))
+		p.fail(out, head, i18n.T("cli.client.proxy.http_error", i18n.D{"Code": resp.StatusCode, "Body": p.sanitize(string(body))}))
 		return
 	}
 
@@ -219,7 +221,7 @@ func (p *Proxy) handle(resp *http.Response, head rpcHead, out io.Writer) {
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
-		p.fail(out, head, "读取协作服务响应失败")
+		p.fail(out, head, i18n.T("cli.client.proxy.read_failed"))
 		return
 	}
 	p.deliver(body, head, out)
@@ -249,7 +251,7 @@ func (p *Proxy) relaySSE(body io.Reader, head rpcHead, out io.Writer) {
 		}
 	}
 	if err := sc.Err(); err != nil {
-		p.fail(out, head, "读取 Cohive 协作服务的流式响应失败："+err.Error())
+		p.fail(out, head, i18n.T("cli.client.proxy.stream_failed", i18n.D{"Err": err.Error()}))
 		return
 	}
 	flush()
@@ -269,7 +271,7 @@ func (p *Proxy) deliver(msg []byte, head rpcHead, out io.Writer) {
 		}
 	}
 	if !p.write(out, msg) {
-		p.fail(out, head, "Cohive 协作服务返回了无法识别的内容")
+		p.fail(out, head, i18n.T("cli.client.proxy.unrecognized"))
 	}
 }
 
@@ -283,7 +285,13 @@ func (p *Proxy) sanitize(body string) string {
 	body = bearerPattern.ReplaceAllString(body, "Bearer ***")
 	body = strings.TrimSpace(body)
 	if r := []rune(body); len(r) > 300 {
-		body = string(r[:300]) + "……"
+		body = string(r[:300]) + "..."
 	}
 	return body
+}
+
+// parseErrorResponse 是输入不是合法 JSON 时回给编程工具的 JSON-RPC 解析错误。
+func parseErrorResponse() []byte {
+	msg, _ := json.Marshal(i18n.T("cli.client.proxy.parse_error"))
+	return []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":` + string(msg) + `}}`)
 }

@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Link, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type DeviceToken, type WorkspaceRef } from "./api";
-import { roleLabel, tokensByWorkspace, toolLabel, workspaceLabel } from "./format";
+import { joinList, roleLabel, tokensByWorkspace, toolLabel, workspaceLabel } from "./format";
 import { btn } from "./ui";
 import {
   canAdminWorkspace,
@@ -14,6 +15,7 @@ import {
 
 // 工具标识：哪个工具做的，是协作记录里的关键信息
 export function ToolMark({ tool, withLabel = true }: { tool: string; withLabel?: boolean }) {
+  useTranslation(); // 切换语言时重绘（“网页”的名称随语言变）
   const color =
     tool === "claude-code" ? "text-tool-claude" : tool === "codex" ? "text-tool-codex" : "text-muted";
   return (
@@ -46,6 +48,7 @@ export function StatusTag({ status, label }: { status: string; label: string }) 
 }
 
 export function Layout() {
+  const { t } = useTranslation();
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -98,24 +101,24 @@ export function Layout() {
                   activeProps={active}
                   activeOptions={{ exact: true }}
                 >
-                  看板
+                  {t("nav.board")}
                 </Link>
                 <Link to="/w/$ws/issues" params={{ ws: navWs }} className={nav} activeProps={active}>
-                  问题单
+                  {t("nav.issues")}
                 </Link>
                 {showAdmin && (
                   <Link to="/w/$ws/admin" params={{ ws: navWs }} className={nav} activeProps={active}>
-                    管理
+                    {t("nav.admin")}
                   </Link>
                 )}
               </>
             )}
             <Link to="/me" className={nav} activeProps={active}>
-              个人中心
+              {t("nav.profile")}
             </Link>
             {me.data?.account.server_admin && (
               <Link to="/server" className={nav} activeProps={active}>
-                服务器管理
+                {t("nav.serverAdmin")}
               </Link>
             )}
           </nav>
@@ -131,7 +134,7 @@ export function Layout() {
               disabled={leaving}
               className="rounded px-2 py-1 text-muted hover:bg-sunken hover:text-ink disabled:opacity-50"
             >
-              {leaving ? "正在退出…" : "退出"}
+              {leaving ? t("session.signingOut") : t("session.signOut")}
             </button>
           </div>
         </div>
@@ -153,10 +156,11 @@ function WorkspaceSwitcher({
   current: string | null;
   onChange: (ws: string) => void;
 }) {
+  const { t } = useTranslation();
   const known = !current || workspaces.some((w) => w.name === current);
   return (
     <label className="flex items-center gap-1 text-sm">
-      <span className="sr-only">切换工作空间</span>
+      <span className="sr-only">{t("workspace.switch")}</span>
       <select
         value={current ?? ""}
         onChange={(e) => onChange(e.target.value)}
@@ -164,10 +168,10 @@ function WorkspaceSwitcher({
       >
         {!current && (
           <option value="" disabled>
-            选择工作空间
+            {t("workspace.choose")}
           </option>
         )}
-        {!known && current && <option value={current}>{current}（你不是成员）</option>}
+        {!known && current && <option value={current}>{t("workspace.notMember", { name: current })}</option>}
         {workspaces.map((w) => (
           <option key={w.name} value={w.name}>
             {workspaceLabel(w)} · {roleLabel(w.role)}
@@ -180,17 +184,18 @@ function WorkspaceSwitcher({
 
 // 一个工作空间都没有时的提示页
 export function NoWorkspace() {
+  const { t } = useTranslation();
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   return (
     <div className="mx-auto max-w-xl space-y-3">
-      <Notice>你还没有加入任何工作空间，请联系管理员。</Notice>
+      <Notice>{t("workspace.noneJoined")}</Notice>
       {me.data?.account.server_admin && (
         <p className="text-sm">
-          你是服务器管理员，可以
-          <Link to="/server" className="text-teal hover:underline">
-            新建工作空间
-          </Link>
-          。
+          <Trans
+            t={t}
+            i18nKey="workspace.createHint"
+            components={{ create: <Link to="/server" className="text-teal hover:underline" /> }}
+          />
         </p>
       )}
     </div>
@@ -199,6 +204,7 @@ export function NoWorkspace() {
 
 // 需要账号密码登录的网页会话：说明原因，并提供退出后用账号密码登录（登录后回到 redirectTo）的入口。
 export function NeedPasswordLogin({ message, redirectTo }: { message: React.ReactNode; redirectTo: string }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
@@ -216,7 +222,7 @@ export function NeedPasswordLogin({ message, redirectTo }: { message: React.Reac
     <div className="mx-auto max-w-xl space-y-3">
       <Notice tone="danger">{message}</Notice>
       <button type="button" onClick={relogin} disabled={busy} className={btn.primary}>
-        {busy ? "正在退出…" : "退出并用账号密码登录"}
+        {busy ? t("session.signingOut") : t("session.signOutAndUsePassword")}
       </button>
     </div>
   );
@@ -232,16 +238,17 @@ export function Notice({ children, tone = "muted" }: { children: React.ReactNode
 
 // 设备上的令牌按工作空间列出：pay：Claude Code、Codex
 export function DeviceTokens({ tokens, revoked }: { tokens: DeviceToken[] | null | undefined; revoked: boolean }) {
+  const { t } = useTranslation();
   const groups = tokensByWorkspace(tokens);
   if (groups.length === 0) {
-    return <p className="text-xs text-muted">{revoked ? "令牌已全部失效" : "还没有任何工作空间的令牌"}</p>;
+    return <p className="text-xs text-muted">{revoked ? t("deviceTokens.allRevoked") : t("deviceTokens.none")}</p>;
   }
   return (
     <ul className="mt-0.5 space-y-0.5 text-xs">
       {groups.map((g) => (
         <li key={g.workspace}>
           <span className="font-medium">{g.workspace}</span>
-          <span className="text-muted">：{g.tools.join("、")}</span>
+          <span className="text-muted">{t("deviceTokens.tools", { tools: joinList(g.tools) })}</span>
         </li>
       ))}
     </ul>

@@ -4,11 +4,11 @@ package authn
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 )
@@ -20,12 +20,13 @@ func Middleware(q store.DBTX) func(http.Handler) http.Handler {
 	verifier := func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 		id, err := store.LookupToken(ctx, q, token)
 		if errors.Is(err, store.ErrUnauthorized) {
-			return nil, fmt.Errorf("%w：令牌无效或已吊销", auth.ErrInvalidToken)
+			// 鉴权发生在确定账号之前：用服务器缺省语言（第二段改为按令牌所属账号的语言）
+			return nil, i18n.Wrap(auth.ErrInvalidToken, "api.authn.token_invalid")
 		}
 		if err != nil {
 			// 不把数据库错误原文返回给尚未鉴权的请求方
-			log.Printf("校验令牌失败：%v", err)
-			return nil, errors.New("服务暂不可用")
+			log.Printf("token verification failed: %v", err)
+			return nil, i18n.Errorf("api.authn.unavailable")
 		}
 		return &auth.TokenInfo{
 			UserID: "member:" + strconv.FormatInt(id.MemberID, 10) + "/token:" + strconv.FormatInt(id.TokenID, 10),

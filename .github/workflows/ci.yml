@@ -1,0 +1,74 @@
+# 持续集成：与 CONTRIBUTING.md 的测试口径一致。仓库公开，这里不放任何密钥；
+# Postgres 用服务容器，账号密码只用于本次运行。来自分叉的合并请求只有只读权限。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: cohive
+          POSTGRES_USER: cohive
+          POSTGRES_PASSWORD: cohive
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U cohive -d cohive"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      COHIVE_DATABASE_URL: postgres://cohive:cohive@localhost:55432/cohive?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # make build 用 git describe 取版本号
+
+      # 备份脚本的测试要用与服务端同一大版本的 pg_dump
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      # 含网页的安装、类型检查、构建与测试（见 Makefile 的 web 目标），以及五个平台的命令行安装包
+      - name: Build
+        run: make build
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go test
+        run: go test -count=1 ./...

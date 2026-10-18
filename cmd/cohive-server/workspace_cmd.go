@@ -12,6 +12,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -21,9 +22,9 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 	case "add":
 		var name, display, adminName string
 		if err := parse("workspace add", args, func(fs *flag.FlagSet) {
-			fs.StringVar(&name, "name", "", "工作空间路径，出现在链接与项目配置里，通常对应一个项目（一个群）；建后不能改")
-			fs.StringVar(&display, "display", "", "显示名（可选，可随时改；缺省与路径相同）")
-			fs.StringVar(&adminName, "admin", "", "首位管理员的登录名（可选）")
+			fs.StringVar(&name, "name", "", i18n.T("server.flag.ws_path_add"))
+			fs.StringVar(&display, "display", "", i18n.T("server.flag.ws_display_add"))
+			fs.StringVar(&adminName, "admin", "", i18n.T("server.flag.ws_first_admin"))
 		}); err != nil {
 			return err
 		}
@@ -34,17 +35,17 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "已创建工作空间 %s（显示名 %s，编号 %d）\n", w.Name, w.Label(), w.ID)
+		fmt.Fprintln(out, i18n.T("server.workspace.created", i18n.D{"Name": w.Name, "Display": w.Label(), "ID": w.ID}))
 		return nil
 	case "set":
 		var name, display string
 		var openH, verifyH int
 		set := map[string]bool{}
 		fs := flag.NewFlagSet("workspace set", flag.ContinueOnError)
-		fs.StringVar(&name, "name", "", "工作空间路径")
-		fs.StringVar(&display, "display", "", "显示名；传空字符串恢复为与路径相同")
-		fs.IntVar(&openH, "remind-open-hours", 0, "待接单超时催办时长（小时，0 表示关闭）")
-		fs.IntVar(&verifyH, "remind-verify-hours", 0, "待验证超时催办时长（小时，0 表示关闭）")
+		fs.StringVar(&name, "name", "", i18n.T("server.flag.ws_path"))
+		fs.StringVar(&display, "display", "", i18n.T("server.flag.ws_display_set"))
+		fs.IntVar(&openH, "remind-open-hours", 0, i18n.T("server.flag.remind_open_hours"))
+		fs.IntVar(&verifyH, "remind-verify-hours", 0, i18n.T("server.flag.remind_verify_hours"))
 		if err := fs.Parse(args); err != nil {
 			return err
 		}
@@ -53,7 +54,7 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 			return err
 		}
 		if !set["display"] && !set["remind-open-hours"] && !set["remind-verify-hours"] {
-			return fmt.Errorf("没有要修改的项：用 --display（路径不能改）、--remind-open-hours 或 --remind-verify-hours")
+			return i18n.Errorf("server.workspace.nothing_to_change")
 		}
 		wsID, err := resolveWorkspace(ctx, pool, name)
 		if err != nil {
@@ -81,13 +82,13 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "工作空间 %s：显示名 %s，超时催办 待接单 %s、待验证 %s\n", w.Name, w.Label(),
-			hoursLabel(w.Remind.OpenHours), hoursLabel(w.Remind.VerifyHours))
+		fmt.Fprintln(out, i18n.T("server.workspace.settings_set", i18n.D{"Name": w.Name, "Display": w.Label(),
+			"Open": hoursLabel(w.Remind.OpenHours), "Verify": hoursLabel(w.Remind.VerifyHours)}))
 		return nil
 	case "remove":
 		var name string
 		if err := parse("workspace remove", args, func(fs *flag.FlagSet) {
-			fs.StringVar(&name, "name", "", "工作空间名")
+			fs.StringVar(&name, "name", "", i18n.T("server.flag.ws_name"))
 		}); err != nil {
 			return err
 		}
@@ -95,11 +96,11 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 			return err
 		}
 		if err := (&core.Service{Pool: pool}).DeleteWorkspace(ctx, core.ServerCLI(), name); errors.Is(err, store.ErrNotFound) {
-			return fmt.Errorf("工作空间 %q 不存在", name)
+			return i18n.Errorf("server.workspace.not_found", i18n.D{"Name": strconv.Quote(name)})
 		} else if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "已删除工作空间 %s\n", name)
+		fmt.Fprintln(out, i18n.T("server.workspace.deleted", i18n.D{"Name": name}))
 		return nil
 	case "list":
 		if _, err := store.DefaultWorkspace(ctx, pool); err != nil {
@@ -110,16 +111,16 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 			return err
 		}
 		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "编号\t路径\t显示名\t群通知\t待发/失败")
+		fmt.Fprintln(tw, i18n.T("server.table.workspaces"))
 		for _, w := range list {
 			pending, failed, err := store.CountNotifications(ctx, pool, w.ID)
 			if err != nil {
 				return err
 			}
-			notify := "未配置"
+			notify := i18n.T("server.workspace.notify_none")
 			if w.Notify.Channel != "" {
-				notify = fmt.Sprintf("%s %s（标题 %s，简述 %s）", w.Notify.Channel, w.Notify.Target,
-					onOff(w.Notify.ShowTitle), onOff(w.Notify.ShowBrief))
+				notify = i18n.T("server.workspace.notify_summary", i18n.D{"Channel": w.Notify.Channel, "Target": w.Notify.Target,
+					"Title": onOff(w.Notify.ShowTitle), "Brief": onOff(w.Notify.ShowBrief)})
 			}
 			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%d/%d\n", w.ID, w.Name, w.Label(), notify, pending, failed)
 		}
@@ -127,35 +128,35 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 	case "notify":
 		return workspaceNotify(ctx, out, pool, args)
 	}
-	fmt.Fprint(out, usage)
-	return fmt.Errorf("未知命令 %q", "workspace "+sub)
+	fmt.Fprint(out, usage())
+	return i18n.Errorf("server.unknown_command", i18n.D{"Command": strconv.Quote("workspace " + sub)})
 }
 
 func hoursLabel(h int) string {
 	if h == 0 {
-		return "关闭"
+		return i18n.T("server.hours_off")
 	}
-	return fmt.Sprintf("%d 小时", h)
+	return i18n.T("server.hours", i18n.D{"Count": h})
 }
 
 func onOff(b bool) string {
 	if b {
-		return "开"
+		return i18n.T("server.on")
 	}
-	return "关"
+	return i18n.T("server.off")
 }
 
 func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, args []string) error {
 	var name, chat, dtChat, publicURL string
 	var showTitle, showBrief, off bool
 	if err := parse("workspace notify", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&name, "workspace", "default", "工作空间名")
-		fs.StringVar(&chat, "telegram-chat", "", "Telegram 群聊编号（群里发 /chatid 获取）")
-		fs.StringVar(&dtChat, "dingtalk-chat", "", "钉钉群编号（群里 @机器人 发“群编号”获取；也可以在网页上用群绑定码绑定）")
-		fs.BoolVar(&showTitle, "show-title", true, "群消息里显示标题")
-		fs.BoolVar(&showBrief, "show-brief", true, "群消息里显示群通知简述")
-		fs.StringVar(&publicURL, "public-url", "", "已废弃：对外地址改为服务器级，用 server set --external-url")
-		fs.BoolVar(&off, "off", false, "关闭群通知")
+		fs.StringVar(&name, "workspace", "default", i18n.T("server.flag.ws_name"))
+		fs.StringVar(&chat, "telegram-chat", "", i18n.T("server.flag.telegram_chat"))
+		fs.StringVar(&dtChat, "dingtalk-chat", "", i18n.T("server.flag.dingtalk_chat"))
+		fs.BoolVar(&showTitle, "show-title", true, i18n.T("server.flag.show_title"))
+		fs.BoolVar(&showBrief, "show-brief", true, i18n.T("server.flag.show_brief"))
+		fs.StringVar(&publicURL, "public-url", "", i18n.T("server.flag.public_url"))
+		fs.BoolVar(&off, "off", false, i18n.T("server.flag.notify_off"))
 	}); err != nil {
 		return err
 	}
@@ -166,26 +167,26 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 	svc := &core.Service{Pool: pool}
 	if dtChat != "" {
 		if chat != "" || off {
-			return fmt.Errorf("--dingtalk-chat 不能与 --telegram-chat、--off 同时使用")
+			return i18n.Errorf("server.workspace.dingtalk_conflict")
 		}
 		if err := svc.BindChat(ctx, core.ServerCLI(), wsID, core.ProviderDingTalk, dtChat); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "工作空间 %s 的群通知发往钉钉群 %s\n", name, dtChat)
+		fmt.Fprintln(out, i18n.T("server.workspace.notify_dingtalk", i18n.D{"Name": name, "Chat": dtChat}))
 		return nil
 	}
 	if !off {
 		if chat == "" {
-			return fmt.Errorf("缺少参数 --telegram-chat 或 --dingtalk-chat；关闭群通知请用 --off")
+			return i18n.Errorf("server.workspace.chat_missing")
 		}
 		if _, err := fmt.Sscan(chat, new(int64)); err != nil {
-			return fmt.Errorf("Telegram 群聊编号应为数字，例如 -1001234567890")
+			return i18n.Errorf("server.workspace.telegram_chat_invalid")
 		}
 	} else {
 		chat = ""
 	}
 	if publicURL != "" {
-		return fmt.Errorf("--public-url 已废弃：对外地址改为服务器级，只设一个，请用 cohive-server server set --external-url %s", publicURL)
+		return i18n.Errorf("server.workspace.public_url_removed", i18n.D{"URL": publicURL})
 	}
 	// 经业务层写入：一个群只能绑一个工作空间
 	if off { // 关闭群通知：钉钉群也一并解绑
@@ -198,9 +199,9 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 		return err
 	}
 	if off {
-		fmt.Fprintf(out, "已关闭工作空间 %s 的群通知\n", name)
+		fmt.Fprintln(out, i18n.T("server.workspace.notify_off", i18n.D{"Name": name}))
 	} else {
-		fmt.Fprintf(out, "工作空间 %s 的群通知发往 Telegram 群 %s\n", name, chat)
+		fmt.Fprintln(out, i18n.T("server.workspace.notify_telegram", i18n.D{"Name": name, "Chat": chat}))
 	}
 	return nil
 }
@@ -211,27 +212,27 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 	var name, role string
 	set := map[string]bool{}
 	fs := flag.NewFlagSet("member set", flag.ContinueOnError)
-	fs.StringVar(&name, "name", "", "登录名")
-	fs.StringVar(&role, "role", "", "角色：admin（可发邀请、审批注册与设备）或 member")
+	fs.StringVar(&name, "name", "", i18n.T("server.flag.username"))
+	fs.StringVar(&role, "role", "", i18n.T("server.flag.role_set"))
 	var tgOld, tgIDOld string
-	fs.StringVar(&tgOld, "telegram", "", "已移到 account set")
-	fs.StringVar(&tgIDOld, "telegram-id", "", "已移到 account set")
+	fs.StringVar(&tgOld, "telegram", "", i18n.T("server.flag.moved_to_account_set"))
+	fs.StringVar(&tgIDOld, "telegram-id", "", i18n.T("server.flag.moved_to_account_set"))
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	if set["telegram"] || set["telegram-id"] {
-		return fmt.Errorf("Telegram 连接现在是账号级的，全部工作空间通用：请用 account set --name %s --telegram …", name)
+		return i18n.Errorf("server.member.telegram_moved", i18n.D{"Name": name})
 	}
 	if err := required("name", name); err != nil {
 		return err
 	}
 	if !set["role"] {
-		return fmt.Errorf("没有要修改的项：用 --role 设置角色")
+		return i18n.Errorf("server.member.nothing_to_change")
 	}
 	m, err := store.MemberByName(ctx, pool, ws, name)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("成员 %q 不存在", name)
+		return i18n.Errorf("server.member.not_found", i18n.D{"Name": strconv.Quote(name)})
 	}
 	if err != nil {
 		return err
@@ -239,7 +240,7 @@ func memberSet(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 	if err := (&core.Service{Pool: pool}).SetRole(ctx, core.ServerCLI(), ws, m.ID, role); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "%s 的角色为 %s\n", name, roleLabel(role))
+	fmt.Fprintln(out, i18n.T("server.member.role_set", i18n.D{"Name": name, "Role": roleLabel(role)}))
 	return nil
 }
 
@@ -248,7 +249,7 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 	named := func(cmd string, extra func(fs *flag.FlagSet)) (store.Account, error) {
 		var name string
 		if err := parse(cmd, args, func(fs *flag.FlagSet) {
-			fs.StringVar(&name, "name", "", "登录名")
+			fs.StringVar(&name, "name", "", i18n.T("server.flag.username"))
 			if extra != nil {
 				extra(fs)
 			}
@@ -260,7 +261,7 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 		}
 		a, err := store.AccountByName(ctx, pool, name)
 		if errors.Is(err, store.ErrNotFound) {
-			return a, fmt.Errorf("没有登录名为 %s 的账号", name)
+			return a, i18n.Errorf("server.account.not_found", i18n.D{"Name": name})
 		}
 		return a, err
 	}
@@ -268,7 +269,7 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 	case "list":
 		var prefix string
 		if err := parse("account list", args, func(fs *flag.FlagSet) {
-			fs.StringVar(&prefix, "prefix", "", "登录名前缀")
+			fs.StringVar(&prefix, "prefix", "", i18n.T("server.flag.username_prefix"))
 		}); err != nil {
 			return err
 		}
@@ -277,24 +278,24 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 			return err
 		}
 		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "登录名\t显示名\t服务器管理员\t状态\tTelegram\t设备\t工作空间")
+		fmt.Fprintln(tw, i18n.T("server.table.accounts"))
 		for _, a := range list {
-			state := "正常"
+			state := i18n.T("server.state.normal")
 			if a.Disabled() {
-				state = "已停用"
+				state = i18n.T("server.state.disabled")
 			}
 			tg := a.TelegramUsername
 			if a.TelegramUserID != nil && tg == "" {
-				tg = "已连接"
+				tg = i18n.T("server.account.telegram_connected")
 			}
 			var wss []string
 			for _, m := range a.Memberships {
 				if m.Status == store.MemberActive {
-					wss = append(wss, m.Workspace+"（"+roleLabel(m.Role)+"）")
+					wss = append(wss, i18n.T("server.account.workspace_role", i18n.D{"Workspace": m.Workspace, "Role": roleLabel(m.Role)}))
 				}
 			}
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n", a.Name, a.DisplayName, yesNo(a.ServerAdmin), state, tg, a.Devices,
-				strings.Join(wss, "、"))
+				strings.Join(wss, i18n.T("server.list_separator")))
 		}
 		return tw.Flush()
 	case "set":
@@ -302,10 +303,10 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 		set := map[string]bool{}
 		fs := flag.NewFlagSet("account set", flag.ContinueOnError)
 		var name string
-		fs.StringVar(&name, "name", "", "登录名")
-		fs.StringVar(&display, "display", "", "显示名")
-		fs.StringVar(&tg, "telegram", "", "Telegram 用户名，群通知里用于 @ 提醒；传空字符串可清除")
-		fs.StringVar(&tgID, "telegram-id", "", "Telegram 用户编号（私聊机器人 /whoami 获取），用于识别群里点审批按钮的人；传空字符串可解绑。一般由本人在网页个人中心自行连接")
+		fs.StringVar(&name, "name", "", i18n.T("server.flag.username"))
+		fs.StringVar(&display, "display", "", i18n.T("server.flag.display"))
+		fs.StringVar(&tg, "telegram", "", i18n.T("server.flag.telegram_username"))
+		fs.StringVar(&tgID, "telegram-id", "", i18n.T("server.flag.telegram_id"))
 		if err := fs.Parse(args); err != nil {
 			return err
 		}
@@ -314,42 +315,42 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 			return err
 		}
 		if !set["display"] && !set["telegram"] && !set["telegram-id"] {
-			return fmt.Errorf("没有要修改的项：用 --display、--telegram 或 --telegram-id")
+			return i18n.Errorf("server.account.nothing_to_change")
 		}
 		var in core.AccountUpdate
 		var msgs []string
 		if set["display"] {
 			d := strings.TrimSpace(display)
 			in.DisplayName = &d
-			msgs = append(msgs, fmt.Sprintf("%s 的显示名为 %s", name, d))
+			msgs = append(msgs, i18n.T("server.account.display_set", i18n.D{"Name": name, "Display": d}))
 		}
 		if set["telegram"] {
 			tg = strings.TrimPrefix(strings.TrimSpace(tg), "@")
 			if tg != "" && !telegramUsername.MatchString(tg) {
-				return fmt.Errorf("Telegram 用户名 %q 不合法：5 到 32 位，字母开头，只含字母、数字和下划线", tg)
+				return i18n.Errorf("server.account.telegram_username_invalid", i18n.D{"Name": strconv.Quote(tg)})
 			}
 			in.TelegramUsername = &tg
 			if tg == "" {
-				msgs = append(msgs, fmt.Sprintf("已清除 %s 的 Telegram 用户名", name))
+				msgs = append(msgs, i18n.T("server.account.telegram_username_cleared", i18n.D{"Name": name}))
 			} else {
-				msgs = append(msgs, fmt.Sprintf("%s 的 Telegram 用户名为 %s", name, tg))
+				msgs = append(msgs, i18n.T("server.account.telegram_username_set", i18n.D{"Name": name, "Username": tg}))
 			}
 		}
 		if set["telegram-id"] {
 			if tgID = strings.TrimSpace(tgID); tgID != "" {
 				v, err := strconv.ParseInt(tgID, 10, 64)
 				if err != nil || v <= 0 {
-					return fmt.Errorf("Telegram 用户编号应为正整数，私聊机器人发 /whoami 可以查到")
+					return i18n.Errorf("server.account.telegram_id_invalid")
 				}
 				in.TelegramUserID = &v
-				msgs = append(msgs, fmt.Sprintf("%s 已绑定 Telegram 用户编号 %d", name, v))
+				msgs = append(msgs, i18n.T("server.account.telegram_id_set", i18n.D{"Name": name, "ID": v}))
 			} else {
 				in.ClearTelegramID = true
-				msgs = append(msgs, fmt.Sprintf("已解绑 %s 的 Telegram 用户编号", name))
+				msgs = append(msgs, i18n.T("server.account.telegram_id_cleared", i18n.D{"Name": name}))
 			}
 		}
 		if err := svc.UpdateAccount(ctx, core.ServerCLI(), name, in); errors.Is(err, store.ErrNotFound) {
-			return fmt.Errorf("没有登录名为 %s 的账号", name)
+			return i18n.Errorf("server.account.not_found", i18n.D{"Name": name})
 		} else if err != nil {
 			return err
 		}
@@ -365,7 +366,7 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 		if err := svc.DisableAccount(ctx, core.ServerCLI(), a.ID); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "已停用 %s：全部设备与令牌已吊销，网页登录已注销，Telegram 已断开\n", a.Name)
+		fmt.Fprintln(out, i18n.T("server.account.disabled", i18n.D{"Name": a.Name}))
 		return nil
 	case "enable":
 		a, err := named("account enable", nil)
@@ -375,44 +376,44 @@ func accountCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub stri
 		if err := svc.EnableAccount(ctx, core.ServerCLI(), a.ID); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "已启用 %s。设备不会恢复：他需要重新执行 cohive login，并由管理员批准\n", a.Name)
+		fmt.Fprintln(out, i18n.T("server.account.enabled", i18n.D{"Name": a.Name}))
 		return nil
 	case "server-admin":
 		var on, off bool
 		a, err := named("account server-admin", func(fs *flag.FlagSet) {
-			fs.BoolVar(&on, "on", false, "授予")
-			fs.BoolVar(&off, "off", false, "撤销")
+			fs.BoolVar(&on, "on", false, i18n.T("server.flag.grant"))
+			fs.BoolVar(&off, "off", false, i18n.T("server.flag.revoke"))
 		})
 		if err != nil {
 			return err
 		}
 		if on == off {
-			return fmt.Errorf("请用 --on 授予或 --off 撤销")
+			return i18n.Errorf("server.account.on_off_required")
 		}
 		if err := svc.SetServerAdmin(ctx, core.ServerCLI(), a.ID, on); err != nil {
 			return err
 		}
 		if on {
-			fmt.Fprintf(out, "%s 已是服务器管理员\n", a.Name)
+			fmt.Fprintln(out, i18n.T("server.account.server_admin_on", i18n.D{"Name": a.Name}))
 		} else {
-			fmt.Fprintf(out, "已撤销 %s 的服务器管理员\n", a.Name)
+			fmt.Fprintln(out, i18n.T("server.account.server_admin_off", i18n.D{"Name": a.Name}))
 		}
 		return nil
 	}
-	fmt.Fprint(out, usage)
-	return fmt.Errorf("未知命令 %q", "account "+sub)
+	fmt.Fprint(out, usage())
+	return i18n.Errorf("server.unknown_command", i18n.D{"Command": strconv.Quote("account " + sub)})
 }
 
 func yesNo(b bool) string {
 	if b {
-		return "是"
+		return i18n.T("server.yes")
 	}
 	return ""
 }
 
 func roleLabel(role string) string {
 	if role == store.RoleAdmin {
-		return "管理员"
+		return i18n.T("server.role.admin")
 	}
-	return "成员"
+	return i18n.T("server.role.member")
 }

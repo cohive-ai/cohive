@@ -1,9 +1,10 @@
 import { useEffect } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { Notice } from "../components";
-import { workspaceLabel } from "../format";
+import { listSeparator, workspaceLabel } from "../format";
 import { canAdminWorkspace, rememberWorkspace } from "../workspace";
 
 // 当前页面所在的工作空间名（来自地址 /w/{工作空间}/...）
@@ -23,36 +24,41 @@ export function WorkspaceShell() {
 }
 
 // 看板与问题单读取失败：不是成员（或工作空间不存在）时说明清楚，服务器管理员额外给出去管理页把自己加进来的入口
-export function WorkspaceLoadError({ error, what }: { error: Error; what: string }) {
+export function WorkspaceLoadError({ error, what }: { error: Error; what: "board" | "issues" }) {
+  const { t } = useTranslation("issues");
   const ws = useWs();
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   if (error instanceof ApiError && error.status === 404) {
     const others = (me.data?.workspaces ?? []).filter((w) => w.name !== ws);
     return (
       <div className="mx-auto max-w-xl space-y-3">
-        <Notice tone="danger">
-          工作空间“{ws}”不存在，或者你不是它的成员。
-        </Notice>
+        <Notice tone="danger">{t("workspaceError.notFound", { ws })}</Notice>
         {me.data && canAdminWorkspace(me.data, ws) && (
           <p className="text-sm">
-            你是服务器管理员，可以在
-            <Link to="/w/$ws/admin" params={{ ws }} search={{ tab: "members" }} className="text-teal hover:underline">
-              管理页
-            </Link>
-            把自己加为成员后再查看。
+            <Trans
+              t={t}
+              i18nKey="workspaceError.adminHint"
+              components={{
+                link: (
+                  <Link to="/w/$ws/admin" params={{ ws }} search={{ tab: "members" }} className="text-teal hover:underline" />
+                ),
+              }}
+            />
           </p>
         )}
         {others.length > 0 && (
           <p className="text-sm text-muted">
-            你所在的工作空间：
-            {others.map((w, i) => (
-              <span key={w.name}>
-                {i > 0 && "、"}
-                <Link to="/w/$ws" params={{ ws: w.name }} className="text-teal hover:underline">
-                  {workspaceLabel(w)}
-                </Link>
-              </span>
-            ))}
+            {t("workspaceError.yours")}
+            <span className="ml-1">
+              {others.map((w, i) => (
+                <span key={w.name}>
+                  {i > 0 && listSeparator()}
+                  <Link to="/w/$ws" params={{ ws: w.name }} className="text-teal hover:underline">
+                    {workspaceLabel(w)}
+                  </Link>
+                </span>
+              ))}
+            </span>
           </p>
         )}
       </div>
@@ -60,7 +66,9 @@ export function WorkspaceLoadError({ error, what }: { error: Error; what: string
   }
   return (
     <Notice tone="danger">
-      读取{what}失败：{error.message}
+      {what === "board"
+        ? t("workspaceError.loadBoardFailed", { message: error.message })
+        : t("workspaceError.loadIssuesFailed", { message: error.message })}
     </Notice>
   );
 }

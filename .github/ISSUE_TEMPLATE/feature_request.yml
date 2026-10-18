@@ -1,0 +1,32 @@
+name: Feature request / 功能建议
+description: Suggest an idea or an improvement. 提出想法或改进。
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cohive's principles: people make the decisions and agents prepare; the server never calls a language model; chat messages carry only a short signal. Proposals that change these are best discussed in Discussions first.
+        Cohive 的原则：人做决定、智能体做准备；服务端不调用大模型；群里只发简短信号。涉及这些原则的建议请先到讨论区讨论。
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem / 要解决的问题
+      description: What are you trying to do, and what gets in the way? 你想做什么，现在卡在哪里？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution / 建议的做法
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 考虑过的其他做法
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing / 参与
+      options:
+        - label: I would like to work on this. 我愿意实现它。

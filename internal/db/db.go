@@ -19,11 +19,11 @@ var migrationFS embed.FS
 func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(ctx, url)
 	if err != nil {
-		return nil, fmt.Errorf("连接数据库：%w", err)
+		return nil, fmt.Errorf("connect to database: %w", err)
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("连接数据库：%w", err)
+		return nil, fmt.Errorf("connect to database: %w", err)
 	}
 	return pool, nil
 }
@@ -45,14 +45,14 @@ func MigrateUpTo(ctx context.Context, pool *pgxpool.Pool, last string) error {
 
 	const lockKey = 7_316_284_590 // Cohive 迁移专用锁
 	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", lockKey); err != nil {
-		return fmt.Errorf("获取迁移锁：%w", err)
+		return fmt.Errorf("acquire migration lock: %w", err)
 	}
 	defer conn.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", lockKey)
 
 	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		name text PRIMARY KEY,
 		applied_at timestamptz NOT NULL DEFAULT now())`); err != nil {
-		return fmt.Errorf("创建迁移登记表：%w", err)
+		return fmt.Errorf("create migration table: %w", err)
 	}
 
 	names, err := fs.Glob(migrationFS, "migrations/*.sql")
@@ -83,7 +83,7 @@ func MigrateUpTo(ctx context.Context, pool *pgxpool.Pool, last string) error {
 		}
 		if _, err := tx.Exec(ctx, string(sql)); err != nil {
 			_ = tx.Rollback(ctx)
-			return fmt.Errorf("执行迁移 %s：%w", name, err)
+			return fmt.Errorf("run migration %s: %w", name, err)
 		}
 		if _, err := tx.Exec(ctx, "INSERT INTO schema_migrations (name) VALUES ($1)", name); err != nil {
 			_ = tx.Rollback(ctx)

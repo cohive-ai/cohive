@@ -1,5 +1,7 @@
 # 安装 cohive 命令行
 
+[English](install-cli.en.md)
+
 成员电脑上的 `cohive` 负责配对电脑（`cohive login`）、初始化项目（`cohive init`），并作为编程工具的本机转发器（`cohive mcp-proxy`）。它由**团队自己的协作服务**提供下载：不需要装 Go，不需要能读代码仓库，版本与服务端一致。
 
 网页“个人中心 → 绑定新电脑”里有带本服务地址的命令，可以直接复制。下文用 `https://cohive.example.com` 代表你们的服务地址。

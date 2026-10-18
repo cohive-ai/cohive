@@ -122,6 +122,14 @@ make build      # 网页、五个平台的命令行安装包、服务端，产�
 go test ./...
 ```
 
+## 参与贡献
+
+欢迎报告问题、修复、改进文档和翻译。开始之前请读 [贡献指南](CONTRIBUTING.zh-CN.md)，并遵守 [行为准则](CODE_OF_CONDUCT.md)；安全问题请按 [SECURITY.md](SECURITY.md) 私密报告。界面目前支持简体中文和英文，其他语言由社区维护，见贡献指南的“语言与翻译”一节。
+
+<a href="https://github.com/cohive-ai/cohive/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=cohive-ai/cohive" alt="贡献者" />
+</a>
+
 ## 许可证
 
 [Apache License 2.0](LICENSE)。作者 anormlylee。
