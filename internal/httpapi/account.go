@@ -13,7 +13,7 @@ import (
 func pathID(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue(name), 10, 64)
 	if err != nil || id <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "编号不合法"})
+		writeJSON(w, http.StatusBadRequest, apiErr(w, "invalid_id", "api.id_invalid"))
 		return 0, false
 	}
 	return id, true
@@ -213,7 +213,7 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			own = own || x.ID == id
 		}
 		if !own {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "设备不存在"})
+			writeJSON(w, http.StatusNotFound, apiErr(w, "not_found", "api.device_not_found"))
 			return
 		}
 		// 用设备密钥调用的是成员本机命令行（cohive login --force 吊销本机旧设备），其余是网页
@@ -237,11 +237,11 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		name := botName(opts)
 		if in.Provider == core.ProviderTelegram && name == "" {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "协作服务没有启用 Telegram 机器人"})
+			writeJSON(w, http.StatusServiceUnavailable, apiErr(w, "service_unavailable", "api.telegram_disabled"))
 			return
 		}
 		if in.Provider == core.ProviderDingTalk && !providerEnabled(opts, core.ProviderDingTalk) {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "协作服务没有启用钉钉"})
+			writeJSON(w, http.StatusServiceUnavailable, apiErr(w, "service_unavailable", "api.dingtalk_disabled"))
 			return
 		}
 		l, err := svc.StartLink(r.Context(), caller(r).Account.ID, in.Provider)

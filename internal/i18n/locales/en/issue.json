@@ -1,0 +1,21 @@
+{
+  "issue.status.draft": "Draft",
+  "issue.status.open": "Open",
+  "issue.status.accepted": "Accepted",
+  "issue.status.fixing": "Fixing",
+  "issue.status.ready_for_verification": "Ready for verification",
+  "issue.status.reopened": "Reopened",
+  "issue.status.closed": "Closed",
+  "issue.status.declined": "Declined",
+  "issue.role.source": "reporter",
+  "issue.role.owner": "owner",
+  "issue.list_sep": ", ",
+  "issue.transition.none": "none",
+  "issue.transition.error": "This issue is {{.Label}} ({{.Status}}), so {{.Action}} is not allowed: {{.Reason}}. Actions you can take now: {{.Allowed}}",
+  "issue.reason.draft_source_only": "only the reporter can edit a draft",
+  "issue.reason.comment_roles": "only the reporter or the owner can comment",
+  "issue.reason.unknown_action": "unknown action",
+  "issue.reason.status_join": " or ",
+  "issue.reason.wrong_status": "this action is only available when the issue is {{.Statuses}}",
+  "issue.reason.role_only": "only the {{.Role}} can do this"
+}

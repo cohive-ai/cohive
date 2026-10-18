@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 type alertJSON struct {
@@ -44,7 +45,7 @@ func alertRoutes(mux *http.ServeMux, svc *core.Service) {
 		if v := r.URL.Query().Get("after"); v != "" {
 			n, err := strconv.ParseInt(v, 10, 64)
 			if err != nil || n < 0 {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "after 应为非负整数"})
+				writeJSON(w, http.StatusBadRequest, apiErr(w, "invalid_param", "api.param_non_negative_int", i18n.D{"Name": "after"}))
 				return
 			}
 			after = &n

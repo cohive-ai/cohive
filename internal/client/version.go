@@ -3,11 +3,11 @@ package client
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/buildinfo"
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // VersionWarning 读服务端版本（/api/v1/version），与本机命令行不一致时返回一句提醒和重装命令；
@@ -22,6 +22,7 @@ func VersionWarning(ctx context.Context, server string) string {
 	if err != nil {
 		return ""
 	}
+	setLang(req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return ""
@@ -46,7 +47,5 @@ func VersionWarning(ctx context.Context, server string) string {
 	if want == "" || want == "dev" || want == buildinfo.Version {
 		return ""
 	}
-	return fmt.Sprintf("提醒：本机 cohive 是 %s，协作服务 %s 提供的是 %s。建议重新安装：\n"+
-		"  macOS / Linux：curl -fsSL %s/install.sh | sh\n  Windows：irm %s/install.ps1 | iex",
-		buildinfo.Version, server, want, server, server)
+	return i18n.T("cli.client.version_warning", i18n.D{"Local": buildinfo.Version, "Server": server, "Want": want})
 }

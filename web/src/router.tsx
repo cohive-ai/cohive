@@ -7,6 +7,7 @@ import {
   redirect,
   type RouterHistory,
 } from "@tanstack/react-router";
+import { Trans, useTranslation } from "react-i18next";
 import type { QueryClient } from "@tanstack/react-query";
 import { api, UnauthorizedError } from "./api";
 import { Layout, NoWorkspace, Notice } from "./components";
@@ -25,10 +26,11 @@ import { pickWorkspace, readLastWorkspace } from "./workspace";
 import { LoadError } from "./LoadError";
 
 function NotFound() {
+  const { t } = useTranslation();
   return (
     <div className="mx-auto max-w-md px-4 py-16">
       <Notice>
-        这个页面不存在。<Link to="/" className="text-teal hover:underline">回到首页</Link>
+        <Trans t={t} i18nKey="notFound" components={{ home: <Link to="/" className="text-teal hover:underline" /> }} />
       </Notice>
     </div>
   );

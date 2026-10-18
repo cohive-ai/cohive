@@ -1,0 +1,21 @@
+{
+  "issue.status.draft": "草稿",
+  "issue.status.open": "待接单",
+  "issue.status.accepted": "已接单",
+  "issue.status.fixing": "修复中",
+  "issue.status.ready_for_verification": "待验证",
+  "issue.status.reopened": "已重开",
+  "issue.status.closed": "已关闭",
+  "issue.status.declined": "已退回",
+  "issue.role.source": "发起人",
+  "issue.role.owner": "负责人",
+  "issue.list_sep": "、",
+  "issue.transition.none": "无",
+  "issue.transition.error": "问题单当前状态为“{{.Label}}”（{{.Status}}），不能执行 {{.Action}}：{{.Reason}}。你当前允许的动作：{{.Allowed}}",
+  "issue.reason.draft_source_only": "草稿只有发起人可以修改",
+  "issue.reason.comment_roles": "只有发起人或负责人可以评论",
+  "issue.reason.unknown_action": "未知动作",
+  "issue.reason.status_join": "”或“",
+  "issue.reason.wrong_status": "该动作只能在“{{.Statuses}}”状态下执行",
+  "issue.reason.role_only": "只有{{.Role}}可以执行"
+}

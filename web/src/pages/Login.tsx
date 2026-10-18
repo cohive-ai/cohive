@@ -1,11 +1,17 @@
 import { useState } from "react";
 import { useRouter, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { Trans, useTranslation } from "react-i18next";
 import { api, ApiError } from "../api";
 import { safeRedirect } from "../format";
+import { LanguageSelect } from "../i18n/LanguageSelect";
 import { AuthShell, btn, ErrorText, Field, inputClass, errMsg, Callout } from "../ui";
 
+// 服务端没给出说明时（接口只回了通用错误），网页用自己的说明；给了就照服务端的
+const hasServerMessage = (err: ApiError) => typeof err.body.error === "string" && err.body.error !== "";
+
 export function LoginPage() {
+  const { t } = useTranslation("auth");
   const { redirect, next } = useSearch({ from: "/login" });
   const router = useRouter();
   const qc = useQueryClient();
@@ -29,11 +35,11 @@ export function LoginPage() {
       router.history.push(safeRedirect(redirect ?? next));
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
-        setBlocked(err.message.startsWith("请求失败") ? "这个账号暂时不能登录，请联系管理员。" : err.message);
+        setBlocked(hasServerMessage(err) ? err.message : t("login.blocked"));
       } else if (err instanceof ApiError && err.status === 401) {
-        setError(err.message.startsWith("请求失败") ? "登录名或密码不对。" : err.message);
+        setError(hasServerMessage(err) ? err.message : t("login.badCredentials"));
       } else if (err instanceof ApiError && err.status === 429) {
-        setError(err.message.startsWith("请求失败") ? "尝试次数太多，请稍等几分钟再试。" : err.message);
+        setError(hasServerMessage(err) ? err.message : t("login.tooMany"));
       } else {
         setError(errMsg(err));
       }
@@ -43,9 +49,9 @@ export function LoginPage() {
   };
 
   return (
-    <AuthShell title="登录 Cohive">
+    <AuthShell title={t("login.title")}>
       <form onSubmit={submit} className="space-y-4">
-        <Field label="登录名" htmlFor="name">
+        <Field label={t("login.name")} htmlFor="name">
           <input
             id="name"
             autoComplete="username"
@@ -56,7 +62,7 @@ export function LoginPage() {
             className={inputClass}
           />
         </Field>
-        <Field label="密码" htmlFor="password">
+        <Field label={t("login.password")} htmlFor="password">
           <input
             id="password"
             type="password"
@@ -69,15 +75,19 @@ export function LoginPage() {
         {blocked && <Callout>{blocked}</Callout>}
         <ErrorText>{error}</ErrorText>
         <button type="submit" disabled={busy || !name.trim() || !password} className={`${btn.primary} w-full`}>
-          {busy ? "正在登录…" : "登录"}
+          {busy ? t("login.submitting") : t("login.submit")}
         </button>
       </form>
       <div className="mt-6 space-y-2 border-t border-line pt-4 text-sm text-muted">
         <p>
-          也可以在已登录的电脑上执行 <code className="rounded bg-sunken px-1 font-mono text-ink">cohive web</code>{" "}
-          免密打开。
+          <Trans
+            t={t}
+            i18nKey="login.cliHint"
+            components={{ code: <code className="rounded bg-sunken px-1 font-mono text-ink" /> }}
+          />
         </p>
-        <p>还没有账号？向管理员要一个邀请链接，打开后注册。忘记密码请联系服务器管理员重置。</p>
+        <p>{t("login.noAccount")}</p>
+        <LanguageSelect />
       </div>
     </AuthShell>
   );

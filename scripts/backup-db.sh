@@ -21,25 +21,26 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 . "$root/scripts/lib/cohive-env.sh"
 cohive_load_env
 
-fail() { echo "错误：$*" >&2; exit 1; }
+# fail "中文" "English"：按语言输出一句错误并退出
+fail() { echo "$(cohive_t "错误：$1" "Error: $2")" >&2; exit 1; }
 
 url="${COHIVE_DATABASE_URL:-}"
-[ -n "$url" ] || fail "没有设置 COHIVE_DATABASE_URL"
+[ -n "$url" ] || fail "没有设置 COHIVE_DATABASE_URL" "COHIVE_DATABASE_URL is not set"
 dir="${COHIVE_BACKUP_DIR:-$COHIVE_HOME/backups}"
 keep="${COHIVE_BACKUP_KEEP:-14}"
-[[ "$keep" =~ ^[1-9][0-9]*$ ]] || fail "COHIVE_BACKUP_KEEP 应为正整数，收到 $keep"
+[[ "$keep" =~ ^[1-9][0-9]*$ ]] || fail "COHIVE_BACKUP_KEEP 应为正整数，收到 ${keep}" "COHIVE_BACKUP_KEEP must be a positive integer, got ${keep}"
 container="${COHIVE_PG_CONTAINER:-}"
 
 # 解析 postgres://用户:密码@主机:端口/库名?参数（用户名、密码里有特殊字符时需要按网址编码，这里不解码）
 re='^postgres(ql)?://([^:@/]+)(:([^@/]*))?@([^:/?]+)(:([0-9]+))?/([^?/]+)(\?(.*))?$'
-[[ "$url" =~ $re ]] || fail "COHIVE_DATABASE_URL 格式看不懂，应形如 postgres://用户:密码@主机:端口/库名"
+[[ "$url" =~ $re ]] || fail "COHIVE_DATABASE_URL 格式看不懂，应形如 postgres://用户:密码@主机:端口/库名" "cannot parse COHIVE_DATABASE_URL; it should look like postgres://user:password@host:port/dbname"
 user="${BASH_REMATCH[2]}"
 pass="${BASH_REMATCH[4]}"
 host="${BASH_REMATCH[5]}"
 port="${BASH_REMATCH[7]:-5432}"
 db="${BASH_REMATCH[8]}"
 params="${BASH_REMATCH[10]:-}"
-[[ "$db" =~ ^[A-Za-z0-9_-]+$ ]] || fail "库名 $db 含有备份脚本不支持的字符"
+[[ "$db" =~ ^[A-Za-z0-9_-]+$ ]] || fail "库名 ${db} 含有备份脚本不支持的字符" "database name ${db} contains characters the backup script does not support"
 sslmode=""
 if [[ "$params" =~ (^|&)sslmode=([a-z-]+) ]]; then sslmode="${BASH_REMATCH[2]}"; fi
 
@@ -47,33 +48,33 @@ umask 077
 mkdir -p "$dir"
 chmod 700 "$dir" 2>/dev/null || true
 out="$dir/cohive-$db-$(date +%Y%m%d-%H%M%S).dump"
-[ -e "$out" ] && fail "$out 已存在（一秒内重复备份），稍后再试"
+[ -e "$out" ] && fail "${out} 已存在（一秒内重复备份），稍后再试" "${out} already exists (two backups within one second); try again shortly"
 part="$out.partial"
 trap 'rm -f "$part"' EXIT
 
 if [ -n "$container" ]; then
-  command -v docker >/dev/null 2>&1 || fail "设置了 COHIVE_PG_CONTAINER，但找不到 docker"
+  command -v docker >/dev/null 2>&1 || fail "设置了 COHIVE_PG_CONTAINER，但找不到 docker" "COHIVE_PG_CONTAINER is set but docker was not found"
   cport="${COHIVE_PG_CONTAINER_PORT:-5432}"
   # -e PGPASSWORD 不带值：从本进程的环境变量传入容器，密码不出现在命令参数里
   PGPASSWORD="$pass" docker exec -e PGPASSWORD "$container" \
     pg_dump -h 127.0.0.1 -p "$cport" -U "$user" -Fc "$db" > "$part" \
-    || fail "pg_dump 失败（容器 ${container}，库 ${db}）"
+    || fail "pg_dump 失败（容器 ${container}，库 ${db}）" "pg_dump failed (container ${container}, database ${db})"
   # 用容器里同版本的 pg_restore 校验：旧版 pg_restore 读不了新版的备份格式
   docker exec -i "$container" pg_restore --list < "$part" > /dev/null \
-    || fail "备份文件校验失败，已丢弃"
+    || fail "备份文件校验失败，已丢弃" "backup file failed verification and was discarded"
 else
-  command -v pg_dump >/dev/null 2>&1 || fail "找不到 pg_dump：安装与服务器同版本的 PostgreSQL 客户端，或设置 COHIVE_PG_CONTAINER 用容器里的"
+  command -v pg_dump >/dev/null 2>&1 || fail "找不到 pg_dump：安装与服务器同版本的 PostgreSQL 客户端，或设置 COHIVE_PG_CONTAINER 用容器里的" "pg_dump not found: install a PostgreSQL client matching the server version, or set COHIVE_PG_CONTAINER to use the one in the container"
   local_major="$(pg_dump --version | sed -E 's/[^0-9]*([0-9]+).*/\1/')"
   if command -v psql >/dev/null 2>&1; then
     server_num="$(PGPASSWORD="$pass" PGSSLMODE="$sslmode" psql -h "$host" -p "$port" -U "$user" -d "$db" -tAc 'SHOW server_version_num' 2>/dev/null || true)"
     if [[ "$server_num" =~ ^[0-9]+$ ]] && [ "$((server_num / 10000))" -gt "$local_major" ]; then
-      fail "本机 pg_dump 是 ${local_major}，数据库服务器是 $((server_num / 10000))，pg_dump 不能备份更新版本的服务器。" \
-        "请安装同版本客户端（macOS：brew install postgresql@$((server_num / 10000))），或在 server.env 里设置 COHIVE_PG_CONTAINER=<数据库容器名>"
+      fail "本机 pg_dump 是 ${local_major}，数据库服务器是 $((server_num / 10000))，pg_dump 不能备份更新版本的服务器。请安装同版本客户端（macOS：brew install postgresql@$((server_num / 10000))），或在 server.env 里设置 COHIVE_PG_CONTAINER=<数据库容器名>" \
+        "local pg_dump is version ${local_major} but the database server is version $((server_num / 10000)); pg_dump cannot back up a newer server. Install a matching client (macOS: brew install postgresql@$((server_num / 10000))), or set COHIVE_PG_CONTAINER=<database container name> in server.env"
     fi
   fi
   PGPASSWORD="$pass" PGSSLMODE="$sslmode" pg_dump -h "$host" -p "$port" -U "$user" -Fc -f "$part" "$db" \
-    || fail "pg_dump 失败（库 ${db}）"
-  pg_restore --list "$part" > /dev/null || fail "备份文件校验失败，已丢弃"
+    || fail "pg_dump 失败（库 ${db}）" "pg_dump failed (database ${db})"
+  pg_restore --list "$part" > /dev/null || fail "备份文件校验失败，已丢弃" "backup file failed verification and was discarded"
 fi
 
 mv "$part" "$out"
@@ -90,4 +91,5 @@ if [ "${#backups[@]}" -gt "$keep" ]; then
     removed=$((removed + 1))
   done < <(printf '%s\n' "${backups[@]}" | sort -r | tail -n +"$((keep + 1))")
 fi
-echo "$(date '+%Y-%m-%d %H:%M:%S') 已备份库 $db → ${out}（${size}）；保留最近 $keep 份，删除旧备份 $removed 份"
+echo "$(date '+%Y-%m-%d %H:%M:%S') $(cohive_t "已备份库 ${db} → ${out}（${size}）；保留最近 ${keep} 份，删除旧备份 ${removed} 份" \
+  "Backed up database ${db} -> ${out} (${size}); keeping the latest ${keep}, removed ${removed} old backup(s)")"

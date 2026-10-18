@@ -54,7 +54,7 @@ func TestAllowedHostsValidation(t *testing.T) {
 	}
 	for _, bad := range []string{"https://cohive.example.com", "cohive.example.com/", "cohive.example.com/mcp"} {
 		t.Setenv("COHIVE_ALLOWED_HOSTS", bad)
-		if _, err := allowedHosts(); err == nil || !strings.Contains(err.Error(), "只写域名") {
+		if _, err := allowedHosts(); err == nil || !strings.Contains(err.Error(), "only the hostname") {
 			t.Fatalf("%q 应报错并提示只写域名，得到 %v", bad, err)
 		}
 	}

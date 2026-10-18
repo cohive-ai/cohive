@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/client"
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // runProxy 运行本机转发器：从凭据文件取令牌，把标准输入的 MCP 消息转发到协作服务。
@@ -17,14 +18,14 @@ import (
 func runProxy(ctx context.Context, in io.Reader, out, errOut io.Writer, args []string) error {
 	fs := flag.NewFlagSet("mcp-proxy", flag.ContinueOnError)
 	fs.SetOutput(errOut)
-	server := fs.String("server", "", "协作服务地址")
-	workspace := fs.String("workspace", "", "工作空间名")
-	tool := fs.String("tool", "", "编程工具名：claude-code 或 codex")
+	server := fs.String("server", "", i18n.T("cli.flag.proxy.server"))
+	workspace := fs.String("workspace", "", i18n.T("cli.flag.proxy.workspace"))
+	tool := fs.String("tool", "", i18n.T("cli.flag.proxy.tool"))
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *server == "" || *workspace == "" || *tool == "" {
-		return fmt.Errorf("mcp-proxy 需要 --server、--workspace、--tool，通常由 cohive init 写进项目配置")
+		return i18n.Errorf("cli.proxy.missing_args")
 	}
 	srv := client.NormalizeServer(*server)
 	creds, err := client.LoadCredentials()
@@ -40,7 +41,7 @@ func runProxy(ctx context.Context, in io.Reader, out, errOut io.Writer, args []s
 		}
 		tok := wt.Tokens[*tool]
 		if tok == "" {
-			return "", errors.New("协作服务没有返回令牌")
+			return "", i18n.Errorf("cli.proxy.no_token_returned")
 		}
 		// 重新读一次再保存，免得覆盖别的转发器刚写进去的内容
 		c, err := client.LoadCredentials()
@@ -59,19 +60,18 @@ func runProxy(ctx context.Context, in io.Reader, out, errOut io.Writer, args []s
 		tok, err := issue(ctx)
 		switch {
 		case errors.Is(err, client.ErrNotMember):
-			p.Unavailable = fmt.Sprintf("你还不是工作空间 %s 的成员，请联系它的管理员把你加进去", *workspace)
+			p.Unavailable = i18n.T("cli.proxy.not_member", i18n.D{"Workspace": *workspace})
 		case err != nil:
-			p.Unavailable = fmt.Sprintf("为工作空间 %s 签发 %s 的令牌失败：%v", *workspace, *tool, err)
+			p.Unavailable = i18n.T("cli.proxy.issue_failed", i18n.D{"Workspace": *workspace, "Tool": *tool, "Err": i18n.Message(i18n.Default(), err)})
 		default:
-			fmt.Fprintf(errOut, "cohive mcp-proxy: 已为工作空间 %s 签发 %s 的令牌\n", *workspace, *tool)
+			fmt.Fprintf(errOut, "cohive mcp-proxy: %s\n", i18n.T("cli.proxy.issued", i18n.D{"Workspace": *workspace, "Tool": *tool}))
 			p.Token = tok
 		}
 	default:
 		// 照常启动，对请求返回原因，用户能在编程工具里直接看到，而不只是在日志里
-		p.Unavailable = fmt.Sprintf("本机还没有登录 %s 的工作空间 %s（工具 %s）：在仓库目录执行 cohive login --server %s --tools %s，在浏览器里授权即可",
-			srv, *workspace, *tool, srv, *tool)
+		p.Unavailable = i18n.T("cli.proxy.not_logged_in", i18n.D{"Server": srv, "Workspace": *workspace, "Tool": *tool})
 		if _, legacy := creds.LegacyDevice(srv); legacy {
-			p.Unavailable = fmt.Sprintf("这台电脑是旧版配对，不能自动拿到工作空间 %s 的令牌：请执行 cohive login --server %s --force 重新配对", *workspace, srv)
+			p.Unavailable = i18n.T("cli.proxy.legacy", i18n.D{"Workspace": *workspace, "Server": srv})
 		}
 	}
 	if hasDev {

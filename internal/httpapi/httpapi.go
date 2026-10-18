@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
+	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/cohive-ai/cohive/internal/view"
 )
@@ -110,14 +112,17 @@ func Handler(svc *core.Service, opts Options) http.Handler {
 	serverRoutes(mux, svc, opts)
 	eventRoutes(mux, svc)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "没有这个接口"})
+		writeJSON(w, http.StatusNotFound, apiErr(w, "route_not_found", "api.route_not_found"))
 	})
 	outer.Handle("/api/", authMiddleware(svc, mux))
-	return outer
+	// 每个请求按 Accept-Language 定语言，并在响应头 Content-Language 回告；报错与提示文字都按它渲染
+	return i18n.Middleware(outer)
 }
 
-// errNoWorkspace 是工作空间不存在或不是它的成员时的统一提示，不区分是哪种情况。
-var errNoWorkspace = map[string]string{"error": "工作空间不存在或你不是它的成员"}
+// noWorkspace 写工作空间不存在或不是它的成员时的统一 404，不区分是哪种情况。
+func noWorkspace(w http.ResponseWriter) {
+	writeJSON(w, http.StatusNotFound, apiErr(w, "no_workspace", "api.no_workspace"))
+}
 
 // memberScope 解析 /w/{ws} 前缀：会话要求账号在该工作空间在册；令牌要求令牌就属于该工作空间。
 // 返回本次请求在该工作空间里的身份；不满足时已写好 404。
@@ -126,7 +131,7 @@ func memberScope(w http.ResponseWriter, r *http.Request, svc *core.Service) (sto
 	name := r.PathValue("ws")
 	ws, err := svc.WorkspaceByName(r.Context(), name)
 	if errors.Is(err, store.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, errNoWorkspace)
+		noWorkspace(w)
 		return store.Identity{}, false
 	}
 	if err != nil {
@@ -135,14 +140,14 @@ func memberScope(w http.ResponseWriter, r *http.Request, svc *core.Service) (sto
 	}
 	if c.Token != nil {
 		if c.Token.WorkspaceID != ws.ID {
-			writeJSON(w, http.StatusNotFound, errNoWorkspace)
+			noWorkspace(w)
 			return store.Identity{}, false
 		}
 		return *c.Token, true
 	}
 	m, err := store.MemberOf(r.Context(), svc.Pool, c.Account.ID, ws.ID)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && m.Status != store.MemberActive) {
-		writeJSON(w, http.StatusNotFound, errNoWorkspace)
+		noWorkspace(w)
 		return store.Identity{}, false
 	}
 	if err != nil {
@@ -158,7 +163,7 @@ func adminScope(w http.ResponseWriter, r *http.Request, svc *core.Service) (stor
 	c := caller(r)
 	ws, err := svc.WorkspaceByName(r.Context(), r.PathValue("ws"))
 	if errors.Is(err, store.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, errNoWorkspace)
+		noWorkspace(w)
 		return ws, nil, false
 	}
 	if err != nil {
@@ -172,7 +177,7 @@ func adminScope(w http.ResponseWriter, r *http.Request, svc *core.Service) (stor
 			return ws, nil, false
 		}
 		if !ok {
-			writeJSON(w, http.StatusNotFound, errNoWorkspace)
+			noWorkspace(w)
 			return ws, nil, false
 		}
 	}
@@ -197,7 +202,7 @@ func workspaceRoutes(mux *http.ServeMux, svc *core.Service) {
 			out.Members = append(out.Members, MemberView{Name: m.Name, DisplayName: m.DisplayName, Disabled: m.AccountDisabled})
 		}
 		for _, it := range items {
-			out.Issues = append(out.Issues, BoardIssue{IssueView: view.Issue(who, it.Issue), Holder: it.HolderName, Needs: it.Needs})
+			out.Issues = append(out.Issues, BoardIssue{IssueView: view.Issue(i18n.FromContext(r.Context()), who, it.Issue), Holder: it.HolderName, Needs: it.Needs})
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
@@ -216,7 +221,7 @@ func workspaceRoutes(mux *http.ServeMux, svc *core.Service) {
 		status := q.Get("status")
 		for _, is := range list {
 			if status == "" || string(is.Status) == status {
-				out.Items = append(out.Items, view.Issue(who, is))
+				out.Items = append(out.Items, view.Issue(i18n.FromContext(r.Context()), who, is))
 			}
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -228,7 +233,7 @@ func workspaceRoutes(mux *http.ServeMux, svc *core.Service) {
 		}
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil || id <= 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "问题单编号不合法"})
+			writeJSON(w, http.StatusBadRequest, apiErr(w, "invalid_id", "api.issue_id_invalid"))
 			return
 		}
 		// 问题单编号全局自增：业务层按 who.WorkspaceID 校验可见性，别的工作空间的单子一律不存在
@@ -237,7 +242,7 @@ func workspaceRoutes(mux *http.ServeMux, svc *core.Service) {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, detailResult{Issue: view.Issue(who, is), Events: view.Events(evs)})
+		writeJSON(w, http.StatusOK, detailResult{Issue: view.Issue(i18n.FromContext(r.Context()), who, is), Events: view.Events(evs)})
 	})
 }
 
@@ -248,40 +253,74 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// 接口错误响应的形状是 {"error": "<按请求语言渲染的文字>", "code": "<稳定的错误码>"}，部分响应带附加字段。
+// error 只给人看，会随语言变化，调用方（网页、命令行）不要按文字判断；要判断请用 code。code 是接口约定，取值：
+//
+//	invalid_input、invalid_id、invalid_request、invalid_param  请求内容不合法（400）
+//	secret_detected      内容里含疑似密钥（400，只含字段、行号与规则，不含密钥）
+//	no_device            这个操作需要设备配对过的凭据（400）
+//	unauthorized、token_format、token_invalid、device_key_invalid、device_key_not_allowed、device_key_only、
+//	login_required、session_expired、bad_login               没有或无效的凭据（401）
+//	forbidden、account_disabled、signup_pending、cross_site、must_change_password、need_password_login、web_only、not_for_web  无权限（403）
+//	not_found、route_not_found、no_workspace、not_member、link_invalid  找不到（404）
+//	handover_required    需要先交接（409，附 handover）
+//	version_conflict     问题单版本已变化或事务被数据库并发中止，需重读后重试（409）
+//	conflict、already_member、join_pending、decided          当前状态不允许该操作（409）
+//	too_many_requests、login_locked                          限频或登录退避（429）
+//	service_unavailable  协作服务没有启用该功能（503）
+//	internal             内部错误（500）
+func apiErr(w http.ResponseWriter, code, key string, data ...i18n.D) map[string]any {
+	return map[string]any{"error": i18n.FromResponse(w).T(key, data...), "code": code}
+}
+
+// errBody 把业务层返回的错误按请求语言渲染成响应体。
+func errBody(w http.ResponseWriter, code string, err error) map[string]any {
+	return map[string]any{"error": i18n.Message(i18n.FromResponse(w), err), "code": code}
+}
+
 func writeError(w http.ResponseWriter, err error) {
 	var ie *core.InputError
 	var se *core.StateError
 	var he *core.HandoverError
 	var sec *core.SecretError
+	var te *issue.TransitionError
 	switch {
 	case errors.As(err, &sec):
 		// 只含字段、行号与规则，不含密钥
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, errBody(w, "secret_detected", err))
 	case errors.As(err, &he):
-		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "handover": handoverJSON(he.Handover)})
-	case errors.Is(err, core.ErrNotAdmin), errors.Is(err, core.ErrNotServerAdmin), errors.Is(err, core.ErrNotManager),
-		errors.Is(err, store.ErrAccountDisabled):
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
-	case errors.As(err, &se), errors.Is(err, store.ErrAlreadyMember), errors.Is(err, core.ErrJoinPending),
-		errors.Is(err, store.ErrVersionConflict): // 含版本冲突与事务被数据库并发中止（core.RetryError）
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		body := errBody(w, "handover_required", err)
+		body["handover"] = handoverJSON(he.Handover)
+		writeJSON(w, http.StatusConflict, body)
+	case errors.Is(err, store.ErrAccountDisabled):
+		writeJSON(w, http.StatusForbidden, errBody(w, "account_disabled", err))
+	case errors.Is(err, core.ErrNotAdmin), errors.Is(err, core.ErrNotServerAdmin), errors.Is(err, core.ErrNotManager):
+		writeJSON(w, http.StatusForbidden, errBody(w, "forbidden", err))
+	case errors.Is(err, store.ErrVersionConflict): // 含版本冲突与事务被数据库并发中止（core.RetryError）
+		writeJSON(w, http.StatusConflict, errBody(w, "version_conflict", err))
+	case errors.As(err, &se), errors.As(err, &te): // te：当前状态不允许该动作
+		writeJSON(w, http.StatusConflict, errBody(w, "conflict", err))
+	case errors.Is(err, store.ErrAlreadyMember):
+		writeJSON(w, http.StatusConflict, errBody(w, "already_member", err))
+	case errors.Is(err, core.ErrJoinPending):
+		writeJSON(w, http.StatusConflict, errBody(w, "join_pending", err))
 	case errors.Is(err, core.ErrNotMember):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusNotFound, errBody(w, "not_member", err))
 	case errors.Is(err, store.ErrUnauthorized):
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusUnauthorized, errBody(w, "unauthorized", err))
 	case errors.Is(err, core.ErrDecided):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusConflict, errBody(w, "decided", err))
 	case errors.Is(err, core.ErrInviteInvalid), errors.Is(err, core.ErrAuthGone), errors.Is(err, core.ErrLinkGone):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusNotFound, errBody(w, "link_invalid", err))
 	case errors.Is(err, core.ErrNoDevice):
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, errBody(w, "no_device", err))
 	case errors.Is(err, store.ErrNotFound):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusNotFound, errBody(w, "not_found", err))
 	case errors.As(err, &ie):
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, errBody(w, "invalid_input", err))
 	default:
-		log.Printf("接口内部错误：%v", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "内部错误，请稍后重试"})
+		log.Printf("api internal error: %v", err)
+		writeJSON(w, http.StatusInternalServerError, apiErr(w, "internal", "api.internal"))
 	}
 }
 
@@ -351,7 +390,7 @@ func ParseTrustedProxies(s string) ([]*net.IPNet, error) {
 		if !strings.Contains(item, "/") {
 			ip := net.ParseIP(item)
 			if ip == nil {
-				return nil, fmt.Errorf("%q 不是地址或地址段，例如 172.16.0.0/12", item)
+				return nil, fmt.Errorf("%q is not an address or address range, for example 172.16.0.0/12", item)
 			}
 			bits := 128
 			if ip.To4() != nil {
@@ -362,7 +401,7 @@ func ParseTrustedProxies(s string) ([]*net.IPNet, error) {
 		}
 		_, n, err := net.ParseCIDR(item)
 		if err != nil {
-			return nil, fmt.Errorf("%q 不是地址或地址段，例如 172.16.0.0/12", item)
+			return nil, fmt.Errorf("%q is not an address or address range, for example 172.16.0.0/12", item)
 		}
 		out = append(out, n)
 	}

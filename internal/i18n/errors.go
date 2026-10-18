@@ -42,11 +42,16 @@ func Wrap(err error, key string, data ...D) error {
 	return &Error{Key: key, Data: first(data), Err: err}
 }
 
-// Message 按语言渲染错误：错误链上有 *Error 时翻译它，否则用 err.Error()。
+// Localizer 是能按语言渲染自己的错误，*Error 与其他包的错误类型（如 issue.TransitionError）都可以实现。
+type Localizer interface {
+	Localize(l Lang) string
+}
+
+// Message 按语言渲染错误：错误链上有 Localizer 时翻译它，否则用 err.Error()。
 func Message(l Lang, err error) string {
-	var e *Error
-	if errors.As(err, &e) {
-		return e.Localize(l)
+	var lz Localizer
+	if errors.As(err, &lz) {
+		return lz.Localize(l)
 	}
 	return err.Error()
 }

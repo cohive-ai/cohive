@@ -3,13 +3,14 @@ package client
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // AlertItem 是一条与我有关的新动态：只有单号、动作、谁。
@@ -65,7 +66,7 @@ func HookStateDir() (string, error) {
 	}
 	d, err := os.UserCacheDir()
 	if err != nil || d == "" {
-		return "", errors.New("找不到用户缓存目录")
+		return "", i18n.Errorf("cli.client.no_cache_dir")
 	}
 	return filepath.Join(d, "cohive", "hooks"), nil
 }
@@ -79,7 +80,7 @@ func HookStatePath(tool, sessionID string) (string, error) {
 		sid = sid[:100]
 	}
 	if sid == "" {
-		return "", errors.New("没有会话编号")
+		return "", i18n.Errorf("cli.client.no_session_id")
 	}
 	dir, err := HookStateDir()
 	if err != nil {

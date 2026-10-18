@@ -13,6 +13,7 @@ import (
 	"github.com/cohive-ai/cohive/internal/clidist"
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/httpapi"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/mcpserver"
 )
 
@@ -50,8 +51,11 @@ func New(svc *core.Service, web fs.FS, opts Options) http.Handler {
 	return mux
 }
 
-const notBuilt = `<!doctype html><meta charset="utf-8"><title>Cohive</title>
-<p>看板尚未构建。在仓库根目录执行 <code>make web</code>，再重新构建并启动服务。</p>`
+// notBuiltPage 是看板尚未构建时的提示页；文字按请求的语言渲染，其中的 <code> 标签在语言包里。
+func notBuiltPage(l i18n.Lang) string {
+	return `<!doctype html><meta charset="utf-8"><title>Cohive</title>
+<p>` + l.T("api.server.web_not_built") + `</p>`
+}
 
 // spa 托管看板静态文件：存在的文件原样返回，assets/ 下缺失的文件返回 404，
 // 其余路径交给前端路由（返回 index.html）。
@@ -59,14 +63,14 @@ func spa(web fs.FS) http.Handler {
 	files := http.FileServerFS(web)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			http.Error(w, "只支持 GET", http.StatusMethodNotAllowed)
+			http.Error(w, i18n.FromRequest(r).T("api.server.get_only"), http.StatusMethodNotAllowed)
 			return
 		}
 		index, err := fs.ReadFile(web, "index.html")
 		if err != nil {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprint(w, notBuilt)
+			fmt.Fprint(w, notBuiltPage(i18n.FromRequest(r)))
 			return
 		}
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
@@ -79,7 +83,7 @@ func spa(web fs.FS) http.Handler {
 				files.ServeHTTP(w, r)
 				return
 			} else if !errors.Is(err, fs.ErrNotExist) {
-				http.Error(w, "读取文件失败", http.StatusInternalServerError)
+				http.Error(w, i18n.FromRequest(r).T("api.server.read_failed"), http.StatusInternalServerError)
 				return
 			}
 			if strings.HasPrefix(name, "assets/") {

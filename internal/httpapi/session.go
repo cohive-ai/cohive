@@ -57,13 +57,13 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 		if h := r.Header.Get("Authorization"); h != "" {
 			plain, ok := strings.CutPrefix(h, "Bearer ")
 			if !ok || plain == "" {
-				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "令牌格式不对"})
+				writeJSON(w, http.StatusUnauthorized, apiErr(w, "token_format", "api.auth.token_format"))
 				return
 			}
 			if strings.HasPrefix(plain, core.DeviceSecretPrefix) {
 				d, a, err := svc.AuthenticateDevice(r.Context(), plain)
 				if errors.Is(err, store.ErrUnauthorized) {
-					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "设备密钥无效、设备已吊销或账号已停用，请重新执行 cohive login"})
+					writeJSON(w, http.StatusUnauthorized, apiErr(w, "device_key_invalid", "api.auth.device_key_invalid"))
 					return
 				}
 				if err != nil {
@@ -75,7 +75,7 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 			}
 			who, err := store.LookupToken(r.Context(), svc.Pool, plain)
 			if errors.Is(err, store.ErrUnauthorized) {
-				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "令牌无效或已吊销"})
+				writeJSON(w, http.StatusUnauthorized, apiErr(w, "token_invalid", "api.auth.token_invalid"))
 				return
 			}
 			if err != nil {
@@ -92,13 +92,13 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 		}
 		c, err := r.Cookie(sessionCookie)
 		if err != nil || c.Value == "" {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "请先登录"})
+			writeJSON(w, http.StatusUnauthorized, apiErr(w, "login_required", "api.auth.login_required"))
 			return
 		}
 		a, via, err := svc.SessionAccount(r.Context(), c.Value)
 		if errors.Is(err, store.ErrUnauthorized) {
 			clearSessionCookie(w, r)
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "登录已过期，请重新登录"})
+			writeJSON(w, http.StatusUnauthorized, apiErr(w, "session_expired", "api.auth.session_expired"))
 			return
 		}
 		if err != nil {
@@ -106,7 +106,7 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && !sameOrigin(r) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "跨站请求已拒绝"})
+			writeJSON(w, http.StatusForbidden, apiErr(w, "cross_site", "api.auth.cross_site"))
 			return
 		}
 		pw, err := svc.PasswordStatus(r.Context(), a.ID)
@@ -115,7 +115,9 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 			return
 		}
 		if pw.MustChange && !allowedWhileMustChange[r.Method+" "+r.URL.Path] {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "请先修改密码", "must_change_password": true})
+			body := apiErr(w, "must_change_password", "api.auth.must_change_password")
+			body["must_change_password"] = true
+			writeJSON(w, http.StatusForbidden, body)
 			return
 		}
 		next.ServeHTTP(w, withCaller(r, Caller{Account: a, Session: c.Value, SessionVia: via, MustChange: pw.MustChange}))
@@ -135,8 +137,12 @@ const (
 	aSession = aPassword | aDeviceWeb
 )
 
-// errNeedPassword 是需要密码登录的网页会话时的提示。
-const errNeedPassword = "管理操作请在网页上用账号密码登录后进行"
+// needPasswordBody 是需要密码登录的网页会话时的响应体。
+func needPasswordBody(w http.ResponseWriter) map[string]any {
+	body := apiErr(w, "need_password_login", "api.auth.need_password_login")
+	body["need_password_login"] = true
+	return body
+}
 
 // allowed 判定这次请求的凭据能否调用该接口；不能时已写好响应。
 func allowed(w http.ResponseWriter, c Caller, kinds allow) bool {
@@ -145,7 +151,7 @@ func allowed(w http.ResponseWriter, c Caller, kinds allow) bool {
 		if kinds&aDevice != 0 {
 			return true
 		}
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "设备密钥不能用于这个接口"})
+		writeJSON(w, http.StatusUnauthorized, apiErr(w, "device_key_not_allowed", "api.auth.device_key_not_allowed"))
 		return false
 	case c.Token != nil:
 		if kinds&aToken != 0 || (kinds&aDeviceToken != 0 && c.Token.DeviceID != nil) {
@@ -156,14 +162,14 @@ func allowed(w http.ResponseWriter, c Caller, kinds allow) bool {
 			return false
 		}
 		if kinds == aDevice {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "这个接口只认设备密钥（cohive login 配对后保存在本机），成员令牌不能用"})
+			writeJSON(w, http.StatusUnauthorized, apiErr(w, "device_key_only", "api.auth.device_key_only"))
 			return false
 		}
 		if kinds&aSession == aPassword {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": errNeedPassword, "need_password_login": true})
+			writeJSON(w, http.StatusForbidden, needPasswordBody(w))
 			return false
 		}
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "这个操作只能在网页上进行"})
+		writeJSON(w, http.StatusForbidden, apiErr(w, "web_only", "api.auth.web_only"))
 		return false
 	default:
 		if (c.SessionVia == store.SessionViaPassword && kinds&aPassword != 0) ||
@@ -171,10 +177,10 @@ func allowed(w http.ResponseWriter, c Caller, kinds allow) bool {
 			return true
 		}
 		if kinds&aPassword != 0 {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": errNeedPassword, "need_password_login": true})
+			writeJSON(w, http.StatusForbidden, needPasswordBody(w))
 			return false
 		}
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "这个接口不能在网页上使用"})
+		writeJSON(w, http.StatusForbidden, apiErr(w, "not_for_web", "api.auth.not_for_web"))
 		return false
 	}
 }
@@ -246,7 +252,7 @@ func recordDenied(r *http.Request, c Caller, pattern, reason string) {
 	}
 	d := core.DeniedAttempt{Workspace: r.PathValue("ws"), Route: pattern, Reason: reason, Credential: cred}
 	if err := deps.svc.RecordDenied(r.Context(), act, d); err != nil {
-		log.Printf("记录被拒的管理请求失败：%v", err)
+		log.Printf("failed to record denied admin request: %v", err)
 	}
 }
 
@@ -331,7 +337,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 
 func decodeLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(v); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求格式不对"})
+		writeJSON(w, http.StatusBadRequest, apiErr(w, "invalid_request", "api.invalid_request"))
 		return false
 	}
 	return true

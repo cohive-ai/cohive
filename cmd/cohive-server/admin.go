@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -19,8 +20,8 @@ import (
 // member、token、service 组可用 --workspace 指定工作空间，缺省为 default。
 func admin(ctx context.Context, out io.Writer, args []string) error {
 	if len(args) < 2 {
-		fmt.Fprint(out, usage)
-		return fmt.Errorf("%s 缺少子命令", args[0])
+		fmt.Fprint(out, usage())
+		return i18n.Errorf("server.subcommand_missing", i18n.D{"Group": args[0]})
 	}
 	pool, err := openDB(ctx)
 	if err != nil {
@@ -64,15 +65,15 @@ func admin(ctx context.Context, out io.Writer, args []string) error {
 	case "service list":
 		return serviceList(ctx, out, pool, ws)
 	}
-	fmt.Fprint(out, usage)
-	return fmt.Errorf("未知命令 %q", group+" "+sub)
+	fmt.Fprint(out, usage())
+	return i18n.Errorf("server.unknown_command", i18n.D{"Command": strconv.Quote(group + " " + sub)})
 }
 
 // extractWorkspace 从参数中取出 --workspace，返回其值与剩余参数。
 // 漏写值时报错，而不是悄悄落回 default（否则令牌可能签到错误的工作空间）。
 func extractWorkspace(args []string) (string, []string, error) {
 	name := "default"
-	missing := errors.New("--workspace 缺少工作空间名")
+	missing := i18n.Errorf("server.workspace.name_missing")
 	rest := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -101,7 +102,7 @@ func resolveWorkspace(ctx context.Context, pool *pgxpool.Pool, name string) (int
 	}
 	w, err := store.WorkspaceByName(ctx, pool, name)
 	if errors.Is(err, store.ErrNotFound) {
-		return 0, fmt.Errorf("工作空间 %q 不存在，可用 workspace add 创建", name)
+		return 0, i18n.Errorf("server.workspace.not_found_hint", i18n.D{"Name": strconv.Quote(name)})
 	}
 	return w.ID, err
 }
@@ -115,7 +116,7 @@ func parse(name string, args []string, define func(fs *flag.FlagSet)) error {
 func required(pairs ...string) error {
 	for i := 0; i < len(pairs); i += 2 {
 		if pairs[i+1] == "" {
-			return fmt.Errorf("缺少参数 --%s", pairs[i])
+			return i18n.Errorf("server.arg_missing", i18n.D{"Name": pairs[i]})
 		}
 	}
 	return nil
@@ -124,9 +125,9 @@ func required(pairs ...string) error {
 func memberAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
 	var name, display, role string
 	if err := parse("member add", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&name, "name", "", "登录名（全服务器唯一，登录与指派时使用）")
-		fs.StringVar(&display, "display", "", "显示名（新建账号时使用）")
-		fs.StringVar(&role, "role", store.RoleMember, "角色：admin 或 member")
+		fs.StringVar(&name, "name", "", i18n.T("server.flag.username_unique"))
+		fs.StringVar(&display, "display", "", i18n.T("server.flag.display_new_account"))
+		fs.StringVar(&role, "role", store.RoleMember, i18n.T("server.flag.role_add"))
 	}); err != nil {
 		return err
 	}
@@ -134,16 +135,16 @@ func memberAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 		return err
 	}
 	if role != store.RoleAdmin && role != store.RoleMember {
-		return fmt.Errorf("角色只能是 admin 或 member，收到 %q", role)
+		return i18n.Errorf("server.member.role_invalid", i18n.D{"Role": strconv.Quote(role)})
 	}
 	m, created, err := (&core.Service{Pool: pool}).AddMemberCLI(ctx, core.ServerCLI(), ws, name, display, role)
 	if err != nil {
 		return err
 	}
 	if created {
-		fmt.Fprintf(out, "已新建账号 %s 并加入工作空间（成员编号 %d）。账号还没有密码，可用 admin reset-password 生成\n", m.Name, m.ID)
+		fmt.Fprintln(out, i18n.T("server.member.created", i18n.D{"Name": m.Name, "ID": m.ID}))
 	} else {
-		fmt.Fprintf(out, "已把账号 %s 加入工作空间（成员编号 %d）\n", m.Name, m.ID)
+		fmt.Fprintln(out, i18n.T("server.member.added", i18n.D{"Name": m.Name, "ID": m.ID}))
 	}
 	return nil
 }
@@ -151,7 +152,7 @@ func memberAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64,
 func memberList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
 	var all bool
 	if err := parse("member list", args, func(fs *flag.FlagSet) {
-		fs.BoolVar(&all, "all", false, "包括已移出的")
+		fs.BoolVar(&all, "all", false, i18n.T("server.flag.include_removed"))
 	}); err != nil {
 		return err
 	}
@@ -160,7 +161,7 @@ func memberList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 		return err
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "编号\t登录名\t显示名\t角色\t状态\tTelegram 用户名\tTelegram 编号")
+	fmt.Fprintln(tw, i18n.T("server.table.members"))
 	for _, m := range list {
 		if !all && m.Status != store.MemberActive {
 			continue
@@ -169,12 +170,12 @@ func memberList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 		if m.TelegramUserID != nil {
 			tgID = strconv.FormatInt(*m.TelegramUserID, 10)
 		}
-		state := "在册"
+		state := i18n.T("server.state.active")
 		switch {
 		case m.Status != store.MemberActive:
-			state = "已移出"
+			state = i18n.T("server.state.removed")
 		case m.AccountDisabled:
-			state = "已停用"
+			state = i18n.T("server.state.disabled")
 		}
 		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", m.ID, m.Name, m.DisplayName, roleLabel(m.Role), state, m.TelegramUsername, tgID)
 	}
@@ -184,9 +185,9 @@ func memberList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 func memberRemove(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
 	var name, to, as string
 	if err := parse("member remove", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&name, "name", "", "要移出的成员登录名")
-		fs.StringVar(&to, "handover-to", "", "接手人登录名：名下待处理问题单与服务全部转给他")
-		fs.StringVar(&as, "as", "", "记作操作人的本工作空间管理员登录名")
+		fs.StringVar(&name, "name", "", i18n.T("server.flag.remove_username"))
+		fs.StringVar(&to, "handover-to", "", i18n.T("server.flag.handover_to"))
+		fs.StringVar(&as, "as", "", i18n.T("server.flag.as_admin"))
 	}); err != nil {
 		return err
 	}
@@ -196,14 +197,14 @@ func memberRemove(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int
 	svc := &core.Service{Pool: pool}
 	m, err := store.MemberByName(ctx, pool, ws, name)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("成员 %q 不存在或已移出", name)
+		return i18n.Errorf("server.member.not_found_or_removed", i18n.D{"Name": strconv.Quote(name)})
 	}
 	if err != nil {
 		return err
 	}
 	r, err := store.MemberByName(ctx, pool, ws, to)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("接手人 %q 不是这个工作空间的成员", to)
+		return i18n.Errorf("server.member.handover_not_member", i18n.D{"Name": strconv.Quote(to)})
 	}
 	if err != nil {
 		return err
@@ -222,15 +223,15 @@ func memberRemove(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int
 	if err := svc.ApplyHandover(ctx, core.ServerCLI(), ws, m.ID, plan, true); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "已移出 %s：%d 张问题单、%d 个服务转给 %s，他在这个工作空间的令牌已吊销\n", name, len(plan.Issues), len(plan.Services), to)
+	fmt.Fprintln(out, i18n.T("server.member.removed", i18n.D{"Name": name, "Issues": len(plan.Issues), "Services": len(plan.Services), "To": to}))
 	return nil
 }
 
 func tokenIssue(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
 	var member, tool string
 	if err := parse("token issue", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&member, "member", "", "登录名")
-		fs.StringVar(&tool, "tool", "", "工具名，例如 claude-code、codex")
+		fs.StringVar(&member, "member", "", i18n.T("server.flag.username"))
+		fs.StringVar(&tool, "tool", "", i18n.T("server.flag.tool"))
 	}); err != nil {
 		return err
 	}
@@ -239,12 +240,12 @@ func tokenIssue(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 	}
 	t, err := (&core.Service{Pool: pool}).IssueToken(ctx, core.ServerCLI(), ws, member, tool)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("成员 %q 不存在", member)
+		return i18n.Errorf("server.member.not_found", i18n.D{"Name": strconv.Quote(member)})
 	}
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "已为 %s 的 %s 签发令牌（编号 %d）。令牌只显示这一次，请妥善保存：\n%s\n", t.Member, tool, t.ID, t.Plain)
+	fmt.Fprintln(out, i18n.T("server.token.issued", i18n.D{"Member": t.Member, "Tool": tool, "ID": t.ID, "Token": t.Plain}))
 	return nil
 }
 
@@ -254,11 +255,11 @@ func tokenList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64)
 		return err
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "编号\t成员\t工具\t签发时间\t状态")
+	fmt.Fprintln(tw, i18n.T("server.table.tokens"))
 	for _, t := range list {
-		state := "有效"
+		state := i18n.T("server.state.valid")
 		if t.RevokedAt != nil {
-			state = "已吊销"
+			state = i18n.T("server.state.revoked")
 		}
 		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", t.ID, t.MemberName, t.Tool, t.CreatedAt.Format("2006-01-02 15:04"), state)
 	}
@@ -268,27 +269,27 @@ func tokenList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64)
 func tokenRevoke(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
 	var id int64
 	if err := parse("token revoke", args, func(fs *flag.FlagSet) {
-		fs.Int64Var(&id, "id", 0, "令牌编号")
+		fs.Int64Var(&id, "id", 0, i18n.T("server.flag.token_id"))
 	}); err != nil {
 		return err
 	}
 	if id <= 0 {
-		return fmt.Errorf("缺少参数 --id")
+		return i18n.Errorf("server.arg_missing", i18n.D{"Name": "id"})
 	}
 	if err := (&core.Service{Pool: pool}).RevokeToken(ctx, core.ServerCLI(), ws, id); errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("令牌 %d 不存在、已吊销，或不属于这个工作空间", id)
+		return i18n.Errorf("server.token.not_found", i18n.D{"ID": id})
 	} else if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "已吊销令牌 %d\n", id)
+	fmt.Fprintln(out, i18n.T("server.token.revoked", i18n.D{"ID": id}))
 	return nil
 }
 
 func serviceAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
 	var name, owner string
 	if err := parse("service add", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&name, "name", "", "服务名")
-		fs.StringVar(&owner, "owner", "", "负责人的登录名")
+		fs.StringVar(&name, "name", "", i18n.T("server.flag.service_name"))
+		fs.StringVar(&owner, "owner", "", i18n.T("server.flag.owner_username"))
 	}); err != nil {
 		return err
 	}
@@ -297,12 +298,12 @@ func serviceAdd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64
 	}
 	m, err := (&core.Service{Pool: pool}).SetServiceOwner(ctx, core.ServerCLI(), ws, name, owner)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("成员 %q 不存在", owner)
+		return i18n.Errorf("server.member.not_found", i18n.D{"Name": strconv.Quote(owner)})
 	}
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "服务 %s 的负责人为 %s\n", name, m.Name)
+	fmt.Fprintln(out, i18n.T("server.service.owner_set", i18n.D{"Name": name, "Owner": m.Name}))
 	return nil
 }
 
@@ -312,7 +313,7 @@ func serviceList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int6
 		return err
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "服务\t负责人")
+	fmt.Fprintln(tw, i18n.T("server.table.services"))
 	for _, s := range list {
 		fmt.Fprintf(tw, "%s\t%s\n", s.Name, s.OwnerName)
 	}

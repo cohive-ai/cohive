@@ -13,11 +13,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/cohive-ai/cohive/internal/client"
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // devicePollInterval 是等待浏览器授权时的轮询间隔，deviceAdminWait 是等待管理员批准的最长时间；测试里会调小。
@@ -68,8 +70,8 @@ func readRepoTarget(dir string) (repoTarget, error) {
 			return nil
 		}
 		if t.Server != "" && (t.Server != srv || t.Workspace != ws) {
-			return fmt.Errorf("仓库里 .mcp.json 与 .codex/config.toml 指向的协作服务或工作空间不一致（%s %s 与 %s %s），请用 --server、--workspace 指定，或重新执行 cohive init",
-				t.Server, t.Workspace, srv, ws)
+			return i18n.Errorf("cli.login.repo_target_mismatch", i18n.D{
+				"Server1": t.Server, "Workspace1": t.Workspace, "Server2": srv, "Workspace2": ws})
 		}
 		t.Server, t.Workspace = srv, ws
 		t.Tools = append(t.Tools, tool)
@@ -140,23 +142,23 @@ func confirmServer(in io.Reader, out io.Writer, srv string) error {
 			return nil
 		}
 	}
-	fmt.Fprintf(out, "将登录到：%s\n这个地址来自仓库配置，本机还没有登录过。请确认它是你们团队的协作服务，按回车继续，按 Ctrl+C 放弃。\n", srv)
+	fmt.Fprint(out, i18n.T("cli.login.confirm_server", i18n.D{"Server": srv}))
 	line, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil && !(errors.Is(err, io.EOF) && line != "") {
-		return errors.New("没有确认服务地址，已放弃登录。确认地址无误后可以用 --server 明确指定")
+		return i18n.Errorf("cli.login.server_not_confirmed")
 	}
 	return nil
 }
 
 func login(ctx context.Context, in io.Reader, out io.Writer, args []string) error {
 	fs := flag.NewFlagSet("login", flag.ContinueOnError)
-	server := fs.String("server", "", "协作服务地址；在已执行过 cohive init 的仓库里可省略")
-	toolsFlag := fs.String("tools", "", "要登录的编程工具，逗号分隔；默认是仓库里配置了的工具，没有时为 claude-code,codex")
-	dir := fs.String("dir", ".", "仓库目录，用于读取服务地址")
-	open := fs.Bool("open", true, "自动打开浏览器授权页")
-	resume := fs.Bool("resume", false, "领取之前等待管理员批准的设备授权")
-	force := fs.Bool("force", false, "这台电脑已登录时也重新配对")
-	tokenStdin := fs.Bool("token-stdin", false, "备用：从标准输入读取管理员签发的令牌")
+	server := fs.String("server", "", i18n.T("cli.flag.login.server"))
+	toolsFlag := fs.String("tools", "", i18n.T("cli.flag.login.tools"))
+	dir := fs.String("dir", ".", i18n.T("cli.flag.repo_dir"))
+	open := fs.Bool("open", true, i18n.T("cli.flag.login.open"))
+	resume := fs.Bool("resume", false, i18n.T("cli.flag.login.resume"))
+	force := fs.Bool("force", false, i18n.T("cli.flag.login.force"))
+	tokenStdin := fs.Bool("token-stdin", false, i18n.T("cli.flag.login.token_stdin"))
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -176,12 +178,12 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 	}
 	if *tokenStdin {
 		if *server == "" && srv != "" {
-			return fmt.Errorf("用 --token-stdin 时请用 --server 明确指定服务地址（仓库配置里是 %s），避免把令牌发给仓库里被改过的地址", srv)
+			return i18n.Errorf("cli.login.token_stdin_needs_server", i18n.D{"Server": srv})
 		}
 		return loginWithToken(ctx, in, out, srv)
 	}
 	if srv == "" {
-		return errors.New("缺少 --server（协作服务地址）。网页“个人中心”里有带地址的完整命令；在已执行过 cohive init 的仓库目录里执行时可以省略")
+		return i18n.Errorf("cli.login.missing_server_hint")
 	}
 	if srv, err = client.CheckServer(srv); err != nil {
 		return err
@@ -215,10 +217,10 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 	if legacy, ok := creds.LegacyDevice(srv); ok && !*force {
 		for _, t := range tools {
 			if _, has := creds.Find(srv, legacy.Workspace, t); !has {
-				return fmt.Errorf("这台电脑是旧版配对（没有设备密钥），不能直接补登 %s：请执行 cohive login --server %s --force 重新配对", t, srv)
+				return i18n.Errorf("cli.login.legacy_cannot_topup", i18n.D{"Tool": t, "Server": srv})
 			}
 		}
-		fmt.Fprintf(out, "这台电脑已登录：%s，账号 %s（旧版配对；要用新加入的工作空间或 cohive web，请加 --force 重新配对）。\n", srv, legacy.Member)
+		fmt.Fprint(out, i18n.T("cli.login.legacy_already", i18n.D{"Server": srv, "Account": legacy.Member}))
 		return nil
 	}
 	if *server == "" {
@@ -232,18 +234,18 @@ func login(ctx context.Context, in io.Reader, out io.Writer, args []string) erro
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "请在浏览器里授权这台电脑（%d 分钟内有效）：\n\n  %s\n", st.ExpiresIn/60, st.URL)
+	fmt.Fprint(out, i18n.T("cli.login.authorize_prompt", i18n.D{"Minutes": st.ExpiresIn / 60, "URL": st.URL}))
 	if qr, err := client.QRText(st.URL); err == nil {
 		if isTerminal(out) {
 			qr = client.ColorizeQR(qr)
 		}
-		fmt.Fprintf(out, "\n  也可以用手机扫码打开：\n\n%s", qr)
+		fmt.Fprint(out, i18n.T("cli.login.qr_hint"), qr)
 	}
-	fmt.Fprintln(out, "\n  没有登录网页的话会先让你登录；只授权你自己刚刚发起的这一次。")
+	fmt.Fprintln(out, i18n.T("cli.login.authorize_note"))
 	if *open {
 		_ = openURL(st.URL)
 	}
-	fmt.Fprintln(out, "\n等待授权……（按 Ctrl+C 放弃）")
+	fmt.Fprintln(out, i18n.T("cli.login.waiting"))
 	oldID := int64(0)
 	if d, ok := creds.Device(srv); ok {
 		oldID = d.DeviceID
@@ -291,22 +293,27 @@ func topUpTokens(ctx context.Context, out io.Writer, creds *client.Credentials, 
 		if err := creds.Save(); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "已补签：%s\n", strings.Join(added, "、"))
+		fmt.Fprint(out, i18n.T("cli.login.topped_up", i18n.D{"List": listJoin(added)}))
 	}
-	fmt.Fprintf(out, "这台电脑已登录：%s，账号 %s，工作空间 %s。要重新配对请加 --force。\n", dev.Server, dev.Account, joinWorkspaces(wss))
+	fmt.Fprint(out, i18n.T("cli.login.already_logged_in", i18n.D{"Server": dev.Server, "Account": dev.Account, "Workspaces": joinWorkspaces(wss)}))
 	warnRepoWorkspace(out, repoReady, repo, wss)
 	return nil
 }
 
 func joinWorkspaces(wss []client.WorkspaceRef) string {
 	if len(wss) == 0 {
-		return "（还没有加入任何工作空间）"
+		return i18n.T("cli.login.no_workspaces")
 	}
 	var names []string
 	for _, w := range wss {
 		names = append(names, w.Name)
 	}
-	return strings.Join(names, "、")
+	return listJoin(names)
+}
+
+// listJoin 用当前语言的列举符号把几项连起来（中文“、”，英文“, ”）。
+func listJoin(items []string) string {
+	return strings.Join(items, i18n.T("cli.list_sep"))
 }
 
 // warnRepoWorkspace 在仓库配置的工作空间不在本人所在的工作空间里时提醒。
@@ -319,7 +326,7 @@ func warnRepoWorkspace(out io.Writer, repoReady bool, repo repoTarget, wss []cli
 			return
 		}
 	}
-	fmt.Fprintf(out, "\n注意：这个仓库配置的是工作空间 %s，你还不是它的成员，编程工具连不上。请联系它的管理员把你加进去。\n", repo.Workspace)
+	fmt.Fprint(out, i18n.T("cli.login.warn_repo_workspace", i18n.D{"Workspace": repo.Workspace}))
 }
 
 // revokeReplacedDevice 在 --force 重新配对成功后，用新设备密钥吊销这台电脑之前的设备，
@@ -334,16 +341,16 @@ func revokeReplacedDevice(ctx context.Context, out io.Writer, srv string, oldID 
 		return
 	}
 	if err := client.RevokeOwnDevice(ctx, srv, cur.Secret, oldID); err != nil {
-		fmt.Fprintf(out, "\n注意：这台电脑之前的设备（编号 %d）没能自动吊销：%v。请到网页“个人中心 → 我的设备”吊销它。\n", oldID, err)
+		fmt.Fprint(out, i18n.T("cli.login.revoke_failed", i18n.D{"ID": oldID, "Err": i18n.Message(i18n.Default(), err)}))
 		return
 	}
-	fmt.Fprintf(out, "已吊销这台电脑之前的设备（编号 %d）。\n", oldID)
+	fmt.Fprint(out, i18n.T("cli.login.revoked", i18n.D{"ID": oldID}))
 	dropped := creds.DropDevice(srv, oldID)
 	if len(dropped) == 0 {
 		return
 	}
 	if err := creds.Save(); err != nil {
-		fmt.Fprintf(out, "更新本机凭据失败：%v\n", err)
+		fmt.Fprint(out, i18n.T("cli.login.update_creds_failed", i18n.D{"Err": i18n.Message(i18n.Default(), err)}))
 		return
 	}
 	var tools []string
@@ -355,8 +362,7 @@ func revokeReplacedDevice(ctx context.Context, out io.Writer, srv string, oldID 
 			tools = append(tools, t)
 		}
 	}
-	fmt.Fprintf(out, "旧设备上 %s 的登录随之失效，需要的话执行 cohive login --tools %s 补登（不需再授权）。\n",
-		strings.Join(dropped, "、"), strings.Join(tools, ","))
+	fmt.Fprint(out, i18n.T("cli.login.old_device_dropped", i18n.D{"List": listJoin(dropped), "Tools": strings.Join(tools, ",")}))
 }
 
 // resumeLogin 继续领取之前没领完的设备授权（中途退出、等管理员批准超时、网络中断）。
@@ -367,11 +373,11 @@ func resumeLogin(ctx context.Context, out io.Writer, dir string) error {
 		return err
 	}
 	if len(list) == 0 {
-		return errors.New("没有等待领取的设备授权，请直接执行 cohive login")
+		return i18n.Errorf("cli.login.resume_none")
 	}
 	var last error
 	for _, p := range list {
-		fmt.Fprintf(out, "继续领取 %s 上的设备授权（申请 %d）……\n", p.Server, p.RequestID)
+		fmt.Fprint(out, i18n.T("cli.login.resuming", i18n.D{"Server": p.Server, "ID": p.RequestID}))
 		// 在已配置好 Cohive 的仓库里续领时，不再提示执行 cohive init
 		ready := len(repo.Tools) > 0 && repo.Server == client.NormalizeServer(p.Server)
 		if err := waitDevice(ctx, out, p, ready, repo); err != nil {
@@ -405,7 +411,7 @@ func waitDevice(ctx context.Context, out io.Writer, pending client.Pending, repo
 		}
 		if err != nil {
 			if failures++; failures >= 5 {
-				return fmt.Errorf("%w。网络恢复后执行 cohive login --resume 继续领取", err)
+				return i18n.Wrap(err, "cli.login.network_retry")
 			}
 			continue
 		}
@@ -416,32 +422,32 @@ func waitDevice(ctx context.Context, out io.Writer, pending client.Pending, repo
 		case "awaiting_admin":
 			if awaitingSince.IsZero() {
 				awaitingSince = time.Now()
-				fmt.Fprintln(out, "你已授权；这不是你的第一台设备，正在等待管理员批准……（可以先按 Ctrl+C 退出，批准后执行 cohive login --resume 领取）")
+				fmt.Fprintln(out, i18n.T("cli.login.awaiting_admin"))
 			}
 			if time.Since(awaitingSince) > deviceAdminWait {
-				return errors.New("管理员还没有批准。批准后执行 cohive login --resume 领取（24 小时内有效）")
+				return i18n.Errorf("cli.login.admin_timeout")
 			}
 		case "approved":
 			done()
 			return saveDeviceLogins(out, srv, p, repoReady, repo)
 		case "denied":
 			done()
-			return errors.New("授权被拒绝（你在浏览器里点了拒绝，或管理员没有批准，或设备已被吊销）")
+			return i18n.Errorf("cli.login.denied")
 		case "expired":
 			done()
-			return errors.New("授权已过期，请重新执行 cohive login")
+			return i18n.Errorf("cli.login.expired")
 		case "delivered":
 			done()
-			return errors.New("服务端显示令牌已经交付，但本机没有收到（可能是网络中断）。请重新执行 cohive login --force；多出的设备可在网页“个人中心”吊销")
+			return i18n.Errorf("cli.login.delivered")
 		default:
-			return fmt.Errorf("协作服务返回了未知状态 %q", p.Status)
+			return i18n.Errorf("cli.login.unknown_status", i18n.D{"Status": strconv.Quote(p.Status)})
 		}
 	}
 }
 
 func saveDeviceLogins(out io.Writer, srv string, p client.DevicePoll, repoReady bool, repo repoTarget) error {
 	if p.DeviceSecret == "" {
-		return errors.New("协作服务没有返回设备密钥，请重新执行 cohive login")
+		return i18n.Errorf("cli.login.no_device_secret")
 	}
 	creds, err := client.LoadCredentials()
 	if err != nil {
@@ -457,25 +463,25 @@ func saveDeviceLogins(out io.Writer, srv string, p client.DevicePoll, repoReady 
 				DeviceID: p.DeviceID, CreatedAt: time.Now()})
 			saved = append(saved, t)
 		}
-		lines = append(lines, fmt.Sprintf("  %s：%s", w.Workspace, strings.Join(saved, "、")))
+		lines = append(lines, i18n.T("cli.login.workspace_line", i18n.D{"Workspace": w.Workspace, "Tools": listJoin(saved)}))
 		wss = append(wss, client.WorkspaceRef{Name: w.Workspace, Role: w.Role})
 	}
 	if err := creds.Save(); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "\n已登录：账号 %s，这台电脑可用于你所在的全部工作空间\n", p.Account)
+	fmt.Fprint(out, i18n.T("cli.login.done_header", i18n.D{"Account": p.Account}))
 	if len(lines) == 0 {
-		fmt.Fprintln(out, "  （你还没有加入任何工作空间；加入后在项目里打开编程工具即可，不必重新配对）")
+		fmt.Fprintln(out, i18n.T("cli.login.no_workspace_yet"))
 	} else {
 		fmt.Fprintln(out, strings.Join(lines, "\n"))
 	}
-	fmt.Fprintf(out, "设备密钥与令牌已保存到 %s（仅本人可读）\n", client.CredentialsPath())
+	fmt.Fprint(out, i18n.T("cli.login.creds_saved", i18n.D{"Path": client.CredentialsPath()}))
 	switch {
 	case repoReady:
 		warnRepoWorkspace(out, repoReady, repo, wss)
-		fmt.Fprintln(out, "\n这个仓库已经配置好 Cohive：Claude Code 里用 /cohive，Codex 里用 $cohive。")
+		fmt.Fprintln(out, i18n.T("cli.login.repo_ready"))
 	default:
-		fmt.Fprintln(out, "\n下一步：在项目目录执行 cohive init")
+		fmt.Fprintln(out, i18n.T("cli.login.next_init"))
 	}
 	return nil
 }
@@ -502,9 +508,9 @@ func knownToolsFirst(tokens map[string]string) []string {
 // 网页登录属于账号，不分工作空间；M5 配对的旧电脑没有设备密钥时，用属于设备的令牌兼容。
 func openWeb(ctx context.Context, out io.Writer, args []string) error {
 	fs := flag.NewFlagSet("web", flag.ContinueOnError)
-	server := fs.String("server", "", "协作服务地址；在仓库里或本机只配对过一个服务时可省略")
-	dir := fs.String("dir", ".", "仓库目录，用于读取服务地址")
-	open := fs.Bool("open", true, "自动打开浏览器")
+	server := fs.String("server", "", i18n.T("cli.flag.web.server"))
+	dir := fs.String("dir", ".", i18n.T("cli.flag.repo_dir"))
+	open := fs.Bool("open", true, i18n.T("cli.flag.web.open"))
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -528,7 +534,7 @@ func openWeb(ctx context.Context, out io.Writer, args []string) error {
 		}
 	}
 	if len(found) == 0 {
-		return errors.New("这台电脑还没有配对这个协作服务：先执行 cohive login")
+		return i18n.Errorf("cli.web.not_paired")
 	}
 	if len(found) > 1 {
 		var list []string
@@ -536,7 +542,7 @@ func openWeb(ctx context.Context, out io.Writer, args []string) error {
 			list = append(list, "--server "+k)
 		}
 		sort.Strings(list)
-		return fmt.Errorf("这台电脑配对了多个协作服务，请指定其中一个：\n  %s", strings.Join(list, "\n  "))
+		return i18n.Errorf("cli.multiple_servers", i18n.D{"List": strings.Join(list, "\n  ")})
 	}
 	var target, cred string
 	for k, v := range found {
@@ -547,10 +553,10 @@ func openWeb(ctx context.Context, out io.Writer, args []string) error {
 		return err
 	}
 	if *open && openURL(link) == nil {
-		fmt.Fprintf(out, "已在浏览器打开 Cohive（链接 2 分钟内有效、只能用一次）：\n  %s\n", link)
+		fmt.Fprint(out, i18n.T("cli.web.opened", i18n.D{"URL": link}))
 		return nil
 	}
-	fmt.Fprintf(out, "请在浏览器打开下面的链接（2 分钟内有效、只能用一次）：\n  %s\n", link)
+	fmt.Fprint(out, i18n.T("cli.web.open_link", i18n.D{"URL": link}))
 	return nil
 }
 

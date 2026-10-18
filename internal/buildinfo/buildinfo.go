@@ -10,10 +10,10 @@ var (
 // IsDev 判断是否为没有注入版本号的开发构建；开发构建之间不做版本一致性提醒。
 func IsDev() bool { return Version == "" || Version == "dev" }
 
-// String 返回“版本（提交 xxx）”形式的说明。
+// String 返回与语言无关的版本说明，形如 v1.2.3 (abc1234)；没有提交号时只有版本。
 func String() string {
 	if Commit == "" {
 		return Version
 	}
-	return Version + "（提交 " + Commit + "）"
+	return Version + " (" + Commit + ")"
 }

@@ -1,1 +1,117 @@
-{}
+{
+  "loading": "正在读取…",
+  "unset": "未指定",
+  "workspaceError": {
+    "notFound": "工作空间“{{ws}}”不存在，或者你不是它的成员。",
+    "adminHint": "你是服务器管理员，可以在<link>管理页</link>把自己加为成员后再查看。",
+    "yours": "你所在的工作空间：",
+    "loadBoardFailed": "读取看板失败：{{message}}",
+    "loadIssuesFailed": "读取问题单失败：{{message}}"
+  },
+  "board": {
+    "loading": "正在读取看板…",
+    "empty": "现在没有待处理的问题单。",
+    "summaryMine_other": "{{count}} 张待处理，<hl>其中 {{mine}} 张等你处理</hl>",
+    "summaryNone_other": "{{count}} 张待处理，没有等你处理的",
+    "refresh": "每 5 秒自动刷新，上次 {{time}}",
+    "you": "你",
+    "finished": "已结束",
+    "finishedSubtitle": "最近 7 天",
+    "deactivated": "已停用",
+    "deactivatedTitle": "账号已被服务器管理员停用",
+    "emptyFinished": "最近 7 天没有结束的单子",
+    "emptyColumn": "手上没有待处理的单子",
+    "escalated": "需要人介入",
+    "handedTo": "交给",
+    "needsYou": {
+      "DRAFT": "草稿，等你确认发出",
+      "OPEN": "等你接单、退回或转交",
+      "ACCEPTED": "你已接单，尚未开始修复",
+      "FIXING": "你正在修复",
+      "REOPENED": "验证未通过，等你继续修复",
+      "READY_FOR_VERIFICATION": "已修复，等你验证",
+      "DECLINED": "被退回了，等你决定下一步"
+    },
+    "needs": {
+      "DRAFT": "草稿，等发起人确认发出",
+      "OPEN": "等负责人接单",
+      "ACCEPTED": "负责人已接单，尚未开始修复",
+      "FIXING": "负责人修复中",
+      "REOPENED": "验证未通过，等负责人继续修复",
+      "READY_FOR_VERIFICATION": "已修复，等发起人验证",
+      "DECLINED": "已被退回，等发起人决定下一步",
+      "CLOSED": "已关闭"
+    }
+  },
+  "list": {
+    "searchLabel": "搜索标题、概述或实际结果",
+    "filterStatus": "按状态筛选",
+    "emptyFiltered": "没有符合条件的问题单，换个关键词或状态试试。",
+    "empty": "还没有问题单。在编程工具里让智能体起草第一张。",
+    "col": {
+      "id": "编号",
+      "title": "标题",
+      "status": "状态",
+      "service": "服务",
+      "reporter": "发起人",
+      "owner": "负责人",
+      "updated": "更新"
+    },
+    "reportedBy": "{{name}} 发起",
+    "ownerLine": "负责人 {{name}}",
+    "limit": "只显示最近更新的 50 张，用关键词或状态缩小范围。"
+  },
+  "detail": {
+    "loading": "正在读取问题单…",
+    "notInWorkspace": "工作空间“{{ws}}”里没有问题单 #{{id}}。",
+    "maybeElsewhere": "它可能在你所在的其他工作空间里：",
+    "backToBoard": "回到看板",
+    "escalatedWhy": "需要人介入：{{reason}}",
+    "reporter": "发起人",
+    "owner": "负责人",
+    "service": "服务",
+    "severity": "严重程度",
+    "codeLocation": "代码位置",
+    "notProvided": "未提供",
+    "version": "版本",
+    "versionValue": "第 {{version}} 版",
+    "reopenCount": "重开次数",
+    "created": "创建",
+    "summary": "概述",
+    "expected": "期望结果",
+    "actual": "实际结果",
+    "repro": "复现脚本",
+    "reproEnv": "运行环境：{{env}}",
+    "reproExit": "修复后应返回：{{code}}",
+    "notStated": "未说明",
+    "noRepro": "发起人没有提供复现脚本，验证只能靠人工确认。",
+    "evidence": "证据",
+    "activity": "动态"
+  },
+  "event": {
+    "head": "<actor>{{actor}}</actor><tool>（{{tool}}）</tool>{{action}}",
+    "actionTo": "{{action}}给 {{name}}",
+    "ownerTo": "，负责人改为 {{name}}",
+    "sourceTo": "，发起人改为 {{name}}",
+    "statusTo": "，状态变为{{status}}",
+    "escalated": "，已标记需要人介入"
+  },
+  "eventLog": {
+    "introServer": "服务器上全部管理操作：审批、角色、邀请、设备、成员、账号、工作空间，以及被拒的管理请求。只追加，不能修改或删除。",
+    "introWorkspace": "本工作空间的管理操作：审批、角色、邀请、设备、成员与设置。停用账号、在服务器管理页批准设备等服务器级操作不在这里，请问服务器管理员。只追加，不能修改或删除。",
+    "filterForm": "筛选记录",
+    "type": "类型",
+    "allTypes": "全部类型",
+    "via": "入口",
+    "allVias": "全部入口",
+    "actor": "操作人",
+    "actorPlaceholder": "登录名",
+    "workspace": "工作空间",
+    "workspacePlaceholder": "名称（含已删除的）",
+    "filter": "筛选",
+    "loadFailed": "读取失败：{{message}}",
+    "empty": "还没有记录。",
+    "loadMore": "加载更早的记录",
+    "details": "详情"
+  }
+}

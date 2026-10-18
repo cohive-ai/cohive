@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 // 表单与对话框的通用件：颜色只用 styles.css 里的令牌
 
@@ -157,6 +158,7 @@ export function ConfirmButton({
   action: () => Promise<unknown>;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -192,10 +194,10 @@ export function ConfirmButton({
         <ErrorText>{error}</ErrorText>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={close} disabled={busy} className={btn.secondary}>
-            取消
+            {t("ui.cancel")}
           </button>
           <button type="button" onClick={run} disabled={busy} className={danger ? btn.dangerSolid : btn.primary}>
-            {busy ? "正在处理…" : (confirmLabel ?? label)}
+            {busy ? t("ui.processing") : (confirmLabel ?? label)}
           </button>
         </div>
       </Dialog>
@@ -205,6 +207,7 @@ export function ConfirmButton({
 
 // 可复制的一行文字。非安全来源（局域网 http）下剪贴板接口不可用，退回到选中后复制
 export function CopyField({ value, label }: { value: string; label: string }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
   const id = useId();
   const [state, setState] = useState<"" | "ok" | "fail">("");
@@ -220,7 +223,7 @@ export function CopyField({ value, label }: { value: string; label: string }) {
         setState("ok");
         return;
       }
-      throw new Error("剪贴板不可用");
+      throw new Error("clipboard unavailable");
     } catch {
       const el = ref.current;
       if (!el) return setState("fail");
@@ -246,10 +249,10 @@ export function CopyField({ value, label }: { value: string; label: string }) {
           className={`${inputClass} min-w-0 flex-1 font-mono`}
         />
         <button type="button" onClick={copy} className={`${btn.secondary} shrink-0`}>
-          {state === "ok" ? "已复制" : "复制"}
+          {state === "ok" ? t("ui.copied") : t("ui.copy")}
         </button>
       </div>
-      {state === "fail" && <p className="mt-1 text-xs text-danger">没能自动复制，已选中文字，请手动复制。</p>}
+      {state === "fail" && <p className="mt-1 text-xs text-danger">{t("ui.copyFailed")}</p>}
     </div>
   );
 }

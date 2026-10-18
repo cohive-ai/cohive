@@ -144,7 +144,7 @@ func TestNoDist(t *testing.T) {
 		t.Fatalf("没有安装包时脚本应报错退出：%v %s", err, out)
 	}
 	_, ps := get(t, srv.URL+"/install.ps1")
-	if !strings.Contains(string(ps), "throw '这台服务器没有附带命令行安装包") {
+	if !strings.Contains(string(ps), "throw \"这台服务器没有附带命令行安装包") {
 		t.Fatalf("PowerShell 脚本也应提示：%s", ps)
 	}
 }
@@ -166,7 +166,7 @@ func TestManifestValidation(t *testing.T) {
 		t.Fatal("清单里的文件不存在应拒绝")
 	}
 	if err := bad(clidist.Manifest{Version: "1.0", Files: map[string]clidist.File{"plan9-386": f}}); err != nil {
-		if !strings.Contains(err.Error(), "未知平台") {
+		if !strings.Contains(err.Error(), "unknown platform") {
 			t.Fatal(err)
 		}
 	} else {

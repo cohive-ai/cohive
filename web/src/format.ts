@@ -1,46 +1,75 @@
-export const actionLabel: Record<string, string> = {
-  draft: "起草",
-  submit: "发出",
-  accept: "接单",
-  decline: "退回",
-  transfer: "转交",
-  start: "开始修复",
-  request_verification: "请求验证",
-  close: "关闭",
-  reopen: "重开",
-  comment: "评论",
-  reassign: "改派",
-};
+import i18n from "./i18n";
 
-export const statusOptions: { value: string; label: string }[] = [
-  { value: "", label: "全部状态" },
-  { value: "DRAFT", label: "草稿" },
-  { value: "OPEN", label: "待接单" },
-  { value: "ACCEPTED", label: "已接单" },
-  { value: "FIXING", label: "修复中" },
-  { value: "READY_FOR_VERIFICATION", label: "待验证" },
-  { value: "REOPENED", label: "已重开" },
-  { value: "CLOSED", label: "已关闭" },
-  { value: "DECLINED", label: "已退回" },
-];
+// 文案都在调用时取当前语言，切换语言后不用重新加载。
 
-export const statusLabel = Object.fromEntries(statusOptions.map((o) => [o.value, o.label]));
+const actionKeys = {
+  draft: "action.draft",
+  submit: "action.submit",
+  accept: "action.accept",
+  decline: "action.decline",
+  transfer: "action.transfer",
+  start: "action.start",
+  request_verification: "action.request_verification",
+  close: "action.close",
+  reopen: "action.reopen",
+  comment: "action.comment",
+  reassign: "action.reassign",
+} as const;
 
-export const severityLabel: Record<string, string> = {
-  low: "低",
-  normal: "普通",
-  high: "高",
-  critical: "紧急",
-};
+// 事件动作的说法（过去式）；不认识的动作原样返回
+export function actionLabel(action: string): string {
+  const key = actionKeys[action as keyof typeof actionKeys];
+  return key ? i18n.t(key) : action;
+}
+
+const statusKeys = {
+  DRAFT: "status.DRAFT",
+  OPEN: "status.OPEN",
+  ACCEPTED: "status.ACCEPTED",
+  FIXING: "status.FIXING",
+  READY_FOR_VERIFICATION: "status.READY_FOR_VERIFICATION",
+  REOPENED: "status.REOPENED",
+  CLOSED: "status.CLOSED",
+  DECLINED: "status.DECLINED",
+} as const;
+
+export const statusIds = Object.keys(statusKeys);
+
+// 状态名；不认识的状态用 fallback（例如服务端给的 status_label），再没有就原样返回
+export function statusLabel(status: string, fallback?: string): string {
+  const key = statusKeys[status as keyof typeof statusKeys];
+  return key ? i18n.t(key) : (fallback ?? status);
+}
+
+// 状态筛选下拉的选项：第一项是“全部状态”
+export function statusOptions(): { value: string; label: string }[] {
+  return [{ value: "", label: i18n.t("status.all") }, ...statusIds.map((value) => ({ value, label: statusLabel(value) }))];
+}
+
+const severityKeys = {
+  low: "severity.low",
+  normal: "severity.normal",
+  high: "severity.high",
+  critical: "severity.critical",
+} as const;
+
+export function severityLabel(severity: string): string {
+  const key = severityKeys[severity as keyof typeof severityKeys];
+  return key ? i18n.t(key) : severity;
+}
 
 export const toolLabel = (tool: string) =>
-  tool === "claude-code" ? "Claude Code" : tool === "codex" ? "Codex" : tool === "web" ? "网页" : tool;
+  tool === "claude-code" ? "Claude Code" : tool === "codex" ? "Codex" : tool === "web" ? i18n.t("tool.web") : tool;
+
+// 列表的连接符（中文顿号，英文逗号加空格）
+export const listSeparator = () => i18n.t("list.separator");
+export const joinList = (items: string[]) => items.join(listSeparator());
 
 // 设备的工具列表：兼容数组与逗号分隔字符串
 export function toolsText(tools: string[] | string | null | undefined): string {
   const list = Array.isArray(tools) ? tools : (tools ?? "").split(",");
   const names = list.map((t) => t.trim()).filter(Boolean).map(toolLabel);
-  return names.length ? names.join("、") : "未注明";
+  return names.length ? joinList(names) : i18n.t("tool.unspecified");
 }
 
 // 工作空间给人看的名字：显示名，没设时为路径
@@ -48,21 +77,36 @@ export const workspaceName = (w: { name: string; display_name?: string }) => w.d
 
 // 同时显示路径的写法：显示名与路径不同时写成“显示名（路径）”，避免两个显示名相同的工作空间分不清
 export const workspaceLabel = (w: { name: string; display_name?: string }) =>
-  w.display_name && w.display_name !== w.name ? `${w.display_name}（${w.name}）` : w.name;
+  w.display_name && w.display_name !== w.name
+    ? i18n.t("workspace.label", { display: w.display_name, name: w.name })
+    : w.name;
 
-export const roleLabel = (role: string) => (role === "admin" ? "管理员" : "成员");
+export const roleLabel = (role: string) => (role === "admin" ? i18n.t("role.admin") : i18n.t("role.member"));
 
 export const inviteKindLabel = (kind: string) =>
-  kind === "personal" ? "个人邀请" : kind === "team" ? "团队邀请" : kind;
+  kind === "personal" ? i18n.t("inviteKind.personal") : kind === "team" ? i18n.t("inviteKind.team") : kind;
 
-export const deviceAuthStatusLabel: Record<string, string> = {
-  pending: "等待你确认",
-  awaiting_admin: "等待管理员批准",
-  approved: "已授权",
-  delivered: "已授权，终端已完成登录",
-  denied: "已拒绝",
-  expired: "已过期",
-};
+const deviceStatusKeys = {
+  pending: "deviceStatus.pending",
+  awaiting_admin: "deviceStatus.awaiting_admin",
+  approved: "deviceStatus.approved",
+  delivered: "deviceStatus.delivered",
+  denied: "deviceStatus.denied",
+  expired: "deviceStatus.expired",
+} as const;
+
+// 设备授权状态的说法；不认识的状态原样返回
+export function deviceAuthStatusText(status: string): string {
+  const key = deviceStatusKeys[status as keyof typeof deviceStatusKeys];
+  return key ? i18n.t(key) : status;
+}
+
+// 兼容旧写法 deviceAuthStatusLabel[status]：每次读取时按当前语言取，不认识的状态为 undefined
+export const deviceAuthStatusLabel: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get: (_, status) =>
+    typeof status === "string" && status in deviceStatusKeys ? deviceAuthStatusText(status) : undefined,
+  has: (_, status) => typeof status === "string" && status in deviceStatusKeys,
+});
 
 // 登录名规则（与服务端一致，工作空间名同样适用）：小写字母、数字、下划线、横线，1 到 32 位，第一个字符须是字母或数字
 export const memberNamePattern = /^[a-z0-9][a-z0-9_-]{0,31}$/;
@@ -96,25 +140,46 @@ export function tokensByWorkspace(
 }
 
 // 工作空间名列表的展示：A、B；没有时给出说明
-export const workspaceListText = (list: string[] | null | undefined, empty = "暂无") =>
-  list && list.length ? list.join("、") : empty;
+export const workspaceListText = (list: string[] | null | undefined, empty = i18n.t("list.none")) =>
+  list && list.length ? joinList(list) : empty;
 
 export const signupKindLabel = (kind: string) =>
-  kind === "existing" ? "已有账号申请加入" : kind === "new" ? "新人注册" : kind;
+  kind === "existing" ? i18n.t("signupKind.existing") : kind === "new" ? i18n.t("signupKind.new") : kind;
 
-export function relativeTime(iso: string, now = Date.now()): string {
-  const sec = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (sec < 10) return "刚刚";
-  if (sec < 60) return `${sec} 秒前`;
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min} 分钟前`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr} 小时前`;
-  return `${Math.round(hr / 24)} 天前`;
+const lang = () => i18n.resolvedLanguage || i18n.language || "en";
+
+// Intl 对象按语言缓存：看板每秒重绘一次，不必每次新建
+const cache = new Map<string, Intl.RelativeTimeFormat | Intl.DateTimeFormat>();
+function formatter<T extends Intl.RelativeTimeFormat | Intl.DateTimeFormat>(kind: string, make: (l: string) => T): T {
+  const l = lang();
+  const key = `${kind}:${l}`;
+  let f = cache.get(key) as T | undefined;
+  if (!f) {
+    try {
+      f = make(l);
+    } catch {
+      f = make("en"); // 语言代码不被 Intl 认识时退回英文
+    }
+    cache.set(key, f);
+  }
+  return f;
 }
 
+// 相对时间（“5 分钟前” / “5 minutes ago”），不足 10 秒写“现在”
+export function relativeTime(iso: string, now = Date.now()): string {
+  const rtf = formatter("rel", (l) => new Intl.RelativeTimeFormat(l, { numeric: "auto" }));
+  const sec = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  if (sec < 10) return i18n.t("time.justNow");
+  if (sec < 60) return rtf.format(-sec, "second");
+  const min = Math.round(sec / 60);
+  if (min < 60) return rtf.format(-min, "minute");
+  const hr = Math.round(min / 60);
+  if (hr < 24) return rtf.format(-hr, "hour");
+  return rtf.format(-Math.round(hr / 24), "day");
+}
+
+// 绝对时间：本地时区，格式跟随语言
 export function absoluteTime(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const f = formatter("abs", (l) => new Intl.DateTimeFormat(l, { dateStyle: "medium", timeStyle: "short" }));
+  return f.format(new Date(iso));
 }
