@@ -26,6 +26,7 @@
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
+| DEP-1a | Go 依赖升级把最低 Go 版本提到 1.26 | A 全面升到 Go 1.26（合 #2，同时改 Dockerfile 与文档里的版本）；B 只把 x/crypto 升到 0.52.0（仍是 Go 1.25，关掉 #2） | A（1.25 在官方支持期上是否已结束未核实，但升级迟早要做；B 之后机器人会反复提同一个升级） | 依赖告警清零 |
 | I18N-GH | 仓库安全类设置，剩私密漏洞报告未开启（lee 亲手点“高级安全”页的启用按钮）；依赖告警已开、main 规则集 protect-main 已生效（禁止删除、禁止强推，无豁免） | 做 | 做（SECURITY.md 指向私密漏洞报告） | 安全报告入口可用 |
 | I18N-D13 | README 默认语言 | A README.md 改英文、中文移到 README.zh-CN.md；B 维持中文为默认 | A（GitHub 首页默认展示 README.md，面向外部用户） | I18N 第一段的 README 部分 |
 | I18N-D15 | 贡献者是否签 CLA 或 DCO | A 都不要；B DCO；C CLA | A；若将来可能改许可证或做商业双授权，应现在选 C | 不阻塞（先按 A 写） |
@@ -33,7 +34,7 @@
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
-- P1 DEP-1 依赖漏洞告警 22 条（11 严重）与依赖更新机器人的 3 个合并请求：Go 侧 15 条都在 golang.org/x/crypto 0.42.0（ssh、agent 等子包），程序实际只编译进 bcrypt、blowfish，漏洞不可达；网页侧 7 条在 vitest、tinypool，只用于测试。修法：cohive-ai/cohive#2（x/crypto 升到 0.58.0 等）可先合，不与 I18N 第二段冲突；#3（网页 10 项）与 #1（pnpm/action-setup 4→6）等第二段合入后再合。合并前主脑在本地跑全量 —— 来源 开启依赖告警后
+- P1 DEP-1 依赖漏洞告警 22 条（11 严重）与依赖更新机器人的 3 个合并请求：Go 侧 15 条都在 golang.org/x/crypto 0.42.0（ssh、agent 等子包），程序实际只编译进 bcrypt、blowfish，漏洞不可达；网页侧 7 条在 vitest、tinypool，只用于测试。修法：cohive-ai/cohive#2 验收发现它把 go.mod 的 go 指令从 1.25.0 提到 1.26.0（x/crypto 0.58.0 要求），Dockerfile 用 golang:1.25-alpine 会构建失败，README、CONTRIBUTING、指南写的是 Go 1.25 → 待 lee 定 DEP-1a；#3（网页 10 项）与 #1（pnpm/action-setup 4→6）等第二段合入后再合。合并前主脑在本地跑全量 —— 来源 开启依赖告警后
 - P2 T-5 cmd/cohive 用例从当前目录往上找 `.mcp.json`，在执行过 cohive init 的克隆里会读到本机配置，3 条用例失败（TestRevokedDeviceHintsForce、TestLoginOpensBrowserAndSaves、TestLegacyCredentials）；开源贡献者照着做也会碰到，测试应隔离仓库目录 —— 来源 N-2 合入时主脑发现
 - P2 OS-4 打标签时用 GitHub Actions 构建多架构镜像推到 ghcr，compose 缺省用预构建镜像（公开后第一个小任务）；另：机器人入群后 /bind 绑群、未配对时 init 自动走 login、安装脚本经同意写 PATH、Caddy 自动 HTTPS 示例、发布物附第三方许可证清单 —— 来源 OSS-1 建议
 - P3 T-3 转交或发单给正在被移出的成员时，assignable 不锁成员行，可能留下负责人是已移出成员的单（推测未验证）；在问题单锁之后对接收人成员行加 FOR SHARE 并复查状态 —— 来源 稳定性修复遗留
