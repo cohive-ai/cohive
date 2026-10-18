@@ -128,6 +128,10 @@ func TestAdminCancelsAcceptedIssue(t *testing.T) {
 	if !e.svc.CanCancel(ctx, &e.acc, e.c, is) || e.svc.CanCancel(ctx, nil, e.c, is) || e.svc.CanCancel(ctx, act.Account, who, is) {
 		t.Fatal("CanCancel：管理员能、免密会话与发起人（已接单）不能")
 	}
+	var ie *core.InputError
+	if _, err := e.svc.CancelIssue(ctx, core.WebActor(e.acc), e.c, core.CancelInput{IssueID: is.ID, ExpectedVersion: is.Version, Reason: "  "}); !errors.As(err, &ie) {
+		t.Fatalf("网页、命令行作废也必须写理由：%v", err)
+	}
 	before := len(allEvents(t, e.svc))
 	got, err := e.svc.CancelIssue(ctx, core.WebActor(e.acc), e.c, core.CancelInput{IssueID: is.ID, ExpectedVersion: is.Version, Reason: "需求取消"})
 	if err != nil {
@@ -233,6 +237,13 @@ func TestBoardKeepsCancelled(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Status != issue.StatusCancelled || items[0].HolderID != nil || items[0].Needs == "" {
 		t.Fatalf("看板：%+v", items)
+	}
+	// 和已关闭一样，只留最近 7 天的
+	if _, err := e.svc.Pool.Exec(ctx, `UPDATE issues SET updated_at = now() - interval '8 days' WHERE id = $1`, is.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, items, err = e.svc.Board(ctx, e.b); err != nil || len(items) != 0 {
+		t.Fatalf("8 天前作废的单不上看板：%+v %v", items, err)
 	}
 }
 
