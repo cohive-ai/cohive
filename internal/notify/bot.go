@@ -315,6 +315,9 @@ func (b *Bot) AnnounceDeviceDecided(ctx context.Context, d core.DeviceDecision) 
 func (b *Bot) AnnounceJoined(ctx context.Context, m store.Member) error {
 	return b.hub().AnnounceJoined(ctx, m)
 }
+func (b *Bot) AnnounceSelfJoined(ctx context.Context, m store.Member) error {
+	return b.hub().AnnounceSelfJoined(ctx, m)
+}
 
 // handleCallback 处理审批按钮：su（注册与加入申请）、da（添加设备），数据形如 su:工作空间:编号:y。
 // 审批逻辑见 Hub.Click；这里只解析按钮数据、回应点击、改被点的那条消息。

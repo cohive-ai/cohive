@@ -195,15 +195,28 @@ func (h *Hub) AnnounceDeviceDecided(ctx context.Context, d core.DeviceDecision) 
 	return h.finish(ctx, "da", d.Auth.ID, deviceResult(d), postRef{})
 }
 
-// AnnounceJoined 在工作空间群里说一声“X 已加入”，并 @ 他（已连接这个通讯工具时）。
+// AnnounceJoined 在工作空间群里说一声“X 已加入”，并 @ 他（已连接这个通讯工具时）。用于管理员让人加入。
 func (h *Hub) AnnounceJoined(ctx context.Context, m store.Member) error {
+	return h.announceJoined(ctx, m, true)
+}
+
+// AnnounceSelfJoined 是本人加入（凭邀请注册、接受邀请）：操作者是他自己，只写名字不 @。
+func (h *Hub) AnnounceSelfJoined(ctx context.Context, m store.Member) error {
+	return h.announceJoined(ctx, m, false)
+}
+
+func (h *Hub) announceJoined(ctx context.Context, m store.Member, at bool) error {
 	ws, ch, chat, err := h.groupOf(ctx, m.WorkspaceID)
 	if err != nil || ch == nil {
 		return err
 	}
 	p := h.people(ctx, m)[m.ID]
 	w := newWriter(ch.Format(), ch.Provider())
-	text := fmt.Sprintf("%s 已加入工作空间 %s。", w.mention(p, w.nameLabel(m.Name, m.DisplayName), true), w.esc(ws.Label()))
+	who := w.nameLabel(m.Name, m.DisplayName)
+	if at {
+		who = w.mention(p, who, true)
+	}
+	text := fmt.Sprintf("%s 已加入工作空间 %s。", who, w.esc(ws.Label()))
 	return ch.Send(ctx, chat, w.done("新成员加入", text))
 }
 

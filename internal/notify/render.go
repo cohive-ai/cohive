@@ -27,10 +27,19 @@ func Render(base string, ws store.Workspace, is store.Issue, n store.Notificatio
 func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.Issue, n store.Notification, people map[int64]Person) Rendered {
 	w := newWriter(f, provider)
 	esc := w.esc
+	// 不 @ 操作者本人，只写名字（2026-10-18 lee 定）：自己发单给自己、发起人与负责人是同一人等情况。
+	// 超时催办没有操作者，照常 @。
+	self := n.ActorMemberID
+	if core.SystemEvent(n.Event) {
+		self = 0
+	}
 	mention := func(id int64) string {
 		p, ok := people[id]
 		if !ok {
 			return "（未知成员）"
+		}
+		if id == self {
+			return esc(p.Name)
 		}
 		return w.mention(p, esc(p.Name), false)
 	}

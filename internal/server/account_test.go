@@ -70,6 +70,7 @@ type fakeAnnouncer struct {
 	signups int
 	devices int
 	joined  int
+	self    int // 其中本人加入（不 @）的次数
 }
 
 func (f *fakeAnnouncer) AnnounceSignup(context.Context, store.Signup) error {
@@ -90,6 +91,13 @@ func (f *fakeAnnouncer) AnnounceJoined(context.Context, store.Member) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.joined++
+	return nil
+}
+func (f *fakeAnnouncer) AnnounceSelfJoined(context.Context, store.Member) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.joined++
+	f.self++
 	return nil
 }
 
@@ -289,9 +297,9 @@ func TestWebAccountFlow(t *testing.T) {
 	// 通知在后台发出，稍等片刻
 	for i := 0; ; i++ {
 		ann.mu.Lock()
-		s, d, j := ann.signups, ann.devices, ann.joined
+		s, d, j, self := ann.signups, ann.devices, ann.joined, ann.self
 		ann.mu.Unlock()
-		if s == 1 && d == 1 && j == 2 {
+		if s == 1 && d == 1 && j == 2 && self == 1 { // 个人邀请注册是本人加入（不 @），团队申请获批是管理员批准
 			break
 		}
 		if i > 100 {

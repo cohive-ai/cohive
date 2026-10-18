@@ -18,6 +18,9 @@ const (
 	EventClosed    = "closed"    // 发起人验证通过并关闭，告知负责人
 )
 
+// SystemEvent 判断是不是服务端自己发起的事件（超时催办）：没有操作者，通知里记的操作人只是占位。
+func SystemEvent(event string) bool { return event == EventOverdue || event == EventOverdueAdmin }
+
 // InfoEvent 判断是不是“告知型”事件（接单、关单）：只是把发生过的事告诉对方，之后问题单再往前走也不算过时。
 func InfoEvent(event string) bool { return event == EventAccepted || event == EventClosed }
 

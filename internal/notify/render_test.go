@@ -89,7 +89,7 @@ func TestMentions(t *testing.T) {
 	if !strings.Contains(text, "@lee_claude") {
 		t.Fatalf("登记了 Telegram 用户名的成员应被 @：\n%s", text)
 	}
-	text = render(t, workspace(true, true, ""), is, "escalated", claude.ID, "claude-code", claude.ID, codex.ID)
+	text = render(t, workspace(true, true, ""), is, "escalated", codex.ID, "codex", claude.ID, codex.ID)
 	if !strings.Contains(text, "@lee_claude") || !strings.Contains(text, "lee-codex") || strings.Contains(text, "@lee-codex") {
 		t.Fatalf("没登记的成员只显示成员名、不加 @：\n%s", text)
 	}
@@ -207,5 +207,42 @@ func TestOverdueMessages(t *testing.T) {
 	}
 	if text := render(t, workspace(true, true, ""), is, "overdue", codex.ID, "cohive", codex.ID); strings.Contains(text, "SECRET") {
 		t.Fatalf("催办不带正文：\n%s", text)
+	}
+}
+
+// 不 @ 操作者本人，只写名字：自己发单给自己、发起人与负责人是同一人、重开（升级为需要人介入）时的操作者；
+// 去掉操作者后一个都不 @ 也照常发；钉钉的 atUserIds 也不含操作者。超时催办没有操作者，照常 @。
+func TestNoSelfMention(t *testing.T) {
+	is := sampleIssue()
+	w := workspace(true, true, "")
+	// linked 自己发单给自己、自己接单：只写名字，不出现按编号提及的链接
+	for _, ev := range []string{"assigned", "accepted", "closed", "verify"} {
+		text := render(t, w, is, ev, linked.ID, "codex", linked.ID)
+		if strings.Contains(text, "tg://user?id=777") || !strings.Contains(text, "a&lt;b&gt;&amp;&#34;c") {
+			t.Fatalf("%s：操作者本人不 @、只写名字：\n%s", ev, text)
+		}
+	}
+	// 升级为需要人介入：重开的发起人不 @，负责人照常 @
+	text := render(t, w, is, "escalated", claude.ID, "claude-code", claude.ID, linked.ID)
+	if strings.Contains(text, "@lee_claude") || !strings.Contains(text, "lee-claude") || !strings.Contains(text, "tg://user?id=777") {
+		t.Fatalf("只 @ 另一方：\n%s", text)
+	}
+	// 钉钉：操作者不进 atUserIds
+	people := map[int64]notify.Person{linked.ID: {Name: "ann", Chats: []store.ChatIdentity{{Provider: store.ProviderDingTalk, UserID: "u-ann"}}}}
+	m := notify.RenderFor(notify.DingTalkFormat{}, store.ProviderDingTalk, "", w.ws, is,
+		store.Notification{Event: "accepted", ActorMemberID: linked.ID, Recipients: []int64{linked.ID}}, people)
+	if len(m.Mentions) != 0 || strings.Contains(m.Text, "@ann") || !strings.Contains(m.Text, "ann") {
+		t.Fatalf("钉钉不 @ 操作者：%+v", m)
+	}
+	// 超时催办：记的操作人只是占位（当事人），照常 @
+	w.ws.Remind = store.RemindConfig{OpenHours: 4, VerifyHours: 24}
+	text = render(t, w, is, "overdue", linked.ID, "cohive", linked.ID)
+	if !strings.Contains(text, "tg://user?id=777") {
+		t.Fatalf("催办照常 @ 当事人：\n%s", text)
+	}
+	m = notify.RenderFor(notify.DingTalkFormat{}, store.ProviderDingTalk, "", w.ws, is,
+		store.Notification{Event: "overdue_admin", IssueStatus: "OPEN", ActorMemberID: linked.ID, Recipients: []int64{linked.ID}}, people)
+	if len(m.Mentions) != 1 {
+		t.Fatalf("钉钉催办照常 @：%+v", m)
 	}
 }
