@@ -19,6 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
+| DEP-1 升级到 Go 1.26 | 会话自建（从最新 main，合并 #2 的机器人分支） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245` | — | 已派 | 保留机器人提交（#2 自动显示已合并）；Dockerfile 改 golang:1.26-alpine；文档 Go 1.25→1.26；全量通过并写明实际 Go 版本；docker build 成功；x/crypto 告警全覆盖、编译进去的子包仍只有 bcrypt、blowfish；交回 `docs/brain/inbox/DEP-1.md` |
 | I18N 多语言与社区规范 | `claude/i18n-community-8501fd` | i18n-community / `local_2d4cac2f-f92f-4352-a1aa-63c9ec1d1e8c` | `955622e`（第一段已合入 `66d74b0`） | 实施中（第二段：core、notify、store、Admin 页文案，账号与工作空间语言，命令行与钩子跟随账号语言，脚本参考 macOS 界面语言，onboarding 修正） | 中英两种，其他语言社区维护；抽取与翻译用 sonnet 子代理；第一段避开 internal/notify、core、store 与 Admin 页，第二段等 N-1、N-2 合入后做群通知与工作空间语言；社区规范（贡献指南、行为准则、安全、模板、鸣谢），仓库设置只列清单给 lee；交回 `docs/brain/inbox/I18N-*.md` |
 | IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
@@ -26,7 +27,6 @@
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
-| DEP-1a | Go 依赖升级把最低 Go 版本提到 1.26 | A 全面升到 Go 1.26（合 #2，同时改 Dockerfile 与文档里的版本）；B 只把 x/crypto 升到 0.52.0（仍是 Go 1.25，关掉 #2） | A（1.25 在官方支持期上是否已结束未核实，但升级迟早要做；B 之后机器人会反复提同一个升级） | 依赖告警清零 |
 | I18N-GH | 仓库安全类设置，剩私密漏洞报告未开启（lee 亲手点“高级安全”页的启用按钮）；依赖告警已开、main 规则集 protect-main 已生效（禁止删除、禁止强推，无豁免） | 做 | 做（SECURITY.md 指向私密漏洞报告） | 安全报告入口可用 |
 | I18N-D13 | README 默认语言 | A README.md 改英文、中文移到 README.zh-CN.md；B 维持中文为默认 | A（GitHub 首页默认展示 README.md，面向外部用户） | I18N 第一段的 README 部分 |
 | I18N-D15 | 贡献者是否签 CLA 或 DCO | A 都不要；B DCO；C CLA | A；若将来可能改许可证或做商业双授权，应现在选 C | 不阻塞（先按 A 写） |
@@ -34,7 +34,7 @@
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
-- P1 DEP-1 依赖漏洞告警 22 条（11 严重）与依赖更新机器人的 3 个合并请求：Go 侧 15 条都在 golang.org/x/crypto 0.42.0（ssh、agent 等子包），程序实际只编译进 bcrypt、blowfish，漏洞不可达；网页侧 7 条在 vitest、tinypool，只用于测试。修法：cohive-ai/cohive#2 验收发现它把 go.mod 的 go 指令从 1.25.0 提到 1.26.0（x/crypto 0.58.0 要求），Dockerfile 用 golang:1.25-alpine 会构建失败，README、CONTRIBUTING、指南写的是 Go 1.25 → 待 lee 定 DEP-1a；#3（网页 10 项）与 #1（pnpm/action-setup 4→6）等第二段合入后再合。合并前主脑在本地跑全量 —— 来源 开启依赖告警后
+- P2 DEP-1b 网页依赖升级 cohive-ai/cohive#3（10 项，含测试工具 vitest、tinypool 的告警）与 #1（pnpm/action-setup 4→6）：等 I18N 第二段合入后再验收合入 —— 来源 依赖告警
 - P2 T-5 cmd/cohive 用例从当前目录往上找 `.mcp.json`，在执行过 cohive init 的克隆里会读到本机配置，3 条用例失败（TestRevokedDeviceHintsForce、TestLoginOpensBrowserAndSaves、TestLegacyCredentials）；开源贡献者照着做也会碰到，测试应隔离仓库目录 —— 来源 N-2 合入时主脑发现
 - P2 OS-4 打标签时用 GitHub Actions 构建多架构镜像推到 ghcr，compose 缺省用预构建镜像（公开后第一个小任务）；另：机器人入群后 /bind 绑群、未配对时 init 自动走 login、安装脚本经同意写 PATH、Caddy 自动 HTTPS 示例、发布物附第三方许可证清单 —— 来源 OSS-1 建议
 - P3 T-3 转交或发单给正在被移出的成员时，assignable 不锁成员行，可能留下负责人是已移出成员的单（推测未验证）；在问题单锁之后对接收人成员行加 FOR SHARE 并复查状态 —— 来源 稳定性修复遗留
