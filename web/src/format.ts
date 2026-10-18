@@ -86,28 +86,6 @@ export const roleLabel = (role: string) => (role === "admin" ? i18n.t("role.admi
 export const inviteKindLabel = (kind: string) =>
   kind === "personal" ? i18n.t("inviteKind.personal") : kind === "team" ? i18n.t("inviteKind.team") : kind;
 
-const deviceStatusKeys = {
-  pending: "deviceStatus.pending",
-  awaiting_admin: "deviceStatus.awaiting_admin",
-  approved: "deviceStatus.approved",
-  delivered: "deviceStatus.delivered",
-  denied: "deviceStatus.denied",
-  expired: "deviceStatus.expired",
-} as const;
-
-// 设备授权状态的说法；不认识的状态原样返回
-export function deviceAuthStatusText(status: string): string {
-  const key = deviceStatusKeys[status as keyof typeof deviceStatusKeys];
-  return key ? i18n.t(key) : status;
-}
-
-// 兼容旧写法 deviceAuthStatusLabel[status]：每次读取时按当前语言取，不认识的状态为 undefined
-export const deviceAuthStatusLabel: Record<string, string> = new Proxy({} as Record<string, string>, {
-  get: (_, status) =>
-    typeof status === "string" && status in deviceStatusKeys ? deviceAuthStatusText(status) : undefined,
-  has: (_, status) => typeof status === "string" && status in deviceStatusKeys,
-});
-
 // 登录名规则（与服务端一致，工作空间名同样适用）：小写字母、数字、下划线、横线，1 到 32 位，第一个字符须是字母或数字
 export const memberNamePattern = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 export const minPasswordLength = 10;

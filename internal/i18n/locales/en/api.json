@@ -29,5 +29,7 @@
   "api.server.read_failed": "Failed to read the file",
   "api.server.web_not_built": "The web UI has not been built yet. Run <code>make web</code> in the repository root, then rebuild and restart the server.",
   "api.telegram_disabled": "The Cohive server has not enabled the Telegram bot",
-  "api.too_many_requests": "Too many requests. Try again in a minute"
+  "api.too_many_requests": "Too many requests. Try again in a minute",
+  "api.chat_provider_disabled": "The Cohive server has not enabled this chat app",
+  "api.issue_number_placeholder": "<id>"
 }

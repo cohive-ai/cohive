@@ -3,7 +3,6 @@ import i18n from "./i18n";
 import {
   absoluteTime,
   actionLabel,
-  deviceAuthStatusLabel,
   memberNamePattern,
   relativeTime,
   roleLabel,
@@ -94,8 +93,6 @@ it("状态、动作、严重程度、角色等名称按当前语言取（中文�
   expect(toolsText("")).toBe("未注明");
   expect(workspaceListText([])).toBe("暂无");
   expect(workspaceListText(["pay", "ops"])).toBe("pay、ops");
-  expect(deviceAuthStatusLabel["awaiting_admin"]).toBe("等待管理员批准");
-  expect(deviceAuthStatusLabel["nope"]).toBeUndefined();
 });
 
 it("切到英文后名称、列表连接符、时间格式都跟着变", async () => {
@@ -108,7 +105,6 @@ it("切到英文后名称、列表连接符、时间格式都跟着变", async (
   expect(toolsText(["claude-code", "codex"])).toBe("Claude Code, Codex");
   expect(workspaceListText([])).toBe("None");
   expect(workspaceLabel({ name: "pay", display_name: "Payments" })).toBe("Payments (pay)");
-  expect(deviceAuthStatusLabel["pending"]).toBe("Waiting for your confirmation");
 
   const now = Date.parse("2026-10-17T06:10:00Z");
   expect(relativeTime("2026-10-17T06:05:00Z", now)).toBe("5 minutes ago");

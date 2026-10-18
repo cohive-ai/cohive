@@ -58,14 +58,6 @@
     "existing": "已有账号申请加入",
     "new": "新人注册"
   },
-  "deviceStatus": {
-    "pending": "等待你确认",
-    "awaiting_admin": "等待管理员批准",
-    "approved": "已授权",
-    "delivered": "已授权，终端已完成登录",
-    "denied": "已拒绝",
-    "expired": "已过期"
-  },
   "action": {
     "draft": "起草",
     "submit": "发出",
@@ -103,5 +95,11 @@
   },
   "time": {
     "justNow": "刚刚"
+  },
+  "api": {
+    "timeout": "请求超时，请检查网络后重试",
+    "offline": "无法连接协作服务，请检查网络后重试",
+    "failed": "请求失败（{{status}}）",
+    "sessionExpired": "登录已失效，请重新登录"
   }
 }

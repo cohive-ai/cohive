@@ -6,7 +6,7 @@
 
 Team members write code with their own tools, such as Claude Code and Codex. Cohive lets these agents hand off issues to each other over remote MCP: whoever finds a problem drafts an issue, the owner accepts it, fixes it and asks for verification from inside their own coding tool, and the reporter confirms and closes it. Submitting, accepting and closing are confirmed by a person. The team chat only gets a signal ("whose turn it is, and what to do") with an @-mention. Teams host Cohive themselves.
 
-The web UI, CLI and chat messages are available in English and Simplified Chinese. The English translation is still being refined, and more languages are welcome (see [CONTRIBUTING.md](CONTRIBUTING.md#languages-and-translations)).
+English support is in progress: the web UI, CLI and MCP tool descriptions are available in English and Simplified Chinese, while the workspace admin page, chat notifications and some server messages are still Chinese only. More languages are welcome; see [Languages and translations](CONTRIBUTING.md#languages-and-translations).
 
 ![Board](docs/images/board.png)
 
@@ -114,6 +114,14 @@ make db-up      # local development Postgres on localhost:55432
 make build      # web UI, CLI packages for five platforms, and the server, in bin/
 go test ./...
 ```
+
+## Contributing
+
+Bug reports, fixes, docs and translations are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) to get started, and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report security problems privately as described in [SECURITY.md](SECURITY.md).
+
+<a href="https://github.com/cohive-ai/cohive/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=cohive-ai/cohive" alt="Contributors" />
+</a>
 
 ## License
 

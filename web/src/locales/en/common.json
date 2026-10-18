@@ -58,14 +58,6 @@
     "existing": "Existing account asking to join",
     "new": "New sign-up"
   },
-  "deviceStatus": {
-    "pending": "Waiting for your confirmation",
-    "awaiting_admin": "Waiting for admin approval",
-    "approved": "Authorized",
-    "delivered": "Authorized, the terminal has signed in",
-    "denied": "Denied",
-    "expired": "Expired"
-  },
   "action": {
     "draft": "drafted",
     "submit": "submitted",
@@ -103,5 +95,11 @@
   },
   "time": {
     "justNow": "just now"
+  },
+  "api": {
+    "timeout": "The request timed out. Check your network and try again.",
+    "offline": "Can't reach the Cohive server. Check your network and try again.",
+    "failed": "Request failed ({{status}})",
+    "sessionExpired": "Your session has expired. Sign in again."
   }
 }

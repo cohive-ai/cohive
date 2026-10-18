@@ -29,5 +29,7 @@
   "api.server.read_failed": "读取文件失败",
   "api.server.web_not_built": "看板尚未构建。在仓库根目录执行 <code>make web</code>，再重新构建并启动服务。",
   "api.telegram_disabled": "协作服务没有启用 Telegram 机器人",
-  "api.too_many_requests": "请求过于频繁，请一分钟后再试"
+  "api.too_many_requests": "请求过于频繁，请一分钟后再试",
+  "api.chat_provider_disabled": "协作服务没有启用这种通讯工具",
+  "api.issue_number_placeholder": "编号"
 }
