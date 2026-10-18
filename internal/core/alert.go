@@ -141,7 +141,7 @@ func (s *Service) Alerts(ctx context.Context, who store.Identity, after *int64) 
 		}
 		for _, a := range recent {
 			if a.ID <= out.Cursor && a.WorkspaceID == who.WorkspaceID {
-				out.Items = append(out.Items, AlertItem{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, Actor: a.ActorName, At: a.CreatedAt})
+				out.Items = append(out.Items, AlertItem{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, Actor: alertActor(a), At: a.CreatedAt})
 			}
 		}
 		return out, nil
@@ -158,10 +158,18 @@ func (s *Service) Alerts(ctx context.Context, who store.Identity, after *int64) 
 		if a.WorkspaceID != who.WorkspaceID {
 			continue
 		}
-		out.Items = append(out.Items, AlertItem{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, Actor: a.ActorName, At: a.CreatedAt})
+		out.Items = append(out.Items, AlertItem{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, Actor: alertActor(a), At: a.CreatedAt})
 		if a.ID > out.Cursor {
 			out.Cursor = a.ID
 		}
 	}
 	return out, nil
+}
+
+// alertActor 是提醒里的“谁”。超时催办是服务端发起的，记的操作人只是占位（当事人自己），不对外给出。
+func alertActor(a store.Alert) string {
+	if a.Kind == AlertOverdue {
+		return ""
+	}
+	return a.ActorName
 }

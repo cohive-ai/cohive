@@ -275,6 +275,68 @@ func TestDispatcherRunCallsReminders(t *testing.T) {
 	}
 }
 
+// 催办是服务端发起的，不算当事人自己的操作：第 1 档必须 @ 到当事人；第 2 档必须 @ 到当事人和管理员
+// （通知记录里的操作人虽然填的是当事人，但不按“不 @ 操作者本人”去掉）。
+func TestDispatchOverdueMentionsParty(t *testing.T) {
+	e := newDispatchEnv(t)
+	ctx := context.Background()
+	codexID, claudeID := int64(7002), int64(7001)
+	if err := store.SetAccountTelegramUserID(ctx, e.pool, e.b.AccountID, &codexID); err != nil { // 负责人
+		t.Fatal(err)
+	}
+	if err := store.SetAccountTelegramUserID(ctx, e.pool, e.a.AccountID, &claudeID); err != nil { // 发起人兼管理员
+		t.Fatal(err)
+	}
+	if err := store.SetMemberRole(ctx, e.pool, e.a.MemberID, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	is := e.submitOne(t)
+	if _, err := e.d.RunOnce(ctx); err != nil { // 先把“新单”发掉
+		t.Fatal(err)
+	}
+	e.sender.sent = nil
+	step := func(hours int) string {
+		t.Helper()
+		if _, err := e.pool.Exec(ctx, `UPDATE issues SET status_since = now() - make_interval(hours => $2) WHERE id = $1`, is.ID, hours); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.svc.QueueReminders(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.d.RunOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.sender.sent) == 0 {
+			t.Fatal("应发出一条催办")
+		}
+		m := e.sender.sent[len(e.sender.sent)-1]
+		return m
+	}
+	if m := step(5); !strings.Contains(m, "已等待接单") || !strings.Contains(m, "tg://user?id=7002") {
+		t.Fatalf("第 1 档必须 @ 到当事人：%s", m)
+	}
+	if m := step(9); !strings.Contains(m, "请管理员") || !strings.Contains(m, "tg://user?id=7002") || !strings.Contains(m, "tg://user?id=7001") {
+		t.Fatalf("第 2 档必须 @ 到当事人和管理员：%s", m)
+	}
+	// 会话内提醒：催办不带“谁”（不写成“当事人自己……”）
+	res, err := e.svc.Alerts(ctx, e.b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, it := range res.Items {
+		if it.Kind == core.AlertOverdue {
+			found++
+			if it.Actor != "" {
+				t.Fatalf("催办提醒不应带操作人：%+v", it)
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatalf("当事人应收到催办提醒：%+v", res.Items)
+	}
+}
+
 func TestDispatchRetriesThenFails(t *testing.T) {
 	e := newDispatchEnv(t)
 	is := e.submitOne(t)
