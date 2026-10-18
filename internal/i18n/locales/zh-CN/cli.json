@@ -1,0 +1,11 @@
+{
+  "cli.usage": "用法：cohive <命令>\n\n  login [--server <地址>] [--tools claude-code,codex]\n                     配对这台电脑：自动打开浏览器授权页，点“授权”即可（网页“个人中心”里有带地址的完整命令）。\n                     在已执行过 cohive init 的仓库里执行时，服务地址与工具从仓库配置读取；\n                     已配对的电脑再登录其他工具时直接签发，不必再授权\n  login --resume     领取之前等待管理员批准的设备授权\n  login --token-stdin --server <地址>\n                     备用：从标准输入读入管理员签发的令牌\n  web [--server <地址>] [--workspace <名称>]\n                     在浏览器里免密打开 Cohive 网页（用这台电脑的配对；在仓库里执行时按仓库配置选择）\n  init [--tools claude-code,codex] [--server <地址>] [--workspace <名称>]\n                     在当前项目里写入 Cohive 的 MCP 配置、确认规则与 /cohive 技能\n  status             列出本机保存的登录（不显示令牌）\n  version            显示本机 cohive 的版本\n  mcp-proxy --server <地址> --workspace <名称> --tool <工具>\n                     供编程工具调用的本机转发器，不需要手动运行\n  hook --server <地址> --workspace <名称> --tool <工具>\n                     供编程工具的会话钩子调用，有新动态时在会话里插入一行提醒，不需要手动运行；\n                     加 --check 手动排查为什么没有提醒\n\n凭据保存在 ~/.config/cohive/credentials.json（仅本人可读），可用 COHIVE_CONFIG_DIR 改变目录。\n可用 COHIVE_LANG（例如 en、zh-CN）改变命令行的语言。\n",
+  "cli.error": "错误： {{.Err}}",
+  "cli.unknown_command": "未知命令 {{.Command}}",
+  "cli.login.missing_server": "缺少 --server（协作服务地址）",
+  "cli.login.token_stdin_empty": "没有读到令牌：请把管理员给你的令牌（以 cohive_ 开头）通过标准输入传进来，例如 pbpaste | cohive login --server {{.Server}} --token-stdin",
+  "cli.login.token_saved": "已登录：工作空间 {{.Workspace}}，成员 {{.Member}}，工具 {{.Tool}}\n令牌已保存到 {{.Path}}（仅本人可读）\n\n下一步：在项目目录执行 cohive init\n",
+  "cli.status.none": "还没有登录。执行 cohive login --server <协作服务地址>，在浏览器里授权即可。",
+  "cli.status.devices_header": "服务\t账号\t设备编号\t配对时间",
+  "cli.status.logins_header": "服务\t工作空间\t账号\t工具\t登录时间"
+}
