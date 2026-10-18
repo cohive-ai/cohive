@@ -1,135 +1,128 @@
 # Cohive
 
-[English](README.en.md)
+[中文](README.zh-CN.md)
 
-**让小团队里每个人的编程智能体能互相递问题单、由人拍板的协作层。**
+**A collaboration layer that lets the coding agents of everyone on a small team hand issues to each other, with people making the calls.**
 
-团队成员各自用 Claude Code、Codex 写代码。Cohive 让这些智能体经远程 MCP 互相交接问题：发现问题的一方起草问题单，负责的一方在自己的编程工具里接单、修复、请求验证，最后由发起人确认关闭。发出、接单、关闭这几步都由人确认；群里只发“轮到谁做什么”的信号并 @ 到人。服务由团队自己部署。
+Team members write code with their own tools, such as Claude Code and Codex. Cohive lets these agents hand off issues to each other over remote MCP: whoever finds a problem drafts an issue, the owner accepts it, fixes it and asks for verification from inside their own coding tool, and the reporter confirms and closes it. Submitting, accepting and closing are confirmed by a person. The team chat only gets a signal ("whose turn it is, and what to do") with an @-mention. Teams host Cohive themselves.
 
-![看板](docs/images/board.png)
+Cohive speaks English and Simplified Chinese: the web UI, CLI, MCP tool descriptions, session reminders and chat notifications. Each person picks a language in their Profile, each workspace picks the language of its group messages, and the server default is set with `COHIVE_DEFAULT_LANGUAGE`. More languages are welcome; see [Languages and translations](CONTRIBUTING.md#languages-and-translations).
 
-## 解决什么问题
+![Board](docs/images/board.en.png)
 
-几个人、几种编程工具、几个仓库一起干活时，智能体之间没法直接传话，只能靠人复制上下文、转述、催进度：
+## The problem
 
-- 转述时丢了上下文，对方的智能体从头再查一遍；
-- 不知道问题该交给谁，交出去也不知道有没有人接；
-- 修完没人通知发起人验证，闭环断在半路；
-- 双方说的不是同一个代码版本。
+When several people work across several repositories with different coding tools, their agents cannot talk to each other. People copy context around, retell it and chase progress by hand:
 
-一个人管多个会话，编程工具自带的能力已经够用；Cohive 管的是**不同的人、不同的工具之间**的协作。
+- context gets lost in the retelling, and the other agent investigates from scratch;
+- nobody knows who should take an issue, or whether anyone picked it up;
+- after a fix, nobody tells the reporter to verify, so the loop never closes;
+- the two sides are not talking about the same commit.
 
-## 怎么工作
+When one person juggles several sessions, the coding tools already cover that. Cohive is about collaboration **between different people using different tools**.
 
-**问题单闭环。** 以 A（Claude Code，写前端）和 B（Codex，写订单服务）为例：
+## How it works
 
-1. A 的智能体联调时发现接口不对，收集证据、写复现脚本、查重，起草问题单；A 看过后确认发出。
-2. 工作空间的群里出现一条通知并 @ B。
-3. B 在 Codex 里输入 `$cohive 12`，智能体拉取完整内容，汇总要点、给出初筛意见（是否重复、是否归自己、缺什么信息）；B 确认接单，在自己的会话里修复，然后请求验证。
-4. A 收到通知，重跑复现脚本看结果，确认关闭或重开。
+**The issue loop.** Say A writes the frontend with Claude Code and B owns the order service with Codex:
 
-全程在看板上可见，每一步都记下是谁的哪个工具做的。
+1. While integrating, A's agent finds a broken endpoint, collects evidence, writes a repro script, checks for duplicates and drafts an issue. A reviews it and confirms sending it.
+2. A notice appears in the workspace's chat group and @-mentions B.
+3. B types `$cohive 12` in Codex. The agent pulls the full issue, summarizes it and gives a first read (duplicate? mine? what's missing?). B confirms accepting it, fixes it in their own session, then asks for verification.
+4. A is notified, reruns the repro script, and confirms closing it or reopens it.
 
-![问题单详情](docs/images/issue.png)
+Everything is visible on the board, and every step records which person's which tool did it.
 
-**群里敲门，客户端开门。** 群消息只有单号、服务、谁交给谁、要做什么，以及经人确认过的标题和一句话简述；复现脚本、日志、证据从不发到群里，只能在编程工具或看板里经鉴权读取。目前支持 Telegram。
+![Issue detail](docs/images/issue.en.png)
 
-**确认由人做。** `cohive init` 把“发出、接单、关闭”这几个会改变别人工作的工具配成“每次调用都要用户批准”，由 Claude Code、Codex 自己的权限确认拦下，而不是靠提示词里一句“请先询问用户”。收到的问题单、评论一律当数据，不当指令。
+**The chat knocks, the client opens the door.** Chat messages contain only the issue number, the service, who handed it to whom, what to do next, and a title and one-line brief that a person has confirmed. Repro scripts, logs and evidence never go to the chat; they are read through authenticated MCP in the coding tool or on the board. Telegram is supported today.
 
-**会话内提醒。** 有交给你、被退回、请你验证之类的新动态时，在你下次发消息时由智能体在回复末尾告诉你。
+**People confirm.** `cohive init` configures the tools that change someone else's work (submit, accept, close) as "ask the user every time", so Claude Code's and Codex's own permission prompts stop them, rather than relying on a "please ask the user first" line in a prompt. Incoming issues and comments are treated as data, never as instructions.
 
-## 快速开始
+**In-session reminders.** When something new concerns you (handed to you, sent back, waiting for your verification), the agent tells you at the end of its reply the next time you send a message.
 
-### 部署者：Docker，约 5 分钟
+## Quick start
 
-需要一台装了 Docker 的机器。
+### For the person deploying it: Docker, about 5 minutes
+
+You need a machine with Docker.
 
 ```bash
 git clone https://github.com/cohive-ai/cohive.git
 cd cohive/deploy
-cp .env.example .env      # 填 POSTGRES_PASSWORD（字母和数字，可用 openssl rand -hex 16 生成）
+cp .env.example .env      # set POSTGRES_PASSWORD (letters and digits; e.g. openssl rand -hex 16)
 docker compose up -d --build
 docker compose exec cohive cat /data/initial_admin_password
 ```
 
-最后一条命令显示初始管理员 `admin` 的随机密码（只写在数据卷里的这个文件中，不进日志）。打开 `http://localhost:8787` 登录，按提示改密码，改完这个文件自动删除。然后在“服务器管理 → 设置”里填对外地址，在工作空间的“管理 → 邀请”里生成邀请链接发给同事。
+The last command shows the random password of the initial admin `admin`. It is written only to this file in the data volume, never to the logs. Open `http://localhost:8787`, sign in and change the password when asked; the file is then deleted. Next, set the external URL under Server admin → Settings and create an invite link under the workspace's Admin → Invites.
 
-群通知、Cloudflare 隧道、备份与升级见 [用 Docker 部署](docs/guides/deploy-docker.md)。
+Chat notifications, Cloudflare Tunnel, backups and upgrades: see [Deploying with Docker](docs/guides/deploy-docker.en.md).
 
-### 成员：三步
+### For team members: three steps
 
-1. **打开邀请链接注册。**
-2. **安装命令行并配对电脑**：网页“个人中心 → 绑定新电脑”里复制带服务地址的命令，装完会打开浏览器，点“授权”即可。
+1. **Open the invite link and register.**
+2. **Install the CLI and pair your computer.** Copy the command from Profile → Pair a new computer. After installing it opens the browser; click Authorize.
 
    ```bash
    curl -fsSL https://cohive.example.com/install.sh | sh -s -- --login
    ```
 
-   Windows 在 PowerShell 里执行 `$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex`。命令行由你们自己的服务提供，不需要装 Go。
-3. **在项目目录执行 `cohive init`**（团队里有人提交过生成的配置就不用再做）。之后在 Claude Code 里用 `/cohive`，在 Codex 里用 `$cohive`。
+   On Windows, in PowerShell: `$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex`. The CLI is served by your own Cohive server; no Go toolchain needed.
+3. **Run `cohive init` in the project directory** (skip it if a teammate already committed the generated config). Then use `/cohive` in Claude Code and `$cohive` in Codex.
 
-第一次在编程工具里打开项目时要信任项目；Codex 还要在项目目录执行一次命令行版 `codex`，信任 cohive 的两条钩子。细节见 [新成员接入](docs/guides/onboarding.md)。
+The first time you open the project in a coding tool, trust the project. For Codex, also run the `codex` CLI once in the project directory and trust Cohive's two hooks. Details: [Onboarding](docs/guides/onboarding.en.md).
 
-## 核心概念
+## Concepts
 
-| 概念 | 说明 |
+| Concept | Meaning |
 |---|---|
-| 工作空间 | 一个业务组一个工作空间、一个群。账号全局一份，同一个人可以在多个工作空间里，角色按工作空间分别设置 |
-| 问题单 | 草稿 → 待接单 → 已接单 → 修复中 → 待验证 → 已关闭；可退回、转交、重开。状态只存在 Cohive 的数据库里 |
-| 设备配对 | 终端执行 `cohive login`，浏览器里点“授权”。一台电脑配对一次，用于本人所在的全部工作空间；第二台起要管理员批准 |
-| 令牌 | 按“人 + 工具 + 工作空间”签发，只放在本机凭据文件里；`cohive init` 写进仓库的配置不含任何秘密，可以提交 |
-| 管理操作 | 只认账号密码登录的网页，编程工具的令牌做不了管理操作；所有管理操作写进只追加的记录 |
+| Workspace | One per team or product area, with one chat group. Accounts are global; a person can belong to several workspaces with a role in each |
+| Issue | Draft → open → accepted → fixing → ready for verification → closed; it can be declined, transferred or reopened. Its state lives only in Cohive's database |
+| Device pairing | Run `cohive login` in a terminal and click "Authorize" in the browser. Pair a computer once and it works for all your workspaces; from the second computer on, an admin approves it |
+| Tokens | Issued per person + tool + workspace and kept only in a local credentials file. The config `cohive init` writes into the repository holds no secrets and can be committed |
+| Admin actions | Only allowed from a web session signed in with a password; coding-tool tokens cannot do them. Every admin action goes into an append-only log |
 
-## 和相邻产品的区别
+## How it differs from nearby products
 
-| 产品 | 核心模式 | 与 Cohive 的区别 |
+| Product | Core model | Difference |
 |---|---|---|
-| Multica | 把问题单派给智能体，在后台自动运行 | Cohive 不自动执行；协作双方都是“人 + 自己的智能体”，由人确认 |
-| Claude Code 跨会话消息、智能体团队 | 同一个人自己的多个会话之间协作 | 不跨人、不跨工具 |
-| GitHub Agent HQ、GitLab Duo、Linear 智能体 | 把问题单派给云端智能体 | 协作中心是托管平台上的问题单，不是开发者正在用的会话 |
+| Multica | Assign issues to agents that run in the background | Cohive does not execute anything on its own; both sides are a person with their own agent, and people confirm |
+| Claude Code cross-session messaging, agent teams | One person's sessions working together | Not across people or tools |
+| GitHub Agent HQ, GitLab Duo, Linear agents | Assign issues to cloud agents | The hub is an issue on a hosted platform, not the session a developer is working in |
 
-Cohive 不做的事：不替人认领、不替人改代码、不在后台无人值守地运行智能体；服务端不调用大模型；不提供托管服务。
+What Cohive does not do: claim work or change code on anyone's behalf, or run agents unattended in the background. The server never calls a language model. There is no hosted service.
 
-## 当前状态与路线图
+## Status and roadmap
 
-处于第一阶段，作者团队正在试用。已经可用：问题交接闭环与人工确认、看板、Telegram 群通知与群里审批、网页账号与邀请、设备配对、多工作空间、管理操作记录、命令行一键安装、写入前密钥扫描、会话内提醒、Docker 部署。
+Phase one; the author's team is trying it out. Working today: the issue loop with human confirmation, the board, Telegram notifications and in-chat approvals, web accounts and invites, device pairing, multiple workspaces, an admin audit log, one-line CLI install, secret scanning before writes, in-session reminders and Docker deployment.
 
-接下来（按试用反馈排序）：
+Next, ordered by trial feedback:
 
-- 按 `CODEOWNERS` 自动路由、超时催办、代码占用声明；
-- 更多群通知平台（钉钉优先）；
-- 第二阶段：接口变更广播，GitHub / GitLab 合并请求与流水线联动；
-- 第三阶段：团队共享约定、统计视图、云服务器部署时的 GitHub / GitLab 账号登录。
+- routing by `CODEOWNERS`, reminders for stalled issues, code-area claims;
+- more chat platforms (DingTalk first);
+- phase two: API change broadcasts, GitHub / GitLab merge request and pipeline integration;
+- phase three: shared team conventions, statistics, GitHub / GitLab sign-in for cloud deployments.
 
-完整方案见 [docs/plan.md](docs/plan.md)。
+The full plan (Chinese) is in [docs/plan.md](docs/plan.md).
 
-## 文档
+## Building from source
 
-- [用 Docker 部署](docs/guides/deploy-docker.md)
-- [新成员接入](docs/guides/onboarding.md)
-- [安装 cohive 命令行](docs/guides/install-cli.md)
-- [群通知与公网访问](docs/guides/group-notify.md)
-- [不用 Docker 的单机运行](docs/guides/single-host.md)
-- [方案](docs/plan.md)、[早期选型调研](docs/research/2026-10-14-component-selection.md)
-
-## 从源码构建
-
-需要 Go 1.26、Node 20 以上、pnpm 和 Docker（测试用的 Postgres）。
+You need Go 1.26, Node 20+, pnpm and Docker (for the test Postgres).
 
 ```bash
-make db-up      # 本机开发用的 Postgres（localhost:55432）
-make build      # 网页、五个平台的命令行安装包、服务端，产物在 bin/
+make db-up      # local development Postgres on localhost:55432
+make build      # web UI, CLI packages for five platforms, and the server, in bin/
 go test ./...
 ```
 
-## 参与贡献
+## Contributing
 
-欢迎报告问题、修复、改进文档和翻译。开始之前请读 [贡献指南](CONTRIBUTING.zh-CN.md)，并遵守 [行为准则](CODE_OF_CONDUCT.md)；安全问题请按 [SECURITY.md](SECURITY.md) 私密报告。界面、命令行、MCP 工具说明、会话提醒与群通知都支持简体中文和英文：每人在个人中心选自己的语言，每个工作空间选群消息的语言，服务器缺省语言用 `COHIVE_DEFAULT_LANGUAGE` 设置。其他语言由社区维护，见贡献指南的“语言与翻译”一节。
+Bug reports, fixes, docs and translations are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) to get started, and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report security problems privately as described in [SECURITY.md](SECURITY.md).
 
 <a href="https://github.com/cohive-ai/cohive/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=cohive-ai/cohive" alt="贡献者" />
+  <img src="https://contrib.rocks/image?repo=cohive-ai/cohive" alt="Contributors" />
 </a>
 
-## 许可证
+## License
 
-[Apache License 2.0](LICENSE)。作者 anormlylee。
+[Apache License 2.0](LICENSE). By anormlylee.
