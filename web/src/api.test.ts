@@ -46,3 +46,19 @@ it("请求带上界面语言，服务端据此决定报错语言；英文界面�
     await i18n.changeLanguage("zh-CN");
   }
 });
+
+it("注册请求带上当前界面语言，服务端写到新账号上", async () => {
+  const i18n = (await import("./i18n")).default;
+  await i18n.changeLanguage("en");
+  try {
+    let body: Record<string, unknown> = {};
+    vi.stubGlobal("fetch", async (_: string, init: RequestInit) => {
+      body = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ status: "pending" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    await api.register({ code: "c", name: "newbie", display_name: "", password: "newbie-password-1" });
+    expect(body.language).toBe("en");
+  } finally {
+    await i18n.changeLanguage("zh-CN");
+  }
+});
