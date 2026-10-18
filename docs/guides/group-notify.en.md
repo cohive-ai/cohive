@@ -29,26 +29,26 @@ This guide uses Telegram as the example. If you use DingTalk, read [Integrate Co
 
 ## 2. Configure the workspace
 
-One project has one group, which maps to one workspace; **a group can be bound to only one workspace** (when someone clicks an approval button in the group, the workspace is looked up from the group). A server admin creates workspaces in the web UI under Server admin → Workspaces (服务器管理 → 工作空间), or by running this on the machine that runs the server:
+One project has one group, which maps to one workspace; **a group can be bound to only one workspace** (when someone clicks an approval button in the group, the workspace is looked up from the group). A server admin creates workspaces in the web UI under Server admin → Workspaces, or by running this on the machine that runs the server:
 
 ```bash
 ./bin/cohive-server workspace add --name payments --admin <username of the first admin>
 ```
 
-After the server is running, send `/chatid` in the group and the bot replies with the group ID. A workspace admin enters the group ID under Admin → Workspace (管理 → 工作空间), chooses whether group messages show the title and brief, and saves. You can also configure it on the server with a command:
+After the server is running, send `/chatid` in the group and the bot replies with the group ID. A workspace admin enters the group ID under Admin → Workspace, chooses whether group messages show the title and brief, and saves. You can also configure it on the server with a command:
 
 ```bash
 ./bin/cohive-server workspace notify --workspace payments --telegram-chat -1001234567890
 ```
 
-**Links in group messages** are built from the server-wide external URL as `<external URL>/w/<path>/issues/<number>` (for example `https://cohive.example.com/w/payments/issues/12`). There is only one external URL for the whole server. A server admin sets it under Server admin → Settings (服务器管理 → 设置), or by running `./bin/cohive-server server set --external-url https://cohive.example.com` on the server. You can also lock it with the environment variable `COHIVE_EXTERNAL_URL`; once locked, neither the web UI nor the command line can change it. If no external URL is set, group messages carry no link and everything else works as usual. The workspace settings page shows the resulting link read-only. The old `workspace notify --public-url` is deprecated and fails with a message pointing to `server set`.
+**Links in group messages** are built from the server-wide external URL as `<external URL>/w/<path>/issues/<number>` (for example `https://cohive.example.com/w/payments/issues/12`). There is only one external URL for the whole server. A server admin sets it under Server admin → Settings, or by running `./bin/cohive-server server set --external-url https://cohive.example.com` on the server. You can also lock it with the environment variable `COHIVE_EXTERNAL_URL`; once locked, neither the web UI nor the command line can change it. If no external URL is set, group messages carry no link and everything else works as usual. The workspace settings page shows the resulting link read-only. The old `workspace notify --public-url` is deprecated and fails with a message pointing to `server set`.
 
 Workspace names in group and approval messages use the **display name** (editable at any time under Admin → Workspace). Links and project configuration use the **path** (the name chosen when the workspace was created; it cannot be changed).
 
 - `--show-title=false`, `--show-brief=false`: don't show the title or the group-notification brief in the group (both are shown by default).
 - `--off`: turn off group notifications for this workspace.
 
-Members click "Connect Telegram" in the web UI under Profile (个人中心) and open the bot in Telegram to finish connecting. The connection belongs to the account and works in all of their workspaces; after that, group notifications can @-mention them (see [Onboarding new members](onboarding.en.md)). Once the group is set up:
+Members click "Connect Telegram" in the web UI under Profile and open the bot in Telegram to finish connecting. The connection belongs to the account and works in all of their workspaces; after that, group notifications can @-mention them (see [Onboarding new members](onboarding.en.md)). Once the group is set up:
 
 - registration and join requests for this workspace are posted to this group;
 - device requests are posted to the group of every workspace of the requester that has a group configured (once approved, the computer works for all their workspaces, and the message says so);

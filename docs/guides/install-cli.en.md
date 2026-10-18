@@ -4,7 +4,7 @@
 
 `cohive` on a member's computer pairs the computer (`cohive login`), initializes projects (`cohive init`), and acts as the local forwarder for coding tools (`cohive mcp-proxy`). It is downloaded from **your team's own Cohive server**: you don't need Go, you don't need access to the code repository, and the version always matches the server.
 
-In the web UI, Profile → Pair a new computer (个人中心 → 绑定新电脑) shows the commands with your server address filled in, ready to copy. Below, `https://cohive.example.com` stands for your server address.
+In the web UI, Profile → Pair a new computer shows the commands with your server address filled in, ready to copy. Below, `https://cohive.example.com` stands for your server address.
 
 ## Install
 
@@ -26,7 +26,7 @@ When it finishes, run the next step as prompted:
 cohive login --server https://cohive.example.com
 ```
 
-**Install and pair with one command** (this is the one shown under Profile): after installing, it continues straight into `cohive login`, and you only need to click Authorize (授权) in the browser that opens.
+**Install and pair with one command** (this is the one shown under Profile): after installing, it continues straight into `cohive login`, and you only need to click Authorize in the browser that opens.
 
 ```bash
 curl -fsSL https://cohive.example.com/install.sh | sh -s -- --login
@@ -73,4 +73,4 @@ macOS (Apple silicon, Intel), Linux (x86-64, arm64) and Windows (x64). The insta
 
 ## Uninstall
 
-Delete `cohive` from where it was installed (on Windows, also remove that directory from the user PATH), and delete the credentials directory `~/.config/cohive/`. We recommend revoking this computer first under Profile → My devices (个人中心 → 我的设备) in the web UI.
+Delete `cohive` from where it was installed (on Windows, also remove that directory from the user PATH), and delete the credentials directory `~/.config/cohive/`. We recommend revoking this computer first under Profile → My devices in the web UI.

@@ -4,7 +4,7 @@
 
 One project has one chat group, which maps to one Cohive workspace. Accounts are global: a person has one username, one password and one Telegram connection, and can belong to several workspaces. Roles (admin or member) are set per workspace. You pair a computer once, and it works for all the workspaces you belong to.
 
-Members, devices, invites and approvals are all managed in the web UI. A new member opens an invite link and registers, then runs `cohive login` in a terminal and clicks Authorize (授权) in the browser to pair the computer. No keys are ever copied by hand. Chat tools (Telegram, DingTalk) are only attached on top, for @-mentions and approval buttons in the group; they are not required for registration or sign-in.
+Members, devices, invites and approvals are all managed in the web UI. A new member opens an invite link and registers, then runs `cohive login` in a terminal and clicks Authorize in the browser to pair the computer. No keys are ever copied by hand. Chat tools (Telegram, DingTalk) are only attached on top, for @-mentions and approval buttons in the group; they are not required for registration or sign-in.
 
 The web UI is available in English and Simplified Chinese. Where this guide names a button or menu, the English label comes first and the Chinese label follows in parentheses the first time it appears.
 
@@ -32,11 +32,11 @@ With a Docker deployment the file is in the data volume: run `docker compose exe
 
    The new password is shown once in the terminal. Change it right after signing in.
 
-4. **Set the external URL**: under Server admin → Settings (服务器管理 → 设置), confirm the address your teammates use (for example `https://cohive.example.com`) and save. The first time you open the page, it is prefilled with the address you are currently using, but it is not saved automatically. Make sure it is not `localhost` or an address only you can open. Links in group messages and the host name used when coding tools connect through a tunnel both come from this setting. You can also set and lock it with the environment variable `COHIVE_EXTERNAL_URL`.
+4. **Set the external URL**: under Server admin → Settings, confirm the address your teammates use (for example `https://cohive.example.com`) and save. The first time you open the page, it is prefilled with the address you are currently using, but it is not saved automatically. Make sure it is not `localhost` or an address only you can open. Links in group messages and the host name used when coding tools connect through a tunnel both come from this setting. You can also set and lock it with the environment variable `COHIVE_EXTERNAL_URL`.
 
 ## Server admin: create a workspace
 
-In the top bar, go to Server admin → Workspaces (服务器管理 → 工作空间) and enter a name (lowercase letters, digits, underscores and hyphens; it cannot be changed later because project configuration refers to it by name). Optionally enter the username of the first admin (default: yourself). Then open the new workspace's Admin → Workspace (管理 → 工作空间) page and enter the group ID: add the bot to the project chat group and send `/chatid` there to get it. **A group can be bound to only one workspace.**
+In the top bar, go to Server admin → Workspaces and enter a name (lowercase letters, digits, underscores and hyphens; it cannot be changed later because project configuration refers to it by name). Optionally enter the username of the first admin (default: yourself). Then open the new workspace's Admin → Workspace page and enter the group ID: add the bot to the project chat group and send `/chatid` there to get it. **A group can be bound to only one workspace.**
 
 A workspace with no issues at all (drafts included) can be deleted, for the case where you mistyped the name.
 
@@ -44,24 +44,24 @@ A workspace with no issues at all (drafts included) can be deleted, for the case
 
 Admin actions can only be done in the web UI while signed in with username and password. A web session opened without a password through `cohive web`, and the tokens of coding tools, cannot perform admin actions, so someone who gets hold of a computer does not also gain admin rights. Approval buttons in the group are not affected: they are checked against the Telegram account of whoever clicks, and only apply to the workspace that the group belongs to.
 
-**People who already have an account** (they used Cohive in another workspace): go to Admin → Members → Add existing account (管理 → 成员 → 添加已有账号), enter their username (it must be typed exactly; you cannot browse all accounts), check the display name, pick a role and add them. It takes effect immediately. If someone who was removed earlier is added back, their previous issues are reattached.
+**People who already have an account** (they used Cohive in another workspace): go to Admin → Members → Add existing account, enter their username (it must be typed exactly; you cannot browse all accounts), check the display name, pick a role and add them. It takes effect immediately. If someone who was removed earlier is added back, their previous issues are reattached.
 
-**New people**: go to Admin → Invites (管理 → 邀请), generate an invite and send them the link:
+**New people**: go to Admin → Invites, generate an invite and send them the link:
 
 | Invite | Uses | After a new person registers | When someone with an account opens it |
 |---|---|---|---|
-| Personal invite | One | Takes effect immediately; can be set to admin | They click "Join as X" (以 X 身份加入) and it takes effect immediately |
-| Team invite | Configurable (default 20) | An admin must approve them under Admin → Pending approval (管理 → 待审) | A join request is created, which also needs approval |
+| Personal invite | One | Takes effect immediately; can be set to admin | They click "Join" and it takes effect immediately |
+| Team invite | Configurable (default 20) | An admin must approve them under Admin → Pending | A join request is created, which also needs approval |
 
 - The link is shown only once, when you generate it. It is valid for 7 days by default (you can choose from 1 hour to 30 days) and can be revoked at any time.
 - Usernames are unique across the whole server: a new person cannot register a username that an existing account, or a request waiting for approval in another workspace, already uses.
-- Once the group is set up, pending registrations and join requests are posted to the workspace's group, and device requests are posted to every group of the requester's workspaces. Admins just click Approve / Reject (批准 / 拒绝). When one is handled anywhere, the messages in all groups change to show the result.
+- Once the group is set up, pending registrations and join requests are posted to the workspace's group, and device requests are posted to every group of the requester's workspaces. Admins just click Approve / Reject. When one is handled anywhere, the messages in all groups change to show the result.
 
 ## Members: three steps
 
 **1. Open the invite link**: a new person enters a username, display name and password (at least 10 characters) to register. With a team invite, you can sign in only after an admin approves you. Someone who already has an account signs in first and then clicks "Join as X".
 
-**2. Install the CLI and pair your computer** (once per computer). You do not need Go or access to the code repository: the CLI is served by your team's own Cohive server, and its version matches the server (see [install-cli.en.md](install-cli.en.md)). In the web UI, Profile → Pair a new computer (个人中心 → 绑定新电脑) shows the command with your server address filled in, ready to copy. After installing, it continues straight into pairing:
+**2. Install the CLI and pair your computer** (once per computer). You do not need Go or access to the code repository: the CLI is served by your team's own Cohive server, and its version matches the server (see [install-cli.en.md](install-cli.en.md)). In the web UI, Profile → Pair a new computer shows the command with your server address filled in, ready to copy. After installing, it continues straight into pairing:
 
 ```bash
 curl -fsSL https://cohive.example.com/install.sh | sh -s -- --login
@@ -69,7 +69,7 @@ curl -fsSL https://cohive.example.com/install.sh | sh -s -- --login
 
 On Windows, run `$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex` in PowerShell. It installs to `~/.local/bin` by default. If it tells you the directory is not on your PATH, add it as instructed, and restart your coding tool from a terminal (it must be able to find `cohive` on its PATH). Developers working in the repository can also run `make install-cli`. On a computer that already has the CLI, just run `cohive login --server https://cohive.example.com`.
 
-During pairing, the terminal opens the authorization page in your browser (it also shows the link and a QR code). Sign in to the web UI with your username and password, check the device name, the tool, and the workspaces under "Once approved, usable for" (批准后可用于), then click Authorize (授权). The terminal then reports that you are signed in and lists the tools each workspace issued to you.
+During pairing, the terminal opens the authorization page in your browser (it also shows the link and a QR code). Sign in to the web UI with your username and password, check the device name, the tool, and the workspaces under "Can be used for", then click Authorize. The terminal then reports that you are signed in and lists the tools each workspace issued to you.
 
 - **The first computer takes effect as soon as you authorize it. After that, adding another computer needs approval from an admin of any workspace you belong to** (once approved, the computer works for all your workspaces). The terminal waits while you wait. You can press Ctrl+C or close the laptop at any time: progress is saved on this computer, and after approval you run `cohive login --resume` to pick it up (valid for 24 hours).
 - If the repository already has the config generated by `cohive init`, the server address and the tool to sign in for are read from it (this works from subdirectories too). The first time you sign in to an address, the terminal shows the address and asks you to press Enter to confirm.
@@ -116,14 +116,14 @@ You do not need to pair again. After cloning the new project (its config is alre
 
 ## Removing and deactivating
 
-- **Remove** (workspace admin; affects one workspace): Admin → Members → Remove (管理 → 成员 → 移出) lists the person's unfinished issues (as owner and as reporter) and the services they own. You must pick a new person for each item before removing them. Reassignments are written to the issue timeline and the new person gets a group notification. After removal, their tokens in this workspace stop working immediately; other workspaces are unaffected.
+- **Remove** (workspace admin; affects one workspace): Admin → Members → Remove lists the person's unfinished issues (as owner and as reporter) and the services they own. You must pick a new person for each item before removing them. Reassignments are written to the issue timeline and the new person gets a group notification. After removal, their tokens in this workspace stop working immediately; other workspaces are unaffected.
 - **Deactivate** (server admin; affects the whole person): revokes all their devices and tokens, signs them out of every web session, disconnects Telegram, and they can no longer sign in. Deactivating does not require a hand-over. The admin page marks the account as "Deactivated" with the number of issues awaiting action, and you can "reassign" them separately. Reactivating does not restore devices: they must run `cohive login` again and be approved by an admin.
 
 ## Admin audit log
 
 All admin actions are recorded in an append-only log (it cannot be edited or deleted), written in the same transaction as the action itself: if the action fails, no record is left.
 
-- **Where to look**: a workspace's Admin → Audit log (管理 → 记录) shows only that workspace; Server admin → Audit log (服务器管理 → 记录) shows everything (filterable by workspace, including deleted ones). Both can be filtered by type, actor and entry point, are sorted newest first, and show 50 entries per page. On the server you can also run `cohive-server audit list` (same filters; use `--before` to page).
+- **Where to look**: a workspace's Admin → Audit log shows only that workspace; Server admin → Audit log shows everything (filterable by workspace, including deleted ones). Both can be filtered by type, actor and entry point, are sorted newest first, and show 50 entries per page. On the server you can also run `cohive-server audit list` (same filters; use `--before` to page).
 - **What is recorded**: approvals (registration requests, join requests and new devices; approvals and rejections, whether done in the web UI or with group buttons), role changes, invite creation and revocation, device revocation (including revoking your own devices, and the old device revoked by `cohive login --force`), direct joins, transfers and removals (including who the work was handed to), deactivation and reactivation, granting and revoking server admin, creating and deleting workspaces and changing their settings, password resets from the command line, profile changes, issuing and revoking tokens, and registering a service owner. Also recorded are self-service actions that change who can get in and with what: authorizing your first device, registering or joining with a personal invite, connecting and disconnecting Telegram, changing your password, and creating the initial admin on first start. Signing in and out are not recorded.
 - **Rejected admin requests are recorded too**: when an authenticated identity calls an admin endpoint (workspace admin, server admin, device authorization, accepting an invite, viewing the log) and is refused, a "rejected admin request" entry is written. This covers coding tool tokens, device keys and `cohive web` passwordless sessions being blocked (admin actions only accept a web session signed in with username and password), or someone who signed in with a password but lacks permission; it also covers someone without approval rights clicking an approval button in a group. What is recorded is the endpoint template (for example `POST /api/v1/invites/{code}/accept`), not actual values such as the invite code in the path. Unauthenticated requests, and requests to workspaces you are not in (which return "not found"), are not recorded. For the same identity (account plus credential type) and the same endpoint, at most one entry is written per minute. The entry point of such records may be "coding tool token".
 - **What each entry contains**: the actor (empty for server command line actions, shown as "server command line"), the entry point (web UI / group button / server command line / member's local CLI / automatic by the server), the workspace (empty for server-level actions), the target, and any necessary extra information (for example the values before and after a role change, or who each issue was handed to on removal), and the time. **Passwords, tokens, invite codes and device keys are never recorded.**
@@ -166,6 +166,6 @@ pbpaste | cohive login --server https://cohive.example.com --token-stdin
 - **The coding tool says you are not a member of workspace X**: ask an admin of that workspace to add you, then reopen the coding tool.
 - **The coding tool says the Cohive token is invalid or revoked**: if you were removed from this workspace, contact an admin. Otherwise run `cohive login --force` to pair again. Pairing again counts as adding a new device and needs admin approval; once it succeeds, this computer's previous device is revoked automatically.
 - **"This computer was paired with an older version"**: computers paired with an earlier version (before device keys were introduced) have no device key. Their old tokens still work, but automatic issuing for new workspaces and `cohive web` require `cohive login --force` to pair again first (admin approval needed).
-- **Lost computer**: revoke it under Profile → My devices (个人中心 → 我的设备), or ask an admin to revoke it under Admin → Devices (管理 → 设备).
+- **Lost computer**: revoke it under Profile → My devices, or ask an admin to revoke it under Admin → Devices.
 - **No Cohive reminders in a session**: run `cohive hook --check --server … --workspace … --tool …` (the full command is printed at the end of `cohive init`). For Codex, first make sure you ran the `codex` CLI in the project directory and chose "Trust all and continue".
 - **Connecting Telegram says the bot is not enabled**: the server has no `COHIVE_TELEGRAM_BOT_TOKEN` set.

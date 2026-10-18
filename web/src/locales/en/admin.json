@@ -5,7 +5,7 @@
     "devices": "Devices",
     "invites": "Invites",
     "workspace": "Workspace",
-    "events": "Log"
+    "events": "Audit log"
   },
   "navLabel": "Admin sections",
   "title": "Admin · {{name}}",
