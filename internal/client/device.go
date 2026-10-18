@@ -84,6 +84,7 @@ func send(ctx context.Context, method, server, path, token string, body io.Reade
 		return 0, connectError(err)
 	}
 	defer resp.Body.Close()
+	rememberLang(req, resp)
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode == http.StatusNoContent {
 		return resp.StatusCode, nil
@@ -302,12 +303,6 @@ func ColorizeQR(qr string) string {
 		b.WriteString("\x1b[0m\n")
 	}
 	return b.String()
-}
-
-// setLang 让服务端用命令行的语言回报错（Accept-Language）。
-// 只用于发给协作服务 REST 接口的请求；转发 MCP 的请求（proxy.go）不带，MCP 的语言由服务端决定。
-func setLang(req *http.Request) {
-	req.Header.Set("Accept-Language", string(i18n.Default()))
 }
 
 // connectError 把连接失败包成可本地化的错误，去掉 url.Error 外层的方法与地址。

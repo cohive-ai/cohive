@@ -11,11 +11,12 @@ package core
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -39,13 +40,62 @@ type Service struct {
 	external atomic.Pointer[externalCache] // 进程内缓存的对外地址，见 settings.go
 }
 
-// InputError 表示调用参数不完整或不合法。
-type InputError struct{ Msg string }
+// 业务层的报错都是可本地化的：错误里只存文案键与参数，由接口、MCP、命令行在出口按调用方的语言渲染
+// （i18n.Message 认任何实现了 Localize 的错误）；Error() 用本进程的缺省语言，只给日志和测试用。
 
-func (e *InputError) Error() string { return e.Msg }
+// InputError 表示调用参数不完整或不合法。Key 非空时按语言渲染（Data 是模板参数），否则用 Msg。
+type InputError struct {
+	Msg  string
+	Key  string
+	Data i18n.D
+}
 
-func inputErr(format string, args ...any) error {
-	return &InputError{Msg: fmt.Sprintf(format, args...)}
+func (e *InputError) Error() string { return e.Localize(i18n.Default()) }
+
+// Localize 按语言渲染，供接口、MCP 按请求方的语言回报错。
+func (e *InputError) Localize(l i18n.Lang) string { return localize(l, e.Msg, e.Key, e.Data) }
+
+// inputErr 返回可按语言渲染的参数错误，key 是 core.json 里的文案键。
+func inputErr(key string, data ...i18n.D) error {
+	e := &InputError{Key: key}
+	if len(data) > 0 {
+		e.Data = data[0]
+	}
+	return e
+}
+
+// lk 是延迟翻译的文案键：放进错误的参数（i18n.D）里，渲染时才按渲染语言翻译成文字，
+// 例如通讯工具的名字。只对本包的错误类型（InputError、StateError、HandoverError）有效。
+type lk string
+
+// localize 按语言渲染一条带参数的文案；key 为空时用 msg 原文。
+func localize(l i18n.Lang, msg, key string, data i18n.D) string {
+	if key == "" {
+		return msg
+	}
+	return l.T(key, resolveData(l, data))
+}
+
+// resolveData 把参数里的 lk 翻译成目标语言的文字；没有 lk 时原样返回。
+func resolveData(l i18n.Lang, data i18n.D) i18n.D {
+	lazy := false
+	for _, v := range data {
+		if _, ok := v.(lk); ok {
+			lazy = true
+			break
+		}
+	}
+	if !lazy {
+		return data
+	}
+	out := make(i18n.D, len(data))
+	for k, v := range data {
+		if key, ok := v.(lk); ok {
+			v = l.T(string(key))
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // ConflictError 表示调用方基于旧版本操作。
@@ -54,9 +104,10 @@ type ConflictError struct {
 	Expected, Current int
 }
 
-func (e *ConflictError) Error() string {
-	return fmt.Sprintf("问题单 #%d 的版本已变化：你提供的是 %d，当前是 %d。请先读取最新内容再决定是否继续。",
-		e.IssueID, e.Expected, e.Current)
+func (e *ConflictError) Error() string { return e.Localize(i18n.Default()) }
+
+func (e *ConflictError) Localize(l i18n.Lang) string {
+	return l.T("core.err.version_conflict", i18n.D{"ID": e.IssueID, "Expected": e.Expected, "Current": e.Current})
 }
 
 func (e *ConflictError) Is(target error) bool { return target == store.ErrVersionConflict }
@@ -65,9 +116,9 @@ func (e *ConflictError) Is(target error) bool { return target == store.ErrVersio
 // 与版本冲突一样处理：调用方重读最新内容后再决定是否重试。
 type RetryError struct{ Code string }
 
-func (e *RetryError) Error() string {
-	return "有其他操作同时在改同一批数据，本次操作没有生效：请先读取最新内容再决定是否重试。"
-}
+func (e *RetryError) Error() string { return e.Localize(i18n.Default()) }
+
+func (e *RetryError) Localize(l i18n.Lang) string { return l.T("core.err.retry") }
 
 func (e *RetryError) Is(target error) bool { return target == store.ErrVersionConflict }
 
@@ -81,7 +132,7 @@ func retryable(err error) error {
 }
 
 func notFoundIssue(id int64) error {
-	return fmt.Errorf("问题单 #%d 不存在或你无权查看：%w", id, store.ErrNotFound)
+	return i18n.Wrap(store.ErrNotFound, "core.err.issue_not_found", i18n.D{"ID": id})
 }
 
 // BriefMaxRunes 是群通知简述的字数上限。
@@ -131,7 +182,7 @@ func isUniqueViolation(err error) bool {
 }
 
 func keyReuseErr(key string, rec store.IdemRecord) error {
-	return inputErr("幂等键 %q 已用于问题单 #%d 的 %s 操作，不能用于本次请求，请换一个新的键", key, rec.IssueID, rec.Action)
+	return inputErr("core.err.idem_key_reused", i18n.D{"Key": strconv.Quote(key), "ID": rec.IssueID, "Action": rec.Action})
 }
 
 // checkReplay 查幂等记录：记录与本次请求的问题单和动作一致时返回 replay=true；
@@ -157,13 +208,13 @@ func severityOrDefault(v string) (string, error) {
 	case "low", "normal", "high", "critical":
 		return v, nil
 	}
-	return "", inputErr("severity 只能是 low、normal、high、critical 之一")
+	return "", inputErr("core.err.severity_invalid")
 }
 
 // Draft 起草问题单，仅发起人可见，需确认后才发出。
 func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) (store.Issue, error) {
 	if strings.TrimSpace(in.Title) == "" {
-		return store.Issue{}, inputErr("title 不能为空")
+		return store.Issue{}, inputErr("core.err.title_required")
 	}
 	// 入库前扫描密钥：在查幂等记录与开事务之前，被拒绝的请求什么都不写，脱敏后用同一个键重试可以成功
 	if err := checkSecrets(draftFields(in)...); err != nil {
@@ -175,7 +226,7 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 	}
 	brief := strings.Join(strings.Fields(in.Brief), " ")
 	if n := len([]rune(brief)); n > BriefMaxRunes {
-		return store.Issue{}, inputErr("brief（群通知简述）不能超过 %d 个字，当前 %d 个", BriefMaxRunes, n)
+		return store.Issue{}, inputErr("core.err.brief_too_long", i18n.D{"Max": BriefMaxRunes, "N": n})
 	}
 	replayDraft := func() (store.Issue, bool, error) {
 		id, ok, err := checkReplay(ctx, s.Pool, who, in.IdempotencyKey, 0, ActDraft)
@@ -242,13 +293,13 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 func assignable(ctx context.Context, q store.DBTX, wsID int64, name string) (store.Member, error) {
 	m, err := store.MemberByName(ctx, q, wsID, name)
 	if errors.Is(err, store.ErrNotFound) {
-		return m, inputErr("成员 %q 不存在", name)
+		return m, inputErr("core.err.member_not_found", i18n.D{"Name": strconv.Quote(name)})
 	}
 	if err != nil {
 		return m, err
 	}
 	if m.AccountDisabled {
-		return m, inputErr("成员 %q 已停用，不能指派给他", name)
+		return m, inputErr("core.err.member_disabled_assign", i18n.D{"Name": strconv.Quote(name)})
 	}
 	return m, nil
 }
@@ -266,7 +317,7 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 	// 免得人刚批准的发出、接单、关闭因为期间多了一条评论而版本冲突。
 	comment := in.Action == issue.ActComment
 	if !comment && in.ExpectedVersion <= 0 {
-		return store.Issue{}, inputErr("必须提供 expected_version（问题单当前版本号），可先读取问题单获得")
+		return store.Issue{}, inputErr("core.err.expected_version_required")
 	}
 	if err := checkSecrets(actFields(in)...); err != nil {
 		return store.Issue{}, err
@@ -301,7 +352,7 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 
 		payload := map[string]any{}
 		if (in.Action == issue.ActDecline || in.Action == issue.ActTransfer) && strings.TrimSpace(in.Note) == "" {
-			return inputErr("退回或转交必须在 note 中说明理由，发起人会看到")
+			return inputErr("core.err.note_required")
 		}
 		switch in.Action {
 		case issue.ActSubmit:
@@ -314,18 +365,18 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 				payload["assignee"] = m.Name
 			}
 			if is.OwnerID == nil {
-				return inputErr("问题单还没有负责人：请在 assignee 中指定成员，或先登记服务 %q 的负责人", is.TargetService)
+				return inputErr("core.err.owner_missing", i18n.D{"Service": strconv.Quote(is.TargetService)})
 			}
 		case issue.ActTransfer:
 			if in.Assignee == "" {
-				return inputErr("转交必须在 assignee 中指定接收人")
+				return inputErr("core.err.transfer_assignee_required")
 			}
 			m, err := assignable(ctx, tx, who.WorkspaceID, in.Assignee)
 			if err != nil {
 				return err
 			}
 			if m.ID == *is.OwnerID {
-				return inputErr("接收人与当前负责人相同")
+				return inputErr("core.err.transfer_same_owner")
 			}
 			is.OwnerID = &m.ID
 			payload["assignee"] = m.Name
@@ -334,7 +385,8 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 			if is.ReopenCount >= EscalateReopenCount && is.EscalatedAt == nil {
 				now := time.Now()
 				is.EscalatedAt = &now
-				is.EscalationReason = fmt.Sprintf("重开次数达到 %d 次", is.ReopenCount)
+				// 升级原因存进数据库，用服务器缺省语言写
+				is.EscalationReason = i18n.T("core.escalation.reopen_count", i18n.D{"Count": is.ReopenCount})
 				payload["escalated"] = true
 			}
 		}
@@ -390,26 +442,27 @@ func (s *Service) Get(ctx context.Context, who store.Identity, id int64) (store.
 	return is, evs, err
 }
 
-func needsMe(who store.Identity, is store.Issue) string {
+// needsMe 是“现在要你做什么”的一句话，按语言l渲染。
+func needsMe(l i18n.Lang, who store.Identity, is store.Issue) string {
 	if is.SourceMemberID == who.MemberID {
 		switch is.Status {
 		case issue.StatusDraft:
-			return "草稿待你确认发出"
+			return l.T("core.needs.draft")
 		case issue.StatusReadyForVerification:
-			return "待你验证并确认关闭或重开"
+			return l.T("core.needs.verify")
 		case issue.StatusDeclined:
-			return "已被负责人退回，请看理由后决定改派他人、补充信息重新起草，或放弃"
+			return l.T("core.needs.declined")
 		}
 	}
 	switch is.Status {
 	case issue.StatusOpen:
-		return "待你接单、退回或转交"
+		return l.T("core.needs.open")
 	case issue.StatusAccepted:
-		return "你已接单，待开始修复"
+		return l.T("core.needs.accepted")
 	case issue.StatusFixing:
-		return "你正在修复"
+		return l.T("core.needs.fixing")
 	case issue.StatusReopened:
-		return "发起人已重开，待你继续修复"
+		return l.T("core.needs.reopened")
 	}
 	return ""
 }
@@ -420,18 +473,19 @@ func (s *Service) Inbox(ctx context.Context, who store.Identity) ([]InboxItem, e
 	if err != nil {
 		return nil, err
 	}
+	l := i18n.FromContext(ctx)
 	out := make([]InboxItem, 0, len(list))
 	for _, is := range list {
 		if is.WorkspaceID != who.WorkspaceID {
 			continue
 		}
-		item := InboxItem{Issue: is, NeedsMe: needsMe(who, is)}
+		item := InboxItem{Issue: is, NeedsMe: needsMe(l, who, is)}
 		if is.Status == issue.StatusDeclined {
 			reason, err := s.lastNote(ctx, is.ID, issue.ActDecline)
 			if err != nil {
 				return nil, err
 			}
-			item.NeedsMe = "已被负责人退回，理由：" + reason + "。请决定改派他人、补充信息重新起草，或放弃"
+			item.NeedsMe = l.T("core.needs.declined_reason", i18n.D{"Reason": reason})
 		}
 		out = append(out, item)
 	}
@@ -465,11 +519,11 @@ func (s *Service) List(ctx context.Context, who store.Identity, query, service s
 // WhoOwns 查询服务的负责人。
 func (s *Service) WhoOwns(ctx context.Context, who store.Identity, service string) (store.Member, error) {
 	if service == "" {
-		return store.Member{}, inputErr("service 不能为空")
+		return store.Member{}, inputErr("core.err.service_required")
 	}
 	m, err := store.ServiceOwner(ctx, s.Pool, who.WorkspaceID, service)
 	if errors.Is(err, store.ErrNotFound) {
-		return m, inputErr("服务 %q 未登记负责人，请向工作空间管理员确认，或在发出时直接指定负责人", service)
+		return m, inputErr("core.err.service_no_owner", i18n.D{"Name": strconv.Quote(service)})
 	}
 	return m, err
 }

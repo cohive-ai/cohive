@@ -33,25 +33,25 @@ func eventQuery(w http.ResponseWriter, r *http.Request) (core.EventQuery, bool) 
 	return q, true
 }
 
-func eventsJSON(p core.EventPage) map[string]any {
+func eventsJSON(l i18n.Lang, p core.EventPage) map[string]any {
 	items := make([]map[string]any, 0, len(p.Items))
 	for _, e := range p.Items {
 		detail := make([]map[string]string, 0, len(e.Detail))
-		for _, d := range core.EventDetail(e) {
+		for _, d := range core.EventDetail(l, e) {
 			detail = append(detail, map[string]string{"label": d.Label, "value": d.Value})
 		}
 		items = append(items, map[string]any{
-			"id": e.ID, "at": e.At, "via": e.Via, "via_label": core.ViaLabels[e.Via], "actor": e.ActorName,
-			"workspace": e.WorkspaceName, "action": e.Action, "action_label": core.ActionLabel(e.Action),
+			"id": e.ID, "at": e.At, "via": e.Via, "via_label": core.ViaLabel(l, e.Via), "actor": e.ActorName,
+			"workspace": e.WorkspaceName, "action": e.Action, "action_label": core.ActionLabel(l, e.Action),
 			"category": core.ActionCategory(e.Action), "target_kind": e.TargetKind, "target": e.TargetName,
-			"text": core.EventText(e), "detail": detail,
+			"text": core.EventText(l, e), "detail": detail,
 		})
 	}
 	var next any
 	if p.NextBefore > 0 {
 		next = p.NextBefore
 	}
-	out := eventMeta()
+	out := eventMeta(l)
 	out["items"], out["next_before"] = items, next
 	return out
 }
@@ -73,7 +73,7 @@ func eventRoutes(mux *http.ServeMux, svc *core.Service) {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, eventsJSON(p))
+		writeJSON(w, http.StatusOK, eventsJSON(i18n.FromContext(r.Context()), p))
 	})
 	handle(mux, "GET /api/v1/server/events", aPassword, func(w http.ResponseWriter, r *http.Request) {
 		q, ok := eventQuery(w, r)
@@ -86,19 +86,19 @@ func eventRoutes(mux *http.ServeMux, svc *core.Service) {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, eventsJSON(p))
+		writeJSON(w, http.StatusOK, eventsJSON(i18n.FromContext(r.Context()), p))
 	})
 }
 
-// eventMeta 供网页筛选用：动作类别与入口的中文名。
-func eventMeta() map[string]any {
+// eventMeta 供网页筛选用：动作类别与入口按请求语言的名字。
+func eventMeta(l i18n.Lang) map[string]any {
 	cats := make([]map[string]string, 0, len(core.Categories))
 	for _, c := range core.Categories {
-		cats = append(cats, map[string]string{"id": c.ID, "label": c.Label})
+		cats = append(cats, map[string]string{"id": c.ID, "label": c.Label(l)})
 	}
-	vias := make([]map[string]string, 0, len(core.ViaLabels))
-	for _, v := range []string{core.ViaWeb, core.ViaTelegram, core.ViaServerCLI, core.ViaMemberCLI, core.ViaAgent, core.ViaSystem, core.ViaUnknown} {
-		vias = append(vias, map[string]string{"id": v, "label": core.ViaLabels[v]})
+	vias := make([]map[string]string, 0, len(core.ViaIDs))
+	for _, v := range core.ViaIDs {
+		vias = append(vias, map[string]string{"id": v, "label": core.ViaLabel(l, v)})
 	}
 	return map[string]any{"types": cats, "vias": vias}
 }

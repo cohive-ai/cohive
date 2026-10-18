@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -86,7 +87,7 @@ func TestEveryServerCommandRecords(t *testing.T) {
 			mustRun(t, c.args...)
 			e, _ := lastAdminEvent(t)
 			if e.Action != c.action || e.Via != core.ViaServerCLI || e.WorkspaceName != c.ws || e.ActorAccountID != nil {
-				t.Fatalf("最后一条记录：%s 入口 %s 工作空间 %q 操作人 %v（%s）", e.Action, e.Via, e.WorkspaceName, e.ActorAccountID, core.EventText(e))
+				t.Fatalf("最后一条记录：%s 入口 %s 工作空间 %q 操作人 %v（%s）", e.Action, e.Via, e.WorkspaceName, e.ActorAccountID, core.EventText(i18n.Default(), e))
 			}
 		})
 	}

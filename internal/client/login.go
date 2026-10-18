@@ -35,6 +35,7 @@ func Whoami(ctx context.Context, server, token string) (Login, error) {
 		return Login{}, connectError(err)
 	}
 	defer resp.Body.Close()
+	rememberLang(req, resp)
 	if resp.StatusCode == http.StatusUnauthorized {
 		return Login{}, i18n.Errorf("cli.client.token_invalid")
 	}

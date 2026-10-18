@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,7 +30,7 @@ var backoff = []time.Duration{10 * time.Second, time.Minute, 5 * time.Minute, 30
 const MaxAge = 24 * time.Hour
 
 // errStopBatch 表示通道暂时整体不可用（令牌错误、限流），本轮不再继续投递。
-var errStopBatch = errors.New("本轮暂停投递")
+var errStopBatch = errors.New("pause delivery for this round")
 
 // Dispatcher 把待发通知投递到各工作空间的群里。
 type Dispatcher struct {
@@ -72,11 +73,11 @@ func (d *Dispatcher) Run(ctx context.Context, interval time.Duration) {
 		if d.Reminders != nil && time.Since(lastRemind) >= RemindEvery {
 			lastRemind = time.Now()
 			if _, err := d.Reminders(ctx); err != nil && ctx.Err() == nil {
-				d.logf("写超时催办出错：%v", err)
+				d.logf("failed to queue overdue reminders: %v", err)
 			}
 		}
 		if _, err := d.RunOnce(ctx); err != nil && ctx.Err() == nil {
-			d.logf("投递群通知出错：%v", err)
+			d.logf("failed to deliver group notifications: %v", err)
 		}
 		sleep(ctx, interval)
 	}
@@ -130,17 +131,19 @@ func (d *Dispatcher) one(ctx context.Context) (done bool, err error) {
 	return false, nil
 }
 
+// deliver 投递一条通知。下面写进数据库的原因（失败、跳过的说明）是存下来给管理员看的文字，用服务器缺省语言；
+// 通知本身存的是事件，到发送这一刻才按工作空间的语言渲染成文字。
 func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notification) error {
 	ws, err := store.GetWorkspace(ctx, tx, n.WorkspaceID)
 	if err != nil {
 		return err
 	}
 	if ws.Notify.Channel == "" {
-		return store.MarkNotificationFailed(ctx, tx, n.ID, "工作空间已关闭群通知")
+		return store.MarkNotificationFailed(ctx, tx, n.ID, i18n.T("notify.dispatch.disabled"))
 	}
 	sender, ok := d.Senders[ws.Notify.Channel]
 	if !ok {
-		return store.MarkNotificationFailed(ctx, tx, n.ID, fmt.Sprintf("通道 %s 不可用", ws.Notify.Channel))
+		return store.MarkNotificationFailed(ctx, tx, n.ID, i18n.T("notify.dispatch.channel_unavailable", i18n.D{"Channel": ws.Notify.Channel}))
 	}
 	is, err := store.GetIssue(ctx, tx, n.IssueID)
 	if err != nil {
@@ -149,10 +152,10 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 	if expired, err := store.NotificationExpired(ctx, tx, n.ID, MaxAge); err != nil {
 		return err
 	} else if expired {
-		return store.MarkNotificationSkipped(ctx, tx, n.ID, "超过 24 小时未送达，已过期")
+		return store.MarkNotificationSkipped(ctx, tx, n.ID, i18n.T("notify.dispatch.expired"))
 	}
 	if stale(n, is) {
-		return store.MarkNotificationSkipped(ctx, tx, n.ID, "问题单已有新进展，此通知已过时")
+		return store.MarkNotificationSkipped(ctx, tx, n.ID, i18n.T("notify.dispatch.stale"))
 	}
 	list, err := store.ListAllMembers(ctx, tx, n.WorkspaceID)
 	if err != nil {
@@ -178,7 +181,7 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 	sendErr := sender.Send(sendCtx, ws.Notify.Target, msg)
 	if sendErr == nil {
 		if d.downMsg != "" {
-			d.logf("群通知已恢复投递")
+			d.logf("group notifications resumed")
 			d.downMsg = ""
 		}
 		return store.MarkNotificationSent(ctx, tx, n.ID)
@@ -191,7 +194,7 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 	switch {
 	case errors.As(sendErr, &down):
 		if d.downMsg != down.Msg {
-			d.logf("群通知暂停投递，通知会保留：%v", sendErr)
+			d.logf("group notifications paused, pending ones are kept: %v", sendErr)
 			d.downMsg = down.Msg
 		}
 		if err := store.DelayNotification(ctx, tx, n.ID, time.Minute, sendErr.Error()); err != nil {
@@ -204,16 +207,16 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 		}
 		return errStopBatch
 	case errors.As(sendErr, &mig):
-		d.logf("工作空间 %s 的群已升级为超级群，群编号从 %s 改为 %s", ws.Name, ws.Notify.Target, mig.NewChatID)
+		d.logf("group of workspace %s was upgraded to a supergroup, chat ID changed from %s to %s", ws.Name, ws.Notify.Target, mig.NewChatID)
 		if err := store.SetWorkspaceNotifyTarget(ctx, tx, ws.ID, mig.NewChatID); err != nil {
 			return err
 		}
 		return store.DelayNotification(ctx, tx, n.ID, 0, sendErr.Error())
 	case IsPermanent(sendErr):
-		d.logf("群通知 #%d 发送失败，不再重试：%v", n.ID, sendErr)
+		d.logf("group notification #%d failed, not retrying: %v", n.ID, sendErr)
 		return store.MarkNotificationFailed(ctx, tx, n.ID, sendErr.Error())
 	case attempt >= MaxAttempts:
-		d.logf("群通知 #%d 已失败 %d 次，放弃：%v", n.ID, attempt, sendErr)
+		d.logf("group notification #%d failed %d times, giving up: %v", n.ID, attempt, sendErr)
 		return store.MarkNotificationFailed(ctx, tx, n.ID, sendErr.Error())
 	default:
 		return store.MarkNotificationRetry(ctx, tx, n.ID, backoff[attempt-1], sendErr.Error())

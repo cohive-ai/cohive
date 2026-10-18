@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -29,16 +31,24 @@ const (
 	ViaUnknown   = "unknown" // 只用于补历史
 )
 
-// ViaLabels 是入口的中文名。
-var ViaLabels = map[string]string{
-	ViaWeb:       "网页",
-	ViaTelegram:  "群按钮",
-	ViaDingTalk:  "钉钉群",
-	ViaServerCLI: "服务器命令行",
-	ViaMemberCLI: "成员本机命令行",
-	ViaAgent:     "编程工具令牌",
-	ViaSystem:    "服务器自动",
-	ViaUnknown:   "未知（功能上线前）",
+// ViaIDs 按显示顺序列出全部入口。
+var ViaIDs = []string{ViaWeb, ViaTelegram, ViaDingTalk, ViaServerCLI, ViaMemberCLI, ViaAgent, ViaSystem, ViaUnknown}
+
+// ViaLabel 是入口按语言的名字；不认识的入口原样返回。
+func ViaLabel(l i18n.Lang, via string) string {
+	if !validVia(via) {
+		return via
+	}
+	return l.T("audit.via." + via) // 键 audit.via.<入口>，TestAuditKeysComplete 遍历 ViaIDs 确认齐全
+}
+
+func validVia(via string) bool {
+	for _, v := range ViaIDs {
+		if v == via {
+			return true
+		}
+	}
+	return false
 }
 
 // Actor 是管理操作的操作人与入口。Account 为空表示服务器命令行或系统，视为最高权限。
@@ -134,191 +144,215 @@ const (
 
 // Category 是一个动作类别。
 type Category struct {
-	ID    string
-	Label string
+	ID string
+}
+
+// Label 是类别按语言的名字。
+func (c Category) Label(l i18n.Lang) string {
+	return l.T("audit.category." + c.ID) // 键 audit.category.<类别>，TestAuditKeysComplete 遍历 Categories 确认齐全
 }
 
 // Categories 按显示顺序列出动作类别。
 var Categories = []Category{
-	{CatApproval, "审批"}, {CatRole, "角色"}, {CatInvite, "邀请"}, {CatDevice, "设备"}, {CatMember, "成员"},
-	{CatAccount, "账号"}, {CatWorkspace, "工作空间"}, {CatTokenService, "令牌与服务"}, {CatServer, "服务器设置"},
-	{CatDenied, "被拒的请求"},
+	{CatApproval}, {CatRole}, {CatInvite}, {CatDevice}, {CatMember},
+	{CatAccount}, {CatWorkspace}, {CatTokenService}, {CatServer},
+	{CatDenied},
 }
 
 type actionInfo struct {
-	label    string
 	category string
-	verb     func(e store.AdminEvent) string // 谓语部分：“批准了 tester-d 的注册申请”
+	verb     func(l i18n.Lang, e store.AdminEvent) string // 谓语部分：“批准了 tester-d 的注册申请”
 }
 
+// 谓语的文案键都写成字面量，方便静态检查；动作名里的点在键里写成下划线（signup.approve → audit.verb.signup_approve）。
 var actions = map[string]actionInfo{
-	ActSignupApprove: {"批准注册申请", CatApproval, func(e store.AdminEvent) string { return "批准了 " + str(e, "applicant") + " 的注册申请" }},
-	ActSignupReject:  {"拒绝注册申请", CatApproval, func(e store.AdminEvent) string { return "拒绝了 " + str(e, "applicant") + " 的注册申请" }},
-	ActJoinApprove:   {"批准加入申请", CatApproval, func(e store.AdminEvent) string { return "批准了 " + str(e, "applicant") + " 的加入申请" }},
-	ActJoinReject:    {"拒绝加入申请", CatApproval, func(e store.AdminEvent) string { return "拒绝了 " + str(e, "applicant") + " 的加入申请" }},
-	ActDeviceApprove: {"批准新设备", CatApproval, func(e store.AdminEvent) string {
-		return fmt.Sprintf("批准了 %s 的新设备 %s", str(e, "owner"), deviceLabel(str(e, "device_name")))
+	ActSignupApprove: {CatApproval, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.signup_approve", i18n.D{"Applicant": str(e, "applicant")})
 	}},
-	ActDeviceDeny: {"拒绝新设备", CatApproval, func(e store.AdminEvent) string {
-		s := fmt.Sprintf("拒绝了 %s 的新设备 %s", str(e, "owner"), deviceLabel(str(e, "device_name")))
+	ActSignupReject: {CatApproval, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.signup_reject", i18n.D{"Applicant": str(e, "applicant")})
+	}},
+	ActJoinApprove: {CatApproval, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.join_approve", i18n.D{"Applicant": str(e, "applicant")})
+	}},
+	ActJoinReject: {CatApproval, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.join_reject", i18n.D{"Applicant": str(e, "applicant")})
+	}},
+	ActDeviceApprove: {CatApproval, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.device_approve", i18n.D{"Owner": str(e, "owner"), "Device": deviceLabel(l, str(e, "device_name"))})
+	}},
+	ActDeviceDeny: {CatApproval, func(l i18n.Lang, e store.AdminEvent) string {
+		key := "audit.verb.device_deny"
 		if str(e, "reason") == "applicant_disabled" {
-			s += "（申请人已停用，按拒绝处理）"
+			key = "audit.verb.device_deny_disabled"
 		}
-		return s
+		return l.T(key, i18n.D{"Owner": str(e, "owner"), "Device": deviceLabel(l, str(e, "device_name"))})
 	}},
-	ActDeviceSelfApprove: {"授权第一台设备", CatApproval, func(e store.AdminEvent) string {
-		return "授权了自己的第一台设备 " + deviceLabel(str(e, "device_name"))
+	ActDeviceSelfApprove: {CatApproval, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.device_self_approve", i18n.D{"Device": deviceLabel(l, str(e, "device_name"))})
 	}},
-	ActMemberRole: {"改角色", CatRole, func(e store.AdminEvent) string {
-		return fmt.Sprintf("把 %s 的角色从%s改为%s", e.TargetName, roleName(str(e, "from")), roleName(str(e, "to")))
+	ActMemberRole: {CatRole, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.member_role", i18n.D{"Target": e.TargetName, "From": roleName(l, str(e, "from")), "To": roleName(l, str(e, "to"))})
 	}},
-	ActInviteCreate: {"生成邀请", CatInvite, func(e store.AdminEvent) string {
-		s := "生成了一个" + inviteKindName(str(e, "kind"))
+	ActInviteCreate: {CatInvite, func(l i18n.Lang, e store.AdminEvent) string {
 		var parts []string
 		if str(e, "kind") == store.InviteTeam {
-			parts = append(parts, fmt.Sprintf("可用 %d 次", num(e, "max_uses")))
+			parts = append(parts, l.T("audit.invite.uses", i18n.D{"Count": int(num(e, "max_uses"))}))
 		} else {
-			parts = append(parts, "加入后为"+roleName(str(e, "role")))
+			parts = append(parts, l.T("audit.invite.joins_as", i18n.D{"Role": roleName(l, str(e, "role"))}))
 		}
 		if t, err := time.Parse(time.RFC3339, str(e, "expires_at")); err == nil {
-			parts = append(parts, t.Local().Format("2006-01-02 15:04")+" 到期")
+			parts = append(parts, l.T("audit.invite.expires", i18n.D{"At": t.Local().Format("2006-01-02 15:04")}))
 		}
-		return s + "（" + strings.Join(parts, "，") + "）"
+		return l.T("audit.verb.invite_create", i18n.D{"Kind": inviteKindName(l, str(e, "kind")), "Parts": strings.Join(parts, l.T("audit.sep.clause"))})
 	}},
-	ActInviteRevoke: {"作废邀请", CatInvite, func(e store.AdminEvent) string {
-		return fmt.Sprintf("作废了%s #%d", inviteKindName(str(e, "kind")), targetID(e))
+	ActInviteRevoke: {CatInvite, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.invite_revoke", i18n.D{"Kind": inviteKindName(l, str(e, "kind")), "ID": targetID(e)})
 	}},
-	ActInviteUse: {"凭邀请加入", CatInvite, func(e store.AdminEvent) string {
+	ActInviteUse: {CatInvite, func(l i18n.Lang, e store.AdminEvent) string {
+		key := "audit.verb.invite_use"
 		if b(e, "account_created") {
-			return "凭个人邀请注册了账号并加入工作空间（" + roleName(str(e, "role")) + "）"
+			key = "audit.verb.invite_use_created"
 		}
-		return "凭个人邀请加入了工作空间（" + roleName(str(e, "role")) + "）"
+		return l.T(key, i18n.D{"Role": roleName(l, str(e, "role"))})
 	}},
-	ActDeviceRevoke: {"吊销设备", CatDevice, func(e store.AdminEvent) string {
+	ActDeviceRevoke: {CatDevice, func(l i18n.Lang, e store.AdminEvent) string {
 		if b(e, "self") {
-			return "吊销了自己的设备 " + deviceLabel(str(e, "device_name"))
+			return l.T("audit.verb.device_revoke_self", i18n.D{"Device": deviceLabel(l, str(e, "device_name"))})
 		}
-		return fmt.Sprintf("吊销了 %s 的设备 %s", str(e, "owner"), deviceLabel(str(e, "device_name")))
+		return l.T("audit.verb.device_revoke", i18n.D{"Owner": str(e, "owner"), "Device": deviceLabel(l, str(e, "device_name"))})
 	}},
-	ActMemberAdd: {"加入成员", CatMember, func(e store.AdminEvent) string {
-		s := fmt.Sprintf("把 %s 加入了工作空间（%s）", e.TargetName, roleName(str(e, "role")))
+	ActMemberAdd: {CatMember, func(l i18n.Lang, e store.AdminEvent) string {
+		key := "audit.verb.member_add"
 		if b(e, "account_created") {
-			s += "，并新建了这个账号"
+			key = "audit.verb.member_add_created"
 		}
-		return s
+		return l.T(key, i18n.D{"Target": e.TargetName, "Role": roleName(l, str(e, "role"))})
 	}},
-	ActMemberHandover: {"转交", CatMember, func(e store.AdminEvent) string {
-		return fmt.Sprintf("转交了 %s 名下的%s", e.TargetName, handoverSummary(e))
+	ActMemberHandover: {CatMember, func(l i18n.Lang, e store.AdminEvent) string {
+		return strings.TrimSpace(l.T("audit.verb.member_handover", i18n.D{"Target": e.TargetName, "Summary": handoverSummary(l, e)}))
 	}},
-	ActMemberRemove: {"移出成员", CatMember, func(e store.AdminEvent) string {
-		s := fmt.Sprintf("把 %s 移出了工作空间", e.TargetName)
-		if h := handoverSummary(e); h != "" {
-			s += "，转交" + h
+	ActMemberRemove: {CatMember, func(l i18n.Lang, e store.AdminEvent) string {
+		if h := handoverSummary(l, e); h != "" {
+			return l.T("audit.verb.member_remove_handover", i18n.D{"Target": e.TargetName, "Summary": h})
 		}
-		return s
+		return l.T("audit.verb.member_remove", i18n.D{"Target": e.TargetName})
 	}},
-	ActAccountDisable: {"停用账号", CatAccount, func(e store.AdminEvent) string {
-		s := "停用了账号 " + e.TargetName
+	ActAccountDisable: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
 		if n := num(e, "devices_revoked"); n > 0 {
-			s += fmt.Sprintf("，吊销 %d 台设备", n)
+			return l.T("audit.verb.account_disable_devices", i18n.D{"Target": e.TargetName, "Count": int(n)})
 		}
-		return s
+		return l.T("audit.verb.account_disable", i18n.D{"Target": e.TargetName})
 	}},
-	ActAccountEnable:     {"启用账号", CatAccount, func(e store.AdminEvent) string { return "启用了账号 " + e.TargetName }},
-	ActServerAdminGrant:  {"授予服务器管理员", CatAccount, func(e store.AdminEvent) string { return "授予 " + e.TargetName + " 服务器管理员" }},
-	ActServerAdminRevoke: {"撤销服务器管理员", CatAccount, func(e store.AdminEvent) string { return "撤销了 " + e.TargetName + " 的服务器管理员" }},
-	ActResetPassword:     {"重置密码", CatAccount, func(e store.AdminEvent) string { return "重置了 " + e.TargetName + " 的密码" }},
-	ActAccountUpdate: {"修改账号资料", CatAccount, func(e store.AdminEvent) string {
+	ActAccountEnable: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.account_enable", i18n.D{"Target": e.TargetName})
+	}},
+	ActServerAdminGrant: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.account_server_admin_grant", i18n.D{"Target": e.TargetName})
+	}},
+	ActServerAdminRevoke: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.account_server_admin_revoke", i18n.D{"Target": e.TargetName})
+	}},
+	ActResetPassword: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.account_reset_password", i18n.D{"Target": e.TargetName})
+	}},
+	ActAccountUpdate: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
 		var fields []string
 		for _, k := range []string{"display_name", "telegram_username", "telegram_user_id"} {
 			if _, ok := e.Detail[k]; ok {
-				fields = append(fields, detailLabels[k])
+				fields = append(fields, detailLabel(l, k))
 			}
 		}
-		return fmt.Sprintf("修改了 %s 的%s", e.TargetName, strings.Join(fields, "、"))
+		return l.T("audit.verb.account_update", i18n.D{"Target": e.TargetName, "Fields": strings.Join(fields, l.T("audit.sep.item"))})
 	}},
-	ActTelegramUnlink: {"断开 Telegram", CatAccount, func(e store.AdminEvent) string {
+	ActTelegramUnlink: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
 		if b(e, "self") {
-			return "断开了自己的 Telegram 连接"
+			return l.T("audit.verb.account_telegram_unlink_self")
 		}
-		return "断开了 " + e.TargetName + " 的 Telegram 连接"
+		return l.T("audit.verb.account_telegram_unlink", i18n.D{"Target": e.TargetName})
 	}},
-	ActTelegramLink: {"连接 Telegram", CatAccount, func(e store.AdminEvent) string { return "连接了自己的 Telegram 账号" }},
-	ActDingTalkLink: {"连接钉钉", CatAccount, func(e store.AdminEvent) string {
-		return fmt.Sprintf("连接了自己的钉钉账号（%v）", e.Detail["dingtalk_name"])
+	ActTelegramLink: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.account_telegram_link")
 	}},
-	ActDingTalkUnlink: {"断开钉钉", CatAccount, func(e store.AdminEvent) string {
+	ActDingTalkLink: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.account_dingtalk_link", i18n.D{"Name": anyText(e.Detail["dingtalk_name"])})
+	}},
+	ActDingTalkUnlink: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
 		if b(e, "self") {
-			return "断开了自己的钉钉连接"
+			return l.T("audit.verb.account_dingtalk_unlink_self")
 		}
-		return "断开了 " + e.TargetName + " 的钉钉连接"
+		return l.T("audit.verb.account_dingtalk_unlink", i18n.D{"Target": e.TargetName})
 	}},
-	ActWorkspaceChatBind: {"绑定群", CatWorkspace, func(e store.AdminEvent) string {
-		return fmt.Sprintf("把工作空间 %s 绑定到%s群“%v”", e.TargetName, providerName(str(e, "provider")), e.Detail["chat_title"])
+	ActWorkspaceChatBind: {CatWorkspace, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.workspace_chat_bind", i18n.D{"Target": e.TargetName, "Provider": providerLabel(l, str(e, "provider")), "Title": anyText(e.Detail["chat_title"])})
 	}},
-	ActWorkspaceChatUnbind: {"解绑群", CatWorkspace, func(e store.AdminEvent) string {
-		return fmt.Sprintf("解除了工作空间 %s 绑定的%s群“%v”", e.TargetName, providerName(str(e, "provider")), e.Detail["chat_title"])
+	ActWorkspaceChatUnbind: {CatWorkspace, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.workspace_chat_unbind", i18n.D{"Target": e.TargetName, "Provider": providerLabel(l, str(e, "provider")), "Title": anyText(e.Detail["chat_title"])})
 	}},
-	ActPasswordChange: {"修改密码", CatAccount, func(e store.AdminEvent) string { return "修改了自己的密码" }},
-	ActAccountCreate: {"建账号", CatAccount, func(e store.AdminEvent) string {
+	ActPasswordChange: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.account_password_change")
+	}},
+	ActAccountCreate: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
+		key := "audit.verb.account_create"
 		if b(e, "initial_admin") {
-			return "建了初始管理员账号 " + e.TargetName
+			key = "audit.verb.account_create_initial"
 		}
-		return "建了账号 " + e.TargetName
+		return l.T(key, i18n.D{"Target": e.TargetName})
 	}},
-	ActWorkspaceCreate: {"建工作空间", CatWorkspace, func(e store.AdminEvent) string {
-		s := "建了工作空间 " + e.TargetName
+	ActWorkspaceCreate: {CatWorkspace, func(l i18n.Lang, e store.AdminEvent) string {
 		if a := str(e, "admin"); a != "" {
-			s += "，首位管理员 " + a
+			return l.T("audit.verb.workspace_create_admin", i18n.D{"Target": e.TargetName, "Admin": a})
 		}
-		return s
+		return l.T("audit.verb.workspace_create", i18n.D{"Target": e.TargetName})
 	}},
-	ActWorkspaceDelete: {"删除工作空间", CatWorkspace, func(e store.AdminEvent) string { return "删除了工作空间 " + e.TargetName }},
-	ActWorkspaceSettings: {"修改工作空间设置", CatWorkspace, func(e store.AdminEvent) string {
+	ActWorkspaceDelete: {CatWorkspace, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.workspace_delete", i18n.D{"Target": e.TargetName})
+	}},
+	ActWorkspaceSettings: {CatWorkspace, func(l i18n.Lang, e store.AdminEvent) string {
 		var fields []string
-		for _, k := range []string{"public_url", "telegram_chat", "show_title", "show_brief", "remind_open_hours", "remind_verify_hours"} {
+		for _, k := range []string{"public_url", "telegram_chat", "show_title", "show_brief", "remind_open_hours", "remind_verify_hours", "language"} {
 			if _, ok := e.Detail[k]; ok {
-				fields = append(fields, detailLabels[k])
+				fields = append(fields, detailLabel(l, k))
 			}
 		}
-		return fmt.Sprintf("修改了工作空间 %s 的设置：%s", e.TargetName, strings.Join(fields, "、"))
+		return l.T("audit.verb.workspace_settings", i18n.D{"Target": e.TargetName, "Fields": strings.Join(fields, l.T("audit.sep.item"))})
 	}},
-	ActTokenIssue: {"签发令牌", CatTokenService, func(e store.AdminEvent) string {
-		return fmt.Sprintf("为 %s 的 %s 签发了令牌 #%d", str(e, "member"), str(e, "tool"), targetID(e))
+	ActTokenIssue: {CatTokenService, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.token_issue", i18n.D{"Member": str(e, "member"), "Tool": str(e, "tool"), "ID": targetID(e)})
 	}},
-	ActTokenRevoke: {"吊销令牌", CatTokenService, func(e store.AdminEvent) string {
-		return fmt.Sprintf("吊销了 %s 的 %s 令牌 #%d", str(e, "member"), str(e, "tool"), targetID(e))
+	ActTokenRevoke: {CatTokenService, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.token_revoke", i18n.D{"Member": str(e, "member"), "Tool": str(e, "tool"), "ID": targetID(e)})
 	}},
-	ActServiceOwner: {"登记服务负责人", CatTokenService, func(e store.AdminEvent) string {
+	ActServiceOwner: {CatTokenService, func(l i18n.Lang, e store.AdminEvent) string {
 		if from := str(e, "from"); from != "" {
-			return fmt.Sprintf("把服务 %s 的负责人从 %s 改为 %s", e.TargetName, from, str(e, "to"))
+			return l.T("audit.verb.service_owner_change", i18n.D{"Target": e.TargetName, "From": from, "To": str(e, "to")})
 		}
-		return fmt.Sprintf("登记了服务 %s，负责人 %s", e.TargetName, str(e, "to"))
+		return l.T("audit.verb.service_owner", i18n.D{"Target": e.TargetName, "To": str(e, "to")})
 	}},
-	ActServerSettings: {"修改服务器设置", CatServer, func(e store.AdminEvent) string {
+	ActServerSettings: {CatServer, func(l i18n.Lang, e store.AdminEvent) string {
 		var fields []string
 		for _, k := range []string{"external_url"} {
 			if _, ok := e.Detail[k]; ok {
-				fields = append(fields, detailLabels[k])
+				fields = append(fields, detailLabel(l, k))
 			}
 		}
 		if len(fields) == 0 {
-			return "修改了服务器设置"
+			return l.T("audit.verb.server_settings")
 		}
-		return "修改了服务器设置：" + strings.Join(fields, "、")
+		return l.T("audit.verb.server_settings_fields", i18n.D{"Fields": strings.Join(fields, l.T("audit.sep.item"))})
 	}},
-	ActWorkspaceDisplayName: {"修改工作空间显示名", CatWorkspace, func(e store.AdminEvent) string {
+	ActWorkspaceDisplayName: {CatWorkspace, func(l i18n.Lang, e store.AdminEvent) string {
 		if m, ok := e.Detail["display_name"].(map[string]any); ok {
-			return fmt.Sprintf("把工作空间 %s 的显示名从“%v”改为“%v”", e.TargetName, m["from"], m["to"])
+			return l.T("audit.verb.workspace_display_name_change", i18n.D{"Target": e.TargetName, "From": anyText(m["from"]), "To": anyText(m["to"])})
 		}
-		return "修改了工作空间 " + e.TargetName + " 的显示名"
+		return l.T("audit.verb.workspace_display_name", i18n.D{"Target": e.TargetName})
 	}},
-	ActAccessDenied: {"被拒的管理请求", CatDenied, func(e store.AdminEvent) string {
-		what := "调用管理接口 " + e.TargetName
+	ActAccessDenied: {CatDenied, func(l i18n.Lang, e store.AdminEvent) string {
+		key := "audit.verb.access_denied_api"
 		if e.Via == ViaTelegram || e.Via == ViaDingTalk {
-			what = "点了" + e.TargetName
+			key = "audit.verb.access_denied_button"
 		}
-		return what + "，被拒绝：" + deniedReasons[str(e, "reason")]
+		return l.T(key, i18n.D{"Target": e.TargetName, "Reason": deniedReason(l, str(e, "reason"))})
 	}},
 }
 
@@ -328,9 +362,15 @@ const (
 	DenyNoPermission = "no_permission"       // 密码会话或群按钮，但不是管理员
 )
 
-var deniedReasons = map[string]string{
-	DenyNeedPassword: "管理操作只认账号密码登录的网页",
-	DenyNoPermission: "没有权限",
+// deniedReason 是被拒原因按语言的说明；不认识的原因返回空串。
+func deniedReason(l i18n.Lang, reason string) string {
+	switch reason {
+	case DenyNeedPassword:
+		return l.T("audit.denied.need_password_login")
+	case DenyNoPermission:
+		return l.T("audit.denied.no_permission")
+	}
+	return ""
 }
 
 // 被拒请求用的凭据。
@@ -351,9 +391,23 @@ func ChatCredential(provider string) string {
 	return CredTelegram
 }
 
-var credentialNames = map[string]string{
-	CredPassword: "账号密码登录的网页", CredDeviceWeb: "cohive web 免密网页", CredToken: "编程工具令牌",
-	CredDevice: "设备密钥", CredTelegram: "Telegram 群按钮", CredDingTalk: "钉钉群按钮",
+// credentialName 是被拒请求用的凭据按语言的名字；不认识时返回空串。
+func credentialName(l i18n.Lang, c string) string {
+	switch c {
+	case CredPassword:
+		return l.T("audit.credential.password")
+	case CredDeviceWeb:
+		return l.T("audit.credential.device_web")
+	case CredToken:
+		return l.T("audit.credential.token")
+	case CredDevice:
+		return l.T("audit.credential.device")
+	case CredTelegram:
+		return l.T("audit.credential.telegram")
+	case CredDingTalk:
+		return l.T("audit.credential.dingtalk")
+	}
+	return ""
 }
 
 // DeniedAttempt 是一次被拒的管理请求。Route 是接口模板（不含路径里的邀请码、授权参数等实际值）。
@@ -394,8 +448,13 @@ func Actions() []string {
 	return out
 }
 
-// ActionLabel 返回动作的中文名。
-func ActionLabel(action string) string { return actions[action].label }
+// ActionLabel 返回动作按语言的名字；没有登记的动作返回空串。
+func ActionLabel(l i18n.Lang, action string) string {
+	if _, ok := actions[action]; !ok {
+		return ""
+	}
+	return l.T("audit.action." + strings.ReplaceAll(action, ".", "_")) // TestAuditKeysComplete 遍历 Actions() 确认齐全
+}
 
 // ActionCategory 返回动作的类别。
 func ActionCategory(action string) string { return actions[action].category }
@@ -417,13 +476,13 @@ func record(ctx context.Context, tx pgx.Tx, act Actor, e store.AdminEvent) error
 	case ViaWeb, ViaTelegram, ViaDingTalk, ViaServerCLI, ViaMemberCLI, ViaSystem:
 	case ViaAgent:
 		if e.Action != ActAccessDenied {
-			return fmt.Errorf("编程工具令牌不能做管理操作（%s）", e.Action)
+			return i18n.Errorf("audit.err.agent_forbidden", i18n.D{"Action": e.Action})
 		}
 	default:
-		return fmt.Errorf("管理操作缺少入口（%q）", act.Via)
+		return i18n.Errorf("audit.err.via_missing", i18n.D{"Via": strconv.Quote(act.Via)})
 	}
 	if _, ok := actions[e.Action]; !ok {
-		return fmt.Errorf("未登记的管理操作 %q", e.Action)
+		return i18n.Errorf("audit.err.action_unregistered", i18n.D{"Action": strconv.Quote(e.Action)})
 	}
 	e.Via = act.Via
 	if act.Account != nil {
@@ -452,60 +511,68 @@ func wsp(wsID int64) *int64 {
 
 // ---- 人话 ----
 
-// EventText 把一条记录写成人话：“lee 在群里批准了 tester-d 的注册申请”。
-func EventText(e store.AdminEvent) string {
+// EventText 把一条记录按语言写成人话：“lee 在群里批准了 tester-d 的注册申请”。
+func EventText(l i18n.Lang, e store.AdminEvent) string {
 	info, ok := actions[e.Action]
 	verb := e.Action
 	if ok {
-		verb = info.verb(e)
+		verb = info.verb(l, e)
 	}
 	who := e.ActorName
+	data := i18n.D{"Who": who, "Verb": verb}
 	switch e.Via {
 	case ViaWeb:
-		return who + " 在网页上" + verb
+		return l.T("audit.text.web", data)
 	case ViaTelegram:
-		return who + " 在群里" + verb
+		return l.T("audit.text.telegram", data)
 	case ViaDingTalk:
-		return who + " 在钉钉群里" + verb
+		return l.T("audit.text.dingtalk", data)
 	case ViaMemberCLI:
-		return who + " 在本机命令行" + verb
+		return l.T("audit.text.member_cli", data)
 	case ViaAgent:
-		return who + " 用编程工具令牌" + verb
+		return l.T("audit.text.agent", data)
 	case ViaServerCLI:
 		if who != "" {
-			return who + " 在服务器命令行" + verb
+			return l.T("audit.text.server_cli", data)
 		}
-		return "服务器命令行" + verb
+		return l.T("audit.text.server_cli_anon", data)
 	case ViaSystem:
-		return "服务器首次启动时" + verb
+		return l.T("audit.text.system", data)
 	default:
 		if who == "" {
-			who = "（操作人未知）"
+			data["Who"] = l.T("audit.text.unknown_actor")
 		}
-		return who + " " + verb + "（功能上线前补记，入口未知）"
+		return l.T("audit.text.unknown", data)
 	}
 }
 
-// DetailItem 是附加信息的一项（中文名与文本值）。
+// DetailItem 是附加信息的一项（名称与文本值，已按语言渲染）。
 type DetailItem struct {
 	Label string
 	Value string
 }
 
-var detailLabels = map[string]string{
-	"applicant": "申请人", "owner": "设备主人", "device_name": "设备名", "tools": "编程工具", "requested": "请求",
-	"reason": "原因", "from": "原来", "to": "改为", "kind": "邀请类型", "role": "角色", "max_uses": "可用次数",
-	"expires_at": "到期时间", "self": "本人操作", "account_created": "新建账号", "issues": "转交的问题单",
-	"services": "转交的服务", "tokens_revoked": "吊销的令牌数", "devices_revoked": "吊销的设备数",
-	"display_name": "显示名", "telegram_username": "Telegram 用户名", "telegram_user_id": "Telegram 用户编号",
-	"admin": "首位管理员", "public_url": "公网地址", "telegram_chat": "Telegram 群", "show_title": "群消息显示标题", "remind_open_hours": "待接单催办时长", "remind_verify_hours": "待验证催办时长",
-	"show_brief": "群消息显示简述", "member": "成员", "tool": "工具", "as": "命令行记作", "invite_id": "邀请编号",
-	"initial_admin": "初始管理员", "backfilled": "上线前补记", "time_approx": "时间为近似值",
-	"credential": "凭据", "external_url": "对外地址",
+// detailKeys 是附加信息里有名称的键；名称在语言包的 audit.detail.<键>。
+var detailKeys = []string{
+	"applicant", "owner", "device_name", "tools", "requested", "reason", "from", "to", "kind", "role", "max_uses",
+	"expires_at", "self", "account_created", "issues", "services", "tokens_revoked", "devices_revoked",
+	"display_name", "telegram_username", "telegram_user_id", "admin", "public_url", "telegram_chat", "show_title",
+	"remind_open_hours", "remind_verify_hours", "show_brief", "member", "tool", "as", "invite_id",
+	"initial_admin", "backfilled", "time_approx", "credential", "external_url", "language",
 }
 
-// EventDetail 把附加信息转成中文名与文本值，按键名排序。
-func EventDetail(e store.AdminEvent) []DetailItem {
+// detailLabel 是附加信息键按语言的名称；没有登记的键原样返回。
+func detailLabel(l i18n.Lang, k string) string {
+	for _, d := range detailKeys {
+		if d == k {
+			return l.T("audit.detail." + k) // TestAuditKeysComplete 遍历 detailKeys 确认齐全
+		}
+	}
+	return k
+}
+
+// EventDetail 把附加信息按语言转成名称与文本值，按键名排序。
+func EventDetail(l i18n.Lang, e store.AdminEvent) []DetailItem {
 	keys := make([]string, 0, len(e.Detail))
 	for k := range e.Detail {
 		keys = append(keys, k)
@@ -513,38 +580,34 @@ func EventDetail(e store.AdminEvent) []DetailItem {
 	sort.Strings(keys)
 	out := make([]DetailItem, 0, len(keys))
 	for _, k := range keys {
-		label := detailLabels[k]
-		if label == "" {
-			label = k
-		}
-		out = append(out, DetailItem{Label: label, Value: detailValue(k, e.Detail[k])})
+		out = append(out, DetailItem{Label: detailLabel(l, k), Value: detailValue(l, k, e.Detail[k])})
 	}
 	return out
 }
 
-func detailValue(key string, v any) string {
+func detailValue(l i18n.Lang, key string, v any) string {
 	switch x := v.(type) {
 	case nil:
-		return "（空）"
+		return l.T("audit.value.empty")
 	case bool:
 		if x {
-			return "是"
+			return l.T("audit.value.yes")
 		}
-		return "否"
+		return l.T("audit.value.no")
 	case string:
 		switch key {
 		case "role", "from", "to":
 			if x == store.RoleAdmin || x == store.RoleMember {
-				return roleName(x)
+				return roleName(l, x)
 			}
 		case "kind":
-			return inviteKindName(x)
+			return inviteKindName(l, x)
 		case "reason":
-			if r, ok := deniedReasons[x]; ok {
+			if r := deniedReason(l, x); r != "" {
 				return r
 			}
 		case "credential":
-			if c, ok := credentialNames[x]; ok {
+			if c := credentialName(l, x); c != "" {
 				return c
 			}
 		case "expires_at":
@@ -553,14 +616,14 @@ func detailValue(key string, v any) string {
 			}
 		}
 		if x == "" {
-			return "（空）"
+			return l.T("audit.value.empty")
 		}
 		return x
 	case float64:
 		return fmt.Sprintf("%d", int64(x))
 	case map[string]any:
 		// {from, to}
-		return detailValue(key, x["from"]) + " → " + detailValue(key, x["to"])
+		return detailValue(l, key, x["from"]) + " → " + detailValue(l, key, x["to"])
 	case []any:
 		var parts []string
 		for _, it := range x {
@@ -571,11 +634,11 @@ func detailValue(key string, v any) string {
 			}
 			switch key {
 			case "issues":
-				as := "负责人"
+				as := l.T("audit.value.as_owner")
 				if m["as"] == store.AsSource {
-					as = "发起人"
+					as = l.T("audit.value.as_reporter")
 				}
-				parts = append(parts, fmt.Sprintf("#%d（%s）→ %v", int64(numOf(m["id"])), as, m["to"]))
+				parts = append(parts, l.T("audit.value.handover_issue", i18n.D{"ID": int64(numOf(m["id"])), "As": as, "To": anyText(m["to"])}))
 			case "services":
 				parts = append(parts, fmt.Sprintf("%v → %v", m["name"], m["to"]))
 			default:
@@ -584,13 +647,21 @@ func detailValue(key string, v any) string {
 			}
 		}
 		if len(parts) == 0 {
-			return "（无）"
+			return l.T("audit.value.none")
 		}
-		return strings.Join(parts, "；")
+		return strings.Join(parts, l.T("audit.sep.entry"))
 	default:
 		raw, _ := json.Marshal(x)
 		return string(raw)
 	}
+}
+
+// anyText 把附加信息里的值写成文字，没有值时为空串（避免模板里出现 <no value>）。
+func anyText(v any) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprint(v)
 }
 
 func str(e store.AdminEvent, k string) string {
@@ -634,39 +705,48 @@ func targetID(e store.AdminEvent) int64 {
 	return *e.TargetID
 }
 
-func handoverSummary(e store.AdminEvent) string {
+// handoverSummary 是转交内容的摘要（“3 张问题单、2 个服务”），没有内容时为空。
+func handoverSummary(l i18n.Lang, e store.AdminEvent) string {
 	var parts []string
 	if n := listLen(e, "issues"); n > 0 {
-		parts = append(parts, fmt.Sprintf("%d 张问题单", n))
+		parts = append(parts, l.T("audit.handover.issues", i18n.D{"Count": n}))
 	}
 	if n := listLen(e, "services"); n > 0 {
-		parts = append(parts, fmt.Sprintf("%d 个服务", n))
+		parts = append(parts, l.T("audit.handover.services", i18n.D{"Count": n}))
 	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return " " + strings.Join(parts, "、")
+	return strings.Join(parts, l.T("audit.sep.item"))
 }
 
-func roleName(r string) string {
+func roleName(l i18n.Lang, r string) string {
 	if r == store.RoleAdmin {
-		return "管理员"
+		return l.T("audit.role.admin")
 	}
-	return "成员"
+	return l.T("audit.role.member")
 }
 
-func inviteKindName(k string) string {
+func inviteKindName(l i18n.Lang, k string) string {
 	if k == store.InviteTeam {
-		return "团队邀请"
+		return l.T("audit.invite_kind.team")
 	}
-	return "个人邀请"
+	return l.T("audit.invite_kind.personal")
 }
 
-func deviceLabel(name string) string {
+func deviceLabel(l i18n.Lang, name string) string {
 	if name == "" {
-		return "（未命名）"
+		return l.T("audit.device_unnamed")
 	}
 	return name
+}
+
+// providerLabel 是通讯工具按语言的名字；不认识的原样返回。
+func providerLabel(l i18n.Lang, provider string) string {
+	switch provider {
+	case store.ProviderTelegram:
+		return l.T("audit.provider.telegram")
+	case store.ProviderDingTalk:
+		return l.T("audit.provider.dingtalk")
+	}
+	return provider
 }
 
 // ---- 查看 ----
@@ -687,19 +767,19 @@ const MaxEventPage = 200
 func (s *Service) eventFilter(ctx context.Context, q EventQuery) (store.AdminEventFilter, bool, error) {
 	f := store.AdminEventFilter{Before: q.Before, Limit: q.Limit}
 	if q.Limit < 0 || q.Limit > MaxEventPage {
-		return f, false, inputErr("limit 应为 1 到 %d", MaxEventPage)
+		return f, false, inputErr("audit.err.limit_range", i18n.D{"Max": MaxEventPage})
 	}
 	if q.Before < 0 {
-		return f, false, inputErr("before 应为记录编号")
+		return f, false, inputErr("audit.err.before_invalid")
 	}
 	if q.Category != "" {
 		if f.Actions = CategoryActions(q.Category); len(f.Actions) == 0 {
-			return f, false, inputErr("没有这个动作类别：%s", q.Category)
+			return f, false, inputErr("audit.err.category_unknown", i18n.D{"Category": q.Category})
 		}
 	}
 	if q.Via != "" {
-		if _, ok := ViaLabels[q.Via]; !ok {
-			return f, false, inputErr("没有这个入口：%s", q.Via)
+		if !validVia(q.Via) {
+			return f, false, inputErr("audit.err.via_unknown", i18n.D{"Via": q.Via})
 		}
 		f.Via = q.Via
 	}

@@ -25,7 +25,7 @@ func TestMatch(t *testing.T) {
 			t.Errorf("Match(%q) = %q, %v; want %q", in, got, ok, want)
 		}
 	}
-	for _, in := range []string{"", "C", "POSIX", "C.UTF-8", "ja", "de-DE", "!!"} {
+	for _, in := range []string{"", "C", "POSIX", "C.UTF-8", "ja", "de-DE", "!!", "tlh", "klingon"} {
 		if got, ok := Match(in); ok {
 			t.Errorf("Match(%q) = %q, want no match", in, got)
 		}

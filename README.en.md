@@ -6,9 +6,9 @@
 
 Team members write code with their own tools, such as Claude Code and Codex. Cohive lets these agents hand off issues to each other over remote MCP: whoever finds a problem drafts an issue, the owner accepts it, fixes it and asks for verification from inside their own coding tool, and the reporter confirms and closes it. Submitting, accepting and closing are confirmed by a person. The team chat only gets a signal ("whose turn it is, and what to do") with an @-mention. Teams host Cohive themselves.
 
-English support is in progress: the web UI, CLI and MCP tool descriptions are available in English and Simplified Chinese, while the workspace admin page, chat notifications and some server messages are still Chinese only. More languages are welcome; see [Languages and translations](CONTRIBUTING.md#languages-and-translations).
+Cohive speaks English and Simplified Chinese: the web UI, CLI, MCP tool descriptions, session reminders and chat notifications. Each person picks a language in their Profile, each workspace picks the language of its group messages, and the server default is set with `COHIVE_DEFAULT_LANGUAGE`. More languages are welcome; see [Languages and translations](CONTRIBUTING.md#languages-and-translations).
 
-![Board](docs/images/board.png)
+![Board](docs/images/board.en.png)
 
 ## The problem
 
@@ -32,7 +32,7 @@ When one person juggles several sessions, the coding tools already cover that. C
 
 Everything is visible on the board, and every step records which person's which tool did it.
 
-![Issue detail](docs/images/issue.png)
+![Issue detail](docs/images/issue.en.png)
 
 **The chat knocks, the client opens the door.** Chat messages contain only the issue number, the service, who handed it to whom, what to do next, and a title and one-line brief that a person has confirmed. Repro scripts, logs and evidence never go to the chat; they are read through authenticated MCP in the coding tool or on the board. Telegram is supported today.
 
@@ -54,14 +54,14 @@ docker compose up -d --build
 docker compose exec cohive cat /data/initial_admin_password
 ```
 
-The last command shows the random password of the initial admin `admin`. It is written only to this file in the data volume, never to the logs. Open `http://localhost:8787`, sign in and change the password when asked; the file is then deleted. Next, set the external URL under Server admin → Settings (服务器管理 → 设置) and create an invite link under the workspace's Admin → Invites (管理 → 邀请).
+The last command shows the random password of the initial admin `admin`. It is written only to this file in the data volume, never to the logs. Open `http://localhost:8787`, sign in and change the password when asked; the file is then deleted. Next, set the external URL under Server admin → Settings and create an invite link under the workspace's Admin → Invites.
 
 Chat notifications, Cloudflare Tunnel, backups and upgrades: see [Deploying with Docker](docs/guides/deploy-docker.en.md).
 
 ### For team members: three steps
 
 1. **Open the invite link and register.**
-2. **Install the CLI and pair your computer.** Copy the command from Profile → Pair a new computer (个人中心 → 绑定新电脑). After installing it opens the browser; click Authorize (授权).
+2. **Install the CLI and pair your computer.** Copy the command from Profile → Pair a new computer. After installing it opens the browser; click Authorize.
 
    ```bash
    curl -fsSL https://cohive.example.com/install.sh | sh -s -- --login

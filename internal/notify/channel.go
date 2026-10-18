@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -23,12 +24,12 @@ type Channel interface {
 
 // Formatter 是一种通讯工具的消息格式。
 type Formatter interface {
-	Esc(s string) string    // 转义纯文本
-	Code(s string) string   // 等宽显示（参数为未转义的纯文本）
-	Link(url string) string // 消息末尾的问题单链接
+	Esc(s string) string                 // 转义纯文本
+	Code(s string) string                // 等宽显示（参数为未转义的纯文本）
+	Link(l i18n.Lang, url string) string // 消息末尾的问题单链接；l 是消息的语言（链接文字用）
 	// Mention 是提到一个人。label 为已转义的名字；id 为这个人在本通讯工具上的连接，没有时为空。
-	// withLabel 为真时，按用户名提及后再括注 label（审批消息里用）。
-	Mention(label string, id *store.ChatIdentity, withLabel bool) string
+	// withLabel 为真时，按用户名提及后再括注 label（审批消息里用）；l 是消息的语言（括号写法随语言）。
+	Mention(l i18n.Lang, label string, id *store.ChatIdentity, withLabel bool) string
 }
 
 // Rendered 是渲染好的一条消息。
@@ -38,6 +39,16 @@ type Rendered struct {
 	Mentions []store.ChatIdentity // 正文里按编号 @ 到的人（钉钉要单独传）
 	// Key 是幂等键：同一条通知重发时不变（钉钉用作卡片编号，重发不会出现第二张卡）；为空时由通道自己生成
 	Key string
+	// Lang 是消息的语言（群所属工作空间的语言）；通道发降级提示等附加文字时用。为空时用服务器缺省语言。
+	Lang i18n.Lang
+}
+
+// lang 是消息的语言；没记录时用服务器缺省语言。
+func (r Rendered) lang() i18n.Lang {
+	if r.Lang == "" {
+		return i18n.Default()
+	}
+	return r.Lang
 }
 
 // Approval 是审批消息对应的申请：按钮数据与审批消息记录都据此生成。
@@ -112,10 +123,16 @@ func personOf(m store.Member, extra []store.ChatIdentity) Person {
 type writer struct {
 	f        Formatter
 	provider string
+	lang     i18n.Lang
 	mentions []store.ChatIdentity
 }
 
-func newWriter(f Formatter, provider string) *writer { return &writer{f: f, provider: provider} }
+func newWriter(f Formatter, provider string, lang i18n.Lang) *writer {
+	return &writer{f: f, provider: provider, lang: lang}
+}
+
+// parens 给 label 加括注：中文用全角括号紧贴，英文用空格加半角括号。
+func parens(l i18n.Lang, label string) string { return l.T("notify.parens", i18n.D{"Text": label}) }
 
 func (w *writer) esc(s string) string { return w.f.Esc(s) }
 
@@ -133,18 +150,18 @@ func (w *writer) mention(p Person, label string, withLabel bool) string {
 			w.mentions = append(w.mentions, *id)
 		}
 	}
-	return w.f.Mention(label, id, withLabel)
+	return w.f.Mention(w.lang, label, id, withLabel)
 }
 
 // nameLabel 是审批消息里展示的登录名与显示名（已转义）。
 func (w *writer) nameLabel(name, display string) string {
 	s := w.esc(name)
 	if display != "" && display != name {
-		s += "（" + w.esc(display) + "）"
+		s += parens(w.lang, w.esc(display))
 	}
 	return s
 }
 
 func (w *writer) done(title string, lines ...string) Rendered {
-	return Rendered{Title: title, Text: strings.Join(lines, "\n"), Mentions: w.mentions}
+	return Rendered{Title: title, Text: strings.Join(lines, "\n"), Mentions: w.mentions, Lang: w.lang}
 }

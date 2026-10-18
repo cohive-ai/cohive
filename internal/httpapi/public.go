@@ -175,11 +175,13 @@ func publicRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			Name        string `json:"name"`
 			DisplayName string `json:"display_name"`
 			Password    string `json:"password"`
+			Language    string `json:"language"` // 注册时的界面语言，写到新账号上
 		}
 		if !decode(w, r, &in) {
 			return
 		}
-		res, err := svc.Register(r.Context(), core.RegisterInput{Code: in.Code, Name: in.Name, DisplayName: in.DisplayName, Password: in.Password})
+		res, err := svc.Register(r.Context(), core.RegisterInput{Code: in.Code, Name: in.Name, DisplayName: in.DisplayName,
+			Password: in.Password, Language: in.Language})
 		if err != nil {
 			writeError(w, err)
 			return

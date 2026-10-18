@@ -25,7 +25,7 @@ type Telegram struct {
 type RetryAfterError struct{ Seconds int }
 
 func (e *RetryAfterError) Error() string {
-	return fmt.Sprintf("Telegram 限流，%d 秒后重试", e.Seconds)
+	return fmt.Sprintf("Telegram rate limit, retry in %d seconds", e.Seconds)
 }
 
 // ChannelDownError 表示通道整体不可用（例如机器人令牌错误或已重置），与具体哪条通知无关。
@@ -37,7 +37,7 @@ func (e *ChannelDownError) Error() string { return e.Msg }
 type ChatMigratedError struct{ NewChatID string }
 
 func (e *ChatMigratedError) Error() string {
-	return fmt.Sprintf("群已升级为超级群，新的群编号是 %s", e.NewChatID)
+	return fmt.Sprintf("group was upgraded to a supergroup, new chat ID is %s", e.NewChatID)
 }
 
 // PermanentError 表示不值得重试的错误（例如群编号错误、机器人被移出群）。
@@ -124,14 +124,14 @@ func (t *Telegram) call(ctx context.Context, method string, req *http.Request) (
 		if errors.As(err, &ue) {
 			err = ue.Err
 		}
-		return nil, fmt.Errorf("调用 Telegram %s 失败：%v", method, err)
+		return nil, fmt.Errorf("Telegram %s request failed: %v", method, err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	var r tgResponse
 	if json.Unmarshal(body, &r) != nil {
-		return nil, fmt.Errorf("Telegram %s 返回 HTTP %d", method, resp.StatusCode)
+		return nil, fmt.Errorf("Telegram %s returned HTTP %d", method, resp.StatusCode)
 	}
 	if r.OK {
 		return r.Result, nil
@@ -146,11 +146,11 @@ func (t *Telegram) call(ctx context.Context, method string, req *http.Request) (
 	case r.Parameters.MigrateToChatID != 0:
 		return nil, &ChatMigratedError{NewChatID: strconv.FormatInt(r.Parameters.MigrateToChatID, 10)}
 	case r.ErrorCode == 401 || r.ErrorCode == 404:
-		return nil, &ChannelDownError{Msg: fmt.Sprintf("Telegram 机器人令牌无效（%d）：%s", r.ErrorCode, r.Description)}
+		return nil, &ChannelDownError{Msg: fmt.Sprintf("Telegram bot token is invalid (%d): %s", r.ErrorCode, r.Description)}
 	case r.ErrorCode == 400 || r.ErrorCode == 403:
-		return nil, &PermanentError{Msg: fmt.Sprintf("Telegram %s 拒绝（%d）：%s", method, r.ErrorCode, r.Description)}
+		return nil, &PermanentError{Msg: fmt.Sprintf("Telegram %s rejected (%d): %s", method, r.ErrorCode, r.Description)}
 	}
-	return nil, fmt.Errorf("Telegram %s 失败（%d）：%s", method, r.ErrorCode, r.Description)
+	return nil, fmt.Errorf("Telegram %s failed (%d): %s", method, r.ErrorCode, r.Description)
 }
 
 // Send 往群里发一条 HTML 格式的消息。
@@ -175,7 +175,7 @@ func (t *Telegram) send(ctx context.Context, payload map[string]any) error {
 	}
 	req, err := http.NewRequest(http.MethodPost, t.endpoint("sendMessage"), bytes.NewReader(b))
 	if err != nil {
-		return errors.New("构造 Telegram 请求失败")
+		return errors.New("failed to build Telegram request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	_, err = t.call(ctx, "sendMessage", req)
@@ -190,7 +190,7 @@ func (t *Telegram) GetUpdates(ctx context.Context, offset int64, timeoutSec int)
 	q.Set("allowed_updates", `["message","callback_query"]`)
 	req, err := http.NewRequest(http.MethodGet, t.endpoint("getUpdates")+"?"+q.Encode(), nil)
 	if err != nil {
-		return nil, errors.New("构造 Telegram 请求失败")
+		return nil, errors.New("failed to build Telegram request")
 	}
 	raw, err := t.call(ctx, "getUpdates", req)
 	if err != nil {
@@ -198,7 +198,7 @@ func (t *Telegram) GetUpdates(ctx context.Context, offset int64, timeoutSec int)
 	}
 	var ups []Update
 	if err := json.Unmarshal(raw, &ups); err != nil {
-		return nil, errors.New("解析 Telegram 消息失败")
+		return nil, errors.New("failed to parse Telegram message")
 	}
 	return ups, nil
 }
@@ -207,7 +207,7 @@ func (t *Telegram) GetUpdates(ctx context.Context, offset int64, timeoutSec int)
 func (t *Telegram) GetMe(ctx context.Context) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, t.endpoint("getMe"), nil)
 	if err != nil {
-		return "", errors.New("构造 Telegram 请求失败")
+		return "", errors.New("failed to build Telegram request")
 	}
 	raw, err := t.call(ctx, "getMe", req)
 	if err != nil {
@@ -215,7 +215,7 @@ func (t *Telegram) GetMe(ctx context.Context) (string, error) {
 	}
 	var u TGUser
 	if err := json.Unmarshal(raw, &u); err != nil {
-		return "", errors.New("解析 Telegram 机器人信息失败")
+		return "", errors.New("failed to parse Telegram bot info")
 	}
 	return u.Username, nil
 }
@@ -224,7 +224,7 @@ func keyboard(buttons [][]Button) (map[string]any, error) {
 	for _, row := range buttons {
 		for _, b := range row {
 			if len(b.Data) == 0 || len(b.Data) > 64 {
-				return nil, fmt.Errorf("按钮回调数据长度应为 1 到 64 字节：%q", b.Data)
+				return nil, fmt.Errorf("button callback data must be 1 to 64 bytes: %q", b.Data)
 			}
 		}
 	}
@@ -241,7 +241,7 @@ func (t *Telegram) post(ctx context.Context, method string, payload map[string]a
 	}
 	req, err := http.NewRequest(http.MethodPost, t.endpoint(method), bytes.NewReader(b))
 	if err != nil {
-		return nil, errors.New("构造 Telegram 请求失败")
+		return nil, errors.New("failed to build Telegram request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	return t.call(ctx, method, req)
@@ -261,7 +261,7 @@ func (t *Telegram) SendButtons(ctx context.Context, chatID int64, text string, b
 	}
 	var m TGMessage
 	if err := json.Unmarshal(raw, &m); err != nil {
-		return 0, errors.New("解析 Telegram 消息失败")
+		return 0, errors.New("failed to parse Telegram message")
 	}
 	return m.MessageID, nil
 }

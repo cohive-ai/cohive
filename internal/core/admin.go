@@ -8,18 +8,32 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
 
 // StateError 表示请求与当前状态冲突（已是成员、群已被占用、工作空间不空等），接口返回 409。
-type StateError struct{ Msg string }
+// Key 非空时按语言渲染（Data 是模板参数），否则用 Msg。
+type StateError struct {
+	Msg  string
+	Key  string
+	Data i18n.D
+}
 
-func (e *StateError) Error() string { return e.Msg }
+func (e *StateError) Error() string { return e.Localize(i18n.Default()) }
 
-func stateErr(format string, args ...any) error {
-	return &StateError{Msg: fmt.Sprintf(format, args...)}
+// Localize 按语言渲染。
+func (e *StateError) Localize(l i18n.Lang) string { return localize(l, e.Msg, e.Key, e.Data) }
+
+// stateErr 返回可按语言渲染的状态冲突错误，key 是 core.json 里的文案键。
+func stateErr(key string, data ...i18n.D) error {
+	e := &StateError{Key: key}
+	if len(data) > 0 {
+		e.Data = data[0]
+	}
+	return e
 }
 
 // ---- 角色与工作空间设置 ----
@@ -28,7 +42,7 @@ func stateErr(format string, args ...any) error {
 func (s *Service) SetRole(ctx context.Context, act Actor, wsID, memberID int64, role string) error {
 	actor := act.Account
 	if role != store.RoleAdmin && role != store.RoleMember {
-		return inputErr("角色应为管理员或成员")
+		return inputErr("core.err.role_invalid")
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		m, err := store.MemberByID(ctx, tx, memberID)
@@ -36,7 +50,7 @@ func (s *Service) SetRole(ctx context.Context, act Actor, wsID, memberID int64, 
 			return err
 		}
 		if (wsID != 0 && m.WorkspaceID != wsID) || m.Status != store.MemberActive {
-			return fmt.Errorf("成员 %d：%w", memberID, store.ErrNotFound)
+			return i18n.Wrap(store.ErrNotFound, "core.err.member_id", i18n.D{"ID": memberID})
 		}
 		// 锁住本工作空间的全部管理员行：两名管理员同时互相降级时排队执行，后一个会看到前一个的结果
 		if err := store.LockAdmins(ctx, tx, m.WorkspaceID); err != nil {
@@ -57,7 +71,7 @@ func (s *Service) SetRole(ctx context.Context, act Actor, wsID, memberID int64, 
 			return err
 		}
 		if n == 0 {
-			return inputErr("工作空间至少要保留一名管理员")
+			return inputErr("core.err.last_admin_keep")
 		}
 		return record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(m.WorkspaceID), Action: ActMemberRole,
 			TargetKind: "member", TargetID: idp(m.ID), TargetName: m.Name,
@@ -74,12 +88,14 @@ type WorkspaceSettings struct {
 	// 超时催办时长（小时），为空时不改；0 表示关闭
 	RemindOpenHours   *int
 	RemindVerifyHours *int
+	// 群消息语言代码，为空时不改；指向空串表示跟随服务器缺省语言
+	Language *string
 }
 
-// checkRemindHours 校验催办时长：0 到 720 小时的整数。
-func checkRemindHours(what string, h *int) error {
+// checkRemindHours 校验催办时长：0 到 720 小时的整数。key 是报错的文案键（待接单或待验证）。
+func checkRemindHours(key string, h *int) error {
 	if h != nil && (*h < 0 || *h > store.MaxRemindHours) {
-		return inputErr("%s催办时长应为 0 到 %d 小时（0 表示关闭）", what, store.MaxRemindHours)
+		return inputErr(key, i18n.D{"Max": store.MaxRemindHours})
 	}
 	return nil
 }
@@ -97,14 +113,21 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 	chat := strings.TrimSpace(in.TelegramChat)
 	if chat != "" {
 		if _, err := strconv.ParseInt(chat, 10, 64); err != nil {
-			return inputErr("Telegram 群编号应为数字，例如 -1001234567890（群里发 /chatid 获取）")
+			return inputErr("core.err.telegram_chat_invalid")
 		}
 	}
-	if err := checkRemindHours("待接单", in.RemindOpenHours); err != nil {
+	if err := checkRemindHours("core.err.remind_open_hours", in.RemindOpenHours); err != nil {
 		return err
 	}
-	if err := checkRemindHours("待验证", in.RemindVerifyHours); err != nil {
+	if err := checkRemindHours("core.err.remind_verify_hours", in.RemindVerifyHours); err != nil {
 		return err
+	}
+	var lang string
+	if in.Language != nil {
+		var err error
+		if lang, err = normLanguage(*in.Language); err != nil {
+			return err
+		}
 	}
 	cfg := store.NotifyConfig{Target: chat, ShowTitle: in.ShowTitle, ShowBrief: in.ShowBrief}
 	if chat != "" {
@@ -116,7 +139,7 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 		}
 		if chat != "" {
 			if other, err := store.WorkspaceByNotifyTarget(ctx, tx, "telegram", chat); err == nil && other.ID != wsID {
-				return stateErr("这个群已经绑定了工作空间 %s：一个群只能对应一个工作空间", other.Name)
+				return stateErr("core.err.chat_bound_other_ws", i18n.D{"Name": other.Name})
 			} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 				return err
 			}
@@ -131,13 +154,13 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 			oldTG = old.Notify.Target
 		} else if old.Notify.Channel != "" {
 			if chat != "" { // 第一期一个工作空间只绑一个群
-				return stateErr("工作空间已绑定%s群，请先解绑再绑 Telegram 群", providerName(old.Notify.Channel))
+				return stateErr("core.err.ws_bound_unbind_rebind", i18n.D{"Provider": providerKey(old.Notify.Channel), "Target": providerKey(store.ProviderTelegram)})
 			}
 			cfg.Channel, cfg.Target = old.Notify.Channel, old.Notify.Target
 		}
 		err = store.SetWorkspaceNotify(ctx, tx, wsID, cfg)
 		if isUniqueViolation(err) {
-			return stateErr("这个群已经绑定了别的工作空间：一个群只能对应一个工作空间")
+			return stateErr("core.err.chat_bound_elsewhere")
 		}
 		if err != nil {
 			return err
@@ -165,6 +188,12 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 			diff("remind_open_hours", old.Remind.OpenHours, remind.OpenHours)
 			diff("remind_verify_hours", old.Remind.VerifyHours, remind.VerifyHours)
 		}
+		if in.Language != nil && lang != old.Language {
+			if err := store.SetWorkspaceLanguage(ctx, tx, wsID, lang); err != nil {
+				return err
+			}
+			diff("language", old.Language, lang)
+		}
 		if len(changes) > 0 {
 			if err := record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(wsID), Action: ActWorkspaceSettings,
 				TargetKind: "workspace", TargetID: idp(wsID), TargetName: old.Name, Detail: changes}); err != nil {
@@ -178,13 +207,21 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 	})
 }
 
-// providerName 是通讯工具的中文名。
-func providerName(provider string) string {
+// providerKey 是通讯工具名字的延迟翻译，放进错误的参数里，渲染时按语言出名字；不认识的通讯工具原样返回代码。
+func providerKey(provider string) any {
 	switch provider {
 	case store.ProviderTelegram:
-		return " Telegram "
+		return lk("core.provider.telegram")
 	case store.ProviderDingTalk:
-		return "钉钉"
+		return lk("core.provider.dingtalk")
+	}
+	return provider
+}
+
+// providerNameIn 是通讯工具在语言 l 里的名字（中文里 Telegram 前后带空格，方便和汉字隔开）。
+func providerNameIn(l i18n.Lang, provider string) string {
+	if k, ok := providerKey(provider).(lk); ok {
+		return l.T(string(k))
 	}
 	return provider
 }
@@ -196,11 +233,11 @@ const MaxWorkspaceDisplayName = 40
 func cleanWorkspaceDisplayName(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	if len([]rune(s)) > MaxWorkspaceDisplayName {
-		return "", inputErr("显示名最多 %d 个字符", MaxWorkspaceDisplayName)
+		return "", inputErr("core.err.display_name_too_long", i18n.D{"Max": MaxWorkspaceDisplayName})
 	}
 	for _, r := range s {
 		if unicode.IsControl(r) {
-			return "", inputErr("显示名不能含换行、制表符等控制字符")
+			return "", inputErr("core.err.display_name_control")
 		}
 	}
 	return s, nil
@@ -294,7 +331,7 @@ func (s *Service) ChatIdentities(ctx context.Context, accountIDs []int64) (map[i
 // AdminMembers 由管理员列出工作空间的成员资格（status 为空列在册的，removed 列已移出的）。
 func (s *Service) AdminMembers(ctx context.Context, actor *store.Account, wsID int64, status string) ([]store.MemberSummary, error) {
 	if status != "" && status != store.MemberActive && status != store.MemberRemoved {
-		return nil, inputErr("status 只能是 active 或 removed")
+		return nil, inputErr("core.err.status_invalid")
 	}
 	if err := canAdmin(ctx, s.Pool, actor, wsID); err != nil {
 		return nil, err
@@ -315,7 +352,7 @@ func (s *Service) LookupAccount(ctx context.Context, actor *store.Account, wsID 
 	}
 	a, err := store.AccountByName(ctx, s.Pool, strings.TrimSpace(name))
 	if errors.Is(err, store.ErrNotFound) {
-		return AccountLookup{}, fmt.Errorf("没有登录名为 %s 的账号：%w", name, store.ErrNotFound)
+		return AccountLookup{}, i18n.Wrap(store.ErrNotFound, "core.err.account_not_found", i18n.D{"Name": name})
 	}
 	if err != nil {
 		return AccountLookup{}, err
@@ -337,7 +374,7 @@ func (s *Service) AddMember(ctx context.Context, act Actor, wsID int64, accountN
 		role = store.RoleMember
 	}
 	if role != store.RoleAdmin && role != store.RoleMember {
-		return store.Member{}, inputErr("角色应为管理员或成员")
+		return store.Member{}, inputErr("core.err.role_invalid")
 	}
 	var out store.Member
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
@@ -346,7 +383,7 @@ func (s *Service) AddMember(ctx context.Context, act Actor, wsID int64, accountN
 		}
 		a, err := store.AccountByName(ctx, tx, strings.TrimSpace(accountName))
 		if errors.Is(err, store.ErrNotFound) {
-			return fmt.Errorf("没有登录名为 %s 的账号：%w", accountName, store.ErrNotFound)
+			return i18n.Wrap(store.ErrNotFound, "core.err.account_not_found", i18n.D{"Name": accountName})
 		}
 		if err != nil {
 			return err
@@ -355,11 +392,11 @@ func (s *Service) AddMember(ctx context.Context, act Actor, wsID int64, accountN
 			return err
 		}
 		if a.Disabled() {
-			return inputErr("账号 %s 已停用，不能加入", a.Name)
+			return inputErr("core.err.account_disabled_join", i18n.D{"Name": a.Name})
 		}
 		out, err = store.AddMembership(ctx, tx, a.ID, wsID, role, actorID(actor))
 		if errors.Is(err, store.ErrAlreadyMember) {
-			return stateErr("%s 已经是这个工作空间的成员", a.Name)
+			return stateErr("core.err.already_member", i18n.D{"Name": a.Name})
 		}
 		if err != nil {
 			return err
@@ -381,7 +418,7 @@ func recordMemberAdd(ctx context.Context, tx pgx.Tx, act Actor, m store.Member, 
 // AddMemberCLI 由服务器命令行把账号加入工作空间；账号不存在时新建（没有密码）。返回是否新建了账号。
 func (s *Service) AddMemberCLI(ctx context.Context, act Actor, wsID int64, name, display, role string) (store.Member, bool, error) {
 	if role != store.RoleAdmin && role != store.RoleMember {
-		return store.Member{}, false, inputErr("角色只能是 admin 或 member，收到 %q", role)
+		return store.Member{}, false, inputErr("core.err.role_invalid_cli", i18n.D{"Role": strconv.Quote(role)})
 	}
 	if err := checkMemberName(name); err != nil {
 		return store.Member{}, false, err
@@ -401,11 +438,11 @@ func (s *Service) AddMemberCLI(ctx context.Context, act Actor, wsID int64, name,
 			return err
 		}
 		if a.Disabled() {
-			return inputErr("账号 %s 已停用，不能加入", name)
+			return inputErr("core.err.account_disabled_join", i18n.D{"Name": name})
 		}
 		out, err = store.AddMembership(ctx, tx, a.ID, wsID, role, actorID(act.Account))
 		if errors.Is(err, store.ErrAlreadyMember) {
-			return stateErr("%s 已经是这个工作空间的成员", name)
+			return stateErr("core.err.already_member", i18n.D{"Name": name})
 		}
 		if err != nil {
 			return err
@@ -445,12 +482,18 @@ type PlanService struct {
 }
 
 // HandoverError 表示转交清单不完整或问题单已变化，附最新清单，接口返回 409。
+// Key 非空时按语言渲染（Data 是模板参数），否则用 Msg。
 type HandoverError struct {
 	Msg      string
+	Key      string
+	Data     i18n.D
 	Handover Handover
 }
 
-func (e *HandoverError) Error() string { return e.Msg }
+func (e *HandoverError) Error() string { return e.Localize(i18n.Default()) }
+
+// Localize 按语言渲染。
+func (e *HandoverError) Localize(l i18n.Lang) string { return localize(l, e.Msg, e.Key, e.Data) }
 
 func loadHandover(ctx context.Context, q store.DBTX, m store.Member) (Handover, error) {
 	h := Handover{Member: m}
@@ -469,7 +512,7 @@ func (s *Service) GetHandover(ctx context.Context, actor *store.Account, wsID, m
 		return Handover{}, err
 	}
 	if m.WorkspaceID != wsID {
-		return Handover{}, fmt.Errorf("成员 %d：%w", memberID, store.ErrNotFound)
+		return Handover{}, i18n.Wrap(store.ErrNotFound, "core.err.member_id", i18n.D{"ID": memberID})
 	}
 	if err := canAdmin(ctx, s.Pool, actor, wsID); err != nil {
 		return Handover{}, err
@@ -502,7 +545,7 @@ func (s *Service) ApplyHandover(ctx context.Context, act Actor, wsID, memberID i
 			return err
 		}
 		if m.WorkspaceID != wsID || m.Status != store.MemberActive {
-			return fmt.Errorf("成员 %d：%w", memberID, store.ErrNotFound)
+			return i18n.Wrap(store.ErrNotFound, "core.err.member_id", i18n.D{"ID": memberID})
 		}
 		if err := canAdmin(ctx, tx, actor, wsID); err != nil {
 			return err
@@ -515,15 +558,15 @@ func (s *Service) ApplyHandover(ctx context.Context, act Actor, wsID, memberID i
 				if err != nil && !errors.Is(err, store.ErrNotFound) {
 					return err
 				}
-				return inputErr("你不是这个工作空间的成员：转交要记操作人，请先在管理页把自己加入这个工作空间")
+				return inputErr("core.err.handover_not_member")
 			}
 		default:
 			if op, err = store.MemberByName(ctx, tx, wsID, plan.As); err != nil || !op.IsAdmin() {
-				return inputErr("命令行转交需要用 --as 指定本工作空间的一名在册管理员")
+				return inputErr("core.err.handover_need_as")
 			}
 		}
 		if op.ID == m.ID && remove {
-			return inputErr("不能移出自己")
+			return inputErr("core.err.cannot_remove_self")
 		}
 		if remove && m.IsAdmin() {
 			n, err := store.CountAdmins(ctx, tx, wsID)
@@ -531,7 +574,7 @@ func (s *Service) ApplyHandover(ctx context.Context, act Actor, wsID, memberID i
 				return err
 			}
 			if n <= 1 {
-				return inputErr("不能移出这个工作空间的最后一名管理员")
+				return inputErr("core.err.cannot_remove_last_admin")
 			}
 		}
 		h, err := loadHandover(ctx, tx, m)
@@ -569,7 +612,7 @@ func (s *Service) ApplyHandover(ctx context.Context, act Actor, wsID, memberID i
 				return err
 			}
 			if is.Version != c.version {
-				return &HandoverError{Msg: fmt.Sprintf("问题单 #%d 已有新进展，请刷新转交清单后重试", id), Handover: h}
+				return &HandoverError{Key: "core.err.handover_stale_issue", Data: i18n.D{"ID": id}, Handover: h}
 			}
 			if err := reassign(ctx, tx, op, is, c.owner, c.source); err != nil {
 				return err
@@ -630,7 +673,13 @@ func (s *Service) ApplyHandover(ctx context.Context, act Actor, wsID, memberID i
 
 // checkPlan 校验转交清单完整、版本一致、接手人合格。
 func checkPlan(ctx context.Context, tx pgx.Tx, h Handover, plan HandoverPlan) error {
-	stale := func(msg string) error { return &HandoverError{Msg: msg, Handover: h} }
+	stale := func(key string, data ...i18n.D) error {
+		e := &HandoverError{Key: key, Handover: h}
+		if len(data) > 0 {
+			e.Data = data[0]
+		}
+		return e
+	}
 	want := map[string]int{}
 	for _, it := range h.Issues {
 		want[fmt.Sprintf("%d/%s", it.IssueID, it.As)] = it.Version
@@ -639,21 +688,21 @@ func checkPlan(ctx context.Context, tx pgx.Tx, h Handover, plan HandoverPlan) er
 	receivers := map[int64]bool{}
 	for _, p := range plan.Issues {
 		if p.As != store.AsOwner && p.As != store.AsSource {
-			return inputErr("as 只能是 owner 或 source")
+			return inputErr("core.err.handover_as_invalid")
 		}
 		k := fmt.Sprintf("%d/%s", p.IssueID, p.As)
 		v, ok := want[k]
 		if !ok || seen[k] {
-			return stale(fmt.Sprintf("转交清单与当前情况不一致（问题单 #%d），请刷新后重试", p.IssueID))
+			return stale("core.err.handover_mismatch_issue", i18n.D{"ID": p.IssueID})
 		}
 		if v != p.ExpectedVersion {
-			return stale(fmt.Sprintf("问题单 #%d 已有新进展，请刷新转交清单后重试", p.IssueID))
+			return stale("core.err.handover_stale_issue", i18n.D{"ID": p.IssueID})
 		}
 		seen[k] = true
 		receivers[p.ToMemberID] = true
 	}
 	if len(seen) != len(want) {
-		return stale("还有问题单没有选接手人，请为每一张选择接手人")
+		return stale("core.err.handover_unassigned_issue")
 	}
 	wantSvc := map[string]bool{}
 	for _, n := range h.Services {
@@ -662,24 +711,24 @@ func checkPlan(ctx context.Context, tx pgx.Tx, h Handover, plan HandoverPlan) er
 	seenSvc := map[string]bool{}
 	for _, p := range plan.Services {
 		if !wantSvc[p.Name] || seenSvc[p.Name] {
-			return stale(fmt.Sprintf("转交清单与当前情况不一致（服务 %s），请刷新后重试", p.Name))
+			return stale("core.err.handover_mismatch_service", i18n.D{"Name": p.Name})
 		}
 		seenSvc[p.Name] = true
 		receivers[p.ToMemberID] = true
 	}
 	if len(seenSvc) != len(wantSvc) {
-		return stale("还有服务没有选新的负责人")
+		return stale("core.err.handover_unassigned_service")
 	}
 	for id := range receivers {
 		r, err := store.MemberByID(ctx, tx, id)
 		if errors.Is(err, store.ErrNotFound) {
-			return inputErr("接手人 %d 不存在", id)
+			return inputErr("core.err.receiver_not_found", i18n.D{"ID": id})
 		}
 		if err != nil {
 			return err
 		}
 		if r.WorkspaceID != h.Member.WorkspaceID || !r.Active() || r.ID == h.Member.ID {
-			return inputErr("接手人 %s 不是这个工作空间在册、未停用的其他成员", r.Name)
+			return inputErr("core.err.receiver_invalid", i18n.D{"Name": r.Name})
 		}
 	}
 	return nil
@@ -716,7 +765,7 @@ func reassign(ctx context.Context, tx pgx.Tx, op store.Member, is store.Issue, o
 	}
 	who := store.Identity{AccountID: op.AccountID, MemberID: op.ID, WorkspaceID: op.WorkspaceID, MemberName: op.Name, Tool: "web"}
 	if err := store.InsertEvent(ctx, tx, store.Event{IssueID: is.ID, ActorMemberID: op.ID, ActorTool: who.Tool,
-		Action: issue.ActReassign, FromStatus: is.Status, ToStatus: is.Status, Note: "管理员转交", Payload: payload}); err != nil {
+		Action: issue.ActReassign, FromStatus: is.Status, ToStatus: is.Status, Note: i18n.T("core.reassign.note"), Payload: payload}); err != nil {
 		return err
 	}
 	return queueReassign(ctx, tx, who, is, owner != nil, source != nil)
@@ -736,14 +785,14 @@ func (s *Service) DisableAccount(ctx context.Context, act Actor, accountID int64
 			return err
 		}
 		if actor != nil && actor.ID == accountID {
-			return inputErr("不能停用自己")
+			return inputErr("core.err.cannot_disable_self")
 		}
 		a, err := store.LockAccount(ctx, tx, accountID)
 		if err != nil {
 			return err
 		}
 		if a.Disabled() {
-			return stateErr("账号 %s 已经停用", a.Name)
+			return stateErr("core.err.account_already_disabled", i18n.D{"Name": a.Name})
 		}
 		if a.ServerAdmin {
 			n, err := store.CountActiveServerAdmins(ctx, tx)
@@ -751,7 +800,7 @@ func (s *Service) DisableAccount(ctx context.Context, act Actor, accountID int64
 				return err
 			}
 			if n <= 1 {
-				return inputErr("不能停用最后一名服务器管理员")
+				return inputErr("core.err.cannot_disable_last_server_admin")
 			}
 		}
 		if err := store.SetAccountDisabled(ctx, tx, a.ID, true, actorID(actor)); err != nil {
@@ -793,7 +842,7 @@ func (s *Service) EnableAccount(ctx context.Context, act Actor, accountID int64)
 			return err
 		}
 		if !a.Disabled() {
-			return stateErr("账号 %s 没有停用", a.Name)
+			return stateErr("core.err.account_not_disabled", i18n.D{"Name": a.Name})
 		}
 		if err := store.SetAccountDisabled(ctx, tx, a.ID, false, nil); err != nil {
 			return err
@@ -828,7 +877,7 @@ func (s *Service) SetServerAdmin(ctx context.Context, act Actor, accountID int64
 			return err
 		}
 		if n == 0 {
-			return inputErr("服务器上至少要保留一名未停用的服务器管理员")
+			return inputErr("core.err.server_admin_keep")
 		}
 		action := ActServerAdminRevoke
 		if on {
@@ -871,7 +920,7 @@ func (s *Service) CreateWorkspaceNamed(ctx context.Context, act Actor, name, dis
 	actor := act.Account
 	name = strings.TrimSpace(name)
 	if err := checkMemberName(name); err != nil {
-		return store.Workspace{}, inputErr("工作空间路径 %q 不合法：小写字母、数字、下划线、横线，1 到 32 个字符", name)
+		return store.Workspace{}, inputErr("core.err.workspace_path_invalid", i18n.D{"Name": strconv.Quote(name)})
 	}
 	display, err := cleanWorkspaceDisplayName(display)
 	if err != nil {
@@ -888,7 +937,7 @@ func (s *Service) CreateWorkspaceNamed(ctx context.Context, act Actor, name, dis
 		var err error
 		ws, err = store.CreateWorkspace(ctx, tx, name)
 		if isUniqueViolation(err) {
-			return stateErr("工作空间 %s 已存在", name)
+			return stateErr("core.err.workspace_exists", i18n.D{"Name": name})
 		}
 		if err != nil {
 			return err
@@ -911,7 +960,7 @@ func (s *Service) CreateWorkspaceNamed(ctx context.Context, act Actor, name, dis
 		switch {
 		case strings.TrimSpace(adminName) != "":
 			if admin, err = store.AccountByName(ctx, tx, strings.TrimSpace(adminName)); errors.Is(err, store.ErrNotFound) {
-				return inputErr("没有登录名为 %s 的账号", adminName)
+				return inputErr("core.err.account_missing", i18n.D{"Name": adminName})
 			} else if err != nil {
 				return err
 			}
@@ -921,7 +970,7 @@ func (s *Service) CreateWorkspaceNamed(ctx context.Context, act Actor, name, dis
 			return record(ctx, tx, act, ev)
 		}
 		if admin.Disabled() {
-			return inputErr("账号 %s 已停用", admin.Name)
+			return inputErr("core.err.account_disabled", i18n.D{"Name": admin.Name})
 		}
 		if _, err = store.AddMembership(ctx, tx, admin.ID, ws.ID, store.RoleAdmin, actorID(actor)); err != nil {
 			return err
@@ -951,7 +1000,7 @@ func (s *Service) DeleteWorkspace(ctx context.Context, act Actor, name string) e
 			return err
 		}
 		if n > 0 {
-			return stateErr("工作空间 %s 里还有 %d 张问题单，不能删除", name, n)
+			return stateErr("core.err.workspace_not_empty", i18n.D{"Name": name, "Count": n})
 		}
 		if err := store.DeleteEmptyWorkspace(ctx, tx, ws.ID); err != nil {
 			return err

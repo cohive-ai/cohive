@@ -33,6 +33,7 @@ type fixture struct {
 	tokenA, tokenB string
 	tokenAID       int64
 	revoke         func(id int64)
+	setLang        func(member, lang string) // 设账号语言（按成员名找账号）
 }
 
 func newFixture(t *testing.T) fixture {
@@ -64,6 +65,12 @@ func newFixture(t *testing.T) fixture {
 	return fixture{url: srv.URL + "/mcp", tokenA: ta, tokenB: tb, tokenAID: taID,
 		revoke: func(id int64) {
 			if err := store.RevokeToken(ctx, pool, id); err != nil {
+				t.Fatal(err)
+			}
+		},
+		setLang: func(member, lang string) {
+			m := map[string]int64{"lee-claude": a.AccountID, "lee-codex": b.AccountID}
+			if err := store.SetAccountLanguage(ctx, pool, m[member], lang); err != nil {
 				t.Fatal(err)
 			}
 		}}

@@ -197,7 +197,7 @@ func TestDispatchDingTalkQuotaPauses(t *testing.T) {
 		t.Fatal(err)
 	}
 	n := e.notification(t, is.ID)
-	if n.Status != "pending" || n.Attempts != 0 || !strings.Contains(n.LastError, "额度") {
+	if n.Status != "pending" || n.Attempts != 0 || !strings.Contains(n.LastError, "quota") {
 		t.Fatalf("额度用完应保留、不计失败：%+v", n)
 	}
 	// 额度恢复：到了下次投递时间照常送出，卡片编号由通知编号定（重发不会出现第二张卡）

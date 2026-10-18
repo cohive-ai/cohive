@@ -4,7 +4,7 @@ import { expect, it } from "vitest";
 const sources = import.meta.glob<string>("../**/*.{ts,tsx}", { query: "?raw", import: "default", eager: true });
 
 // 第二段才改的文件（在另一条分支上），第二段清空
-const pending = ["../pages/Admin.tsx"];
+const pending: string[] = [];
 
 const cjk = /[　-〿一-鿿＀-￯]/;
 

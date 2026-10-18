@@ -48,13 +48,14 @@ func auditCmd(ctx context.Context, out io.Writer, args []string) error {
 		fmt.Fprintln(out, i18n.T("server.audit.none"))
 		return nil
 	}
+	l := i18n.Default()
 	for _, e := range p.Items {
 		ws := ""
 		if e.WorkspaceName != "" {
 			ws = "[" + e.WorkspaceName + "]  "
 		}
-		fmt.Fprintf(out, "#%d  %s  %s  %s%s\n", e.ID, e.At.Local().Format("2006-01-02 15:04"), core.ViaLabels[e.Via], ws,
-			printable(core.EventText(e)))
+		fmt.Fprintf(out, "#%d  %s  %s  %s%s\n", e.ID, e.At.Local().Format("2006-01-02 15:04"), core.ViaLabel(l, e.Via), ws,
+			printable(core.EventText(l, e)))
 	}
 	if p.NextBefore > 0 {
 		fmt.Fprintln(out, i18n.T("server.audit.older", i18n.D{"Before": p.NextBefore}))
@@ -65,7 +66,7 @@ func auditCmd(ctx context.Context, out io.Writer, args []string) error {
 func categoryIDs() string {
 	ids := make([]string, 0, len(core.Categories))
 	for _, c := range core.Categories {
-		ids = append(ids, i18n.T("server.audit.category_item", i18n.D{"ID": c.ID, "Label": c.Label}))
+		ids = append(ids, i18n.T("server.audit.category_item", i18n.D{"ID": c.ID, "Label": c.Label(i18n.Default())}))
 	}
 	return strings.Join(ids, i18n.T("server.list_separator"))
 }

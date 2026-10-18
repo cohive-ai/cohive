@@ -6,11 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -30,15 +31,15 @@ const (
 
 var (
 	// ErrInviteInvalid 表示邀请不存在、已作废、已用完或已过期。
-	ErrInviteInvalid = errors.New("邀请链接无效、已用完或已过期，请向管理员要一个新的")
+	ErrInviteInvalid = i18n.Errorf("core.err.invite_invalid")
 	// ErrAuthGone 表示设备授权不存在、已处理、已过期，或轮询密钥不对。
-	ErrAuthGone = errors.New("这次设备授权已失效，请在终端重新执行 cohive login")
+	ErrAuthGone = i18n.Errorf("core.err.auth_gone")
 	// ErrDecided 表示申请已经处理过。
-	ErrDecided = errors.New("这条申请已经处理过了")
+	ErrDecided = i18n.Errorf("core.err.decided")
 	// ErrNoDevice 表示令牌不属于任何设备（管理员手工签发的令牌）。
-	ErrNoDevice = errors.New("这个令牌不属于任何设备，请执行 cohive login 重新配对这台电脑")
+	ErrNoDevice = i18n.Errorf("core.err.no_device")
 	// ErrJoinPending 表示已有待审的加入申请。
-	ErrJoinPending = errors.New("你已提交过加入申请，正在等管理员批准")
+	ErrJoinPending = i18n.Errorf("core.err.join_pending")
 )
 
 var (
@@ -79,7 +80,7 @@ func cleanTools(tools []string) ([]string, error) {
 	for _, t := range tools {
 		t = strings.TrimSpace(t)
 		if !toolName.MatchString(t) {
-			return nil, inputErr("工具名 %q 不合法，例如 claude-code、codex", t)
+			return nil, inputErr("core.err.tool_name_invalid", i18n.D{"Name": strconv.Quote(t)})
 		}
 		if !seen[t] {
 			seen[t] = true
@@ -87,14 +88,14 @@ func cleanTools(tools []string) ([]string, error) {
 		}
 	}
 	if len(out) == 0 || len(out) > 4 {
-		return nil, inputErr("工具数量应为 1 到 4 个")
+		return nil, inputErr("core.err.tool_count_invalid")
 	}
 	return out, nil
 }
 
 func checkMemberName(name string) error {
 	if !memberNameRule.MatchString(name) {
-		return inputErr("登录名 %q 不合法：小写字母、数字、下划线、横线，1 到 32 个字符", name)
+		return inputErr("core.err.username_invalid", i18n.D{"Name": strconv.Quote(name)})
 	}
 	return nil
 }
@@ -110,12 +111,24 @@ func cleanDisplayName(s string) string {
 	return s
 }
 
-// deciderName 是审批消息里显示的审批人。
-func deciderName(actor *store.Account) string {
+// deciderName 是审批消息里显示的审批人；服务器命令行没有账号，按语言 l 写“服务器管理员”。
+func deciderName(l i18n.Lang, actor *store.Account) string {
 	if actor == nil {
-		return "服务器管理员"
+		return l.T("core.decider.server_admin")
 	}
 	return actor.Name
+}
+
+// wsLanguage 返回工作空间保存的群消息语言代码，交给 i18n.Pick 取语言；wsID 为 0 或读不到时返回空（用服务器缺省语言）。
+func wsLanguage(ctx context.Context, q store.DBTX, wsID int64) string {
+	if wsID == 0 {
+		return ""
+	}
+	ws, err := store.GetWorkspace(ctx, q, wsID)
+	if err != nil {
+		return ""
+	}
+	return ws.Language
 }
 
 func actorID(actor *store.Account) *int64 {
@@ -153,24 +166,24 @@ func (s *Service) CreateInvite(ctx context.Context, act Actor, wsID int64, spec 
 		}
 	case store.InviteTeam:
 		if spec.Admin {
-			return CreatedInvite{}, inputErr("团队邀请不能设为管理员；需要管理员请用个人邀请")
+			return CreatedInvite{}, inputErr("core.err.invite_team_not_admin")
 		}
 		inv.MaxUses = spec.MaxUses
 		if inv.MaxUses == 0 {
 			inv.MaxUses = 20
 		}
 		if inv.MaxUses < 1 || inv.MaxUses > MaxInviteUses {
-			return CreatedInvite{}, inputErr("团队邀请的可用次数应为 1 到 %d", MaxInviteUses)
+			return CreatedInvite{}, inputErr("core.err.invite_uses_range", i18n.D{"Max": MaxInviteUses})
 		}
 	default:
-		return CreatedInvite{}, inputErr("邀请类型应为个人邀请或团队邀请")
+		return CreatedInvite{}, inputErr("core.err.invite_kind_invalid")
 	}
 	ttl := spec.TTL
 	if ttl == 0 {
 		ttl = DefaultInviteTTL
 	}
 	if ttl < time.Hour || ttl > MaxInviteTTL {
-		return CreatedInvite{}, inputErr("邀请有效期应在 1 小时到 30 天之间")
+		return CreatedInvite{}, inputErr("core.err.invite_ttl_range")
 	}
 	inv.ExpiresAt = time.Now().Add(ttl)
 	code, err := randomString(inviteCodeBytes)
@@ -263,6 +276,7 @@ type RegisterInput struct {
 	Name        string
 	DisplayName string
 	Password    string
+	Language    string // 注册时的界面语言，写到新账号上；不认识的语言忽略
 }
 
 // RegisterResult 是注册结果：个人邀请直接得到账号与成员资格；团队邀请得到待审申请。
@@ -276,12 +290,12 @@ type RegisterResult struct {
 // nameTaken 判断登录名是否已被账号或新人待审申请占用（全局唯一）。
 func nameTaken(ctx context.Context, q store.DBTX, name string) error {
 	if _, err := store.AccountByName(ctx, q, name); err == nil {
-		return inputErr("登录名 %s 已被使用，请换一个", name)
+		return inputErr("core.err.username_taken", i18n.D{"Name": name})
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
 	if _, err := store.PendingSignupByName(ctx, q, name); err == nil {
-		return inputErr("登录名 %s 已有人申请，请换一个", name)
+		return inputErr("core.err.username_pending", i18n.D{"Name": name})
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
@@ -340,17 +354,18 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 			return err
 		}
 		display := cleanDisplayName(in.DisplayName)
+		lang, _ := normLanguage(in.Language)
 		if inv.Kind == store.InviteTeam {
 			sg, err := store.CreateSignup(ctx, tx, store.Signup{InviteID: inv.ID, WorkspaceID: inv.WorkspaceID,
-				Name: name, DisplayName: display, PasswordHash: hash})
+				Name: name, DisplayName: display, PasswordHash: hash, Language: lang})
 			if isUniqueViolation(err) {
 				// 用不同邀请同时申请同一个名字时，由唯一约束兜底
-				return inputErr("登录名 %s 已有人申请，请换一个", name)
+				return inputErr("core.err.username_pending", i18n.D{"Name": name})
 			}
 			res.Signup = &sg
 			return err
 		}
-		acc, m, err := createAccount(ctx, tx, inv.WorkspaceID, name, display, hash, inv.Role, nil)
+		acc, m, err := createAccount(ctx, tx, inv.WorkspaceID, name, display, hash, lang, inv.Role, nil)
 		if err != nil {
 			return err
 		}
@@ -371,16 +386,22 @@ func recordInviteUse(ctx context.Context, tx pgx.Tx, acc store.Account, m store.
 }
 
 // createAccount 新建有密码的账号并加入工作空间。
-func createAccount(ctx context.Context, tx pgx.Tx, wsID int64, name, display, passwordHash, role string, addedBy *int64) (store.Account, store.Member, error) {
+func createAccount(ctx context.Context, tx pgx.Tx, wsID int64, name, display, passwordHash, lang, role string, addedBy *int64) (store.Account, store.Member, error) {
 	acc, err := store.CreateAccount(ctx, tx, name, display)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return store.Account{}, store.Member{}, inputErr("登录名 %s 已被使用，请换一个", name)
+			return store.Account{}, store.Member{}, inputErr("core.err.username_taken", i18n.D{"Name": name})
 		}
 		return store.Account{}, store.Member{}, err
 	}
 	if err := store.SetAccountPassword(ctx, tx, acc.ID, passwordHash, false); err != nil {
 		return store.Account{}, store.Member{}, err
+	}
+	if lang != "" {
+		if err := store.SetAccountLanguage(ctx, tx, acc.ID, lang); err != nil {
+			return store.Account{}, store.Member{}, err
+		}
+		acc.Language = lang
 	}
 	m, err := store.AddMembership(ctx, tx, acc.ID, wsID, role, addedBy)
 	return acc, m, err
@@ -468,7 +489,7 @@ func (s *Service) DecideSignup(ctx context.Context, act Actor, wsID, id int64, a
 			return err
 		}
 		if wsID != 0 && sg.WorkspaceID != wsID {
-			return fmt.Errorf("申请 %d：%w", id, store.ErrNotFound)
+			return i18n.Wrap(store.ErrNotFound, "core.err.signup_id", i18n.D{"ID": id})
 		}
 		if err := canAdmin(ctx, tx, actor, sg.WorkspaceID); err != nil {
 			return err
@@ -476,7 +497,8 @@ func (s *Service) DecideSignup(ctx context.Context, act Actor, wsID, id int64, a
 		if sg.Status != store.SignupPending {
 			return ErrDecided
 		}
-		d.Decider = deciderName(actor)
+		// 审批人写进群里的审批消息：按这个工作空间的群消息语言
+		d.Decider = deciderName(i18n.Pick(wsLanguage(ctx, tx, sg.WorkspaceID)), actor)
 		var accID *int64
 		sg.Status = store.SignupRejected
 		if approve {
@@ -487,12 +509,12 @@ func (s *Service) DecideSignup(ctx context.Context, act Actor, wsID, id int64, a
 					return err
 				}
 				if acc.Disabled() {
-					return inputErr("账号 %s 已停用，不能加入", acc.Name)
+					return inputErr("core.err.account_disabled_join", i18n.D{"Name": acc.Name})
 				}
 				if m, err = store.AddMembership(ctx, tx, acc.ID, sg.WorkspaceID, store.RoleMember, actorID(actor)); err != nil {
 					return err
 				}
-			} else if acc, m, err = createAccount(ctx, tx, sg.WorkspaceID, sg.Name, sg.DisplayName, sg.PasswordHash,
+			} else if acc, m, err = createAccount(ctx, tx, sg.WorkspaceID, sg.Name, sg.DisplayName, sg.PasswordHash, sg.Language,
 				store.RoleMember, actorID(actor)); err != nil {
 				return err
 			}

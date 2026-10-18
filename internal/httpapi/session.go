@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -33,8 +34,16 @@ type Caller struct {
 
 type callerKey struct{}
 
-func withCaller(r *http.Request, c Caller) *http.Request {
-	return r.WithContext(context.WithValue(r.Context(), callerKey{}, c))
+// withCaller 记下操作者。请求没带 Accept-Language 时（命令行没设 COHIVE_LANG），按账号语言回报错，
+// 并在响应头 Content-Language 里回告，命令行据此缓存账号语言。网页总会带上界面语言。
+func withCaller(w http.ResponseWriter, r *http.Request, c Caller) *http.Request {
+	ctx := context.WithValue(r.Context(), callerKey{}, c)
+	if r.Header.Get("Accept-Language") == "" {
+		l := i18n.Pick(c.Account.Language)
+		w.Header().Set("Content-Language", string(l))
+		ctx = i18n.WithLang(ctx, l)
+	}
+	return r.WithContext(ctx)
 }
 
 func caller(r *http.Request) Caller {
@@ -70,7 +79,7 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 					writeError(w, err)
 					return
 				}
-				next.ServeHTTP(w, withCaller(r, Caller{Account: a, Device: &d}))
+				next.ServeHTTP(w, withCaller(w, r, Caller{Account: a, Device: &d}))
 				return
 			}
 			who, err := store.LookupToken(r.Context(), svc.Pool, plain)
@@ -87,7 +96,7 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 				writeError(w, err)
 				return
 			}
-			next.ServeHTTP(w, withCaller(r, Caller{Account: a, Token: &who}))
+			next.ServeHTTP(w, withCaller(w, r, Caller{Account: a, Token: &who}))
 			return
 		}
 		c, err := r.Cookie(sessionCookie)
@@ -120,7 +129,7 @@ func authMiddleware(svc *core.Service, next http.Handler) http.Handler {
 			writeJSON(w, http.StatusForbidden, body)
 			return
 		}
-		next.ServeHTTP(w, withCaller(r, Caller{Account: a, Session: c.Value, SessionVia: via, MustChange: pw.MustChange}))
+		next.ServeHTTP(w, withCaller(w, r, Caller{Account: a, Session: c.Value, SessionVia: via, MustChange: pw.MustChange}))
 	})
 }
 

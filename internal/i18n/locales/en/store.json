@@ -1,0 +1,8 @@
+{
+  "store.err.not_found": "Not found",
+  "store.err.unauthorized": "The token is invalid or has been revoked",
+  "store.err.version_conflict": "The version has changed",
+  "store.err.account_disabled": "This account has been deactivated. Contact a server admin",
+  "store.err.already_member": "Already a member of this workspace",
+  "store.err.device_revoked": "This device has been revoked"
+}

@@ -38,10 +38,11 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 		fmt.Fprintln(out, i18n.T("server.workspace.created", i18n.D{"Name": w.Name, "Display": w.Label(), "ID": w.ID}))
 		return nil
 	case "set":
-		var name, display string
+		var name, display, lang string
 		var openH, verifyH int
 		set := map[string]bool{}
 		fs := flag.NewFlagSet("workspace set", flag.ContinueOnError)
+		fs.StringVar(&lang, "language", "", i18n.T("server.flag.ws_language"))
 		fs.StringVar(&name, "name", "", i18n.T("server.flag.ws_path"))
 		fs.StringVar(&display, "display", "", i18n.T("server.flag.ws_display_set"))
 		fs.IntVar(&openH, "remind-open-hours", 0, i18n.T("server.flag.remind_open_hours"))
@@ -53,7 +54,7 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 		if err := required("name", name); err != nil {
 			return err
 		}
-		if !set["display"] && !set["remind-open-hours"] && !set["remind-verify-hours"] {
+		if !set["display"] && !set["remind-open-hours"] && !set["remind-verify-hours"] && !set["language"] {
 			return i18n.Errorf("server.workspace.nothing_to_change")
 		}
 		wsID, err := resolveWorkspace(ctx, pool, name)
@@ -78,9 +79,21 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 				return err
 			}
 		}
+		if set["language"] {
+			if err := svc.SetWorkspaceLanguage(ctx, core.ServerCLI(), wsID, lang); err != nil {
+				return err
+			}
+		}
 		w, err := store.GetWorkspace(ctx, pool, wsID)
 		if err != nil {
 			return err
+		}
+		if set["language"] {
+			shown := w.Language
+			if shown == "" {
+				shown = i18n.T("server.workspace.language_default", i18n.D{"Default": string(i18n.Default())})
+			}
+			fmt.Fprintln(out, i18n.T("server.workspace.language_set", i18n.D{"Name": w.Name, "Language": shown}))
 		}
 		fmt.Fprintln(out, i18n.T("server.workspace.settings_set", i18n.D{"Name": w.Name, "Display": w.Label(),
 			"Open": hoursLabel(w.Remind.OpenHours), "Verify": hoursLabel(w.Remind.VerifyHours)}))

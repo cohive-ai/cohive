@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -59,7 +60,7 @@ func (d *DingTalkChannel) streamOf() *dingStream {
 // Run 维持 Stream 长连接，直到 ctx 结束。
 func (d *DingTalkChannel) Run(ctx context.Context) { d.streamOf().Run(ctx) }
 
-// Status 返回 Stream 是否在线，以及不在线的原因或配置提示。
+// Status 返回 Stream 是否在线，以及不在线的原因或配置提示（给管理员看，用服务器缺省语言）。
 func (d *DingTalkChannel) Status() (bool, string) {
 	online, why := d.streamOf().status()
 	var notes []string
@@ -67,12 +68,12 @@ func (d *DingTalkChannel) Status() (bool, string) {
 		notes = append(notes, why)
 	}
 	if d.NoticeTemplate == "" {
-		notes = append(notes, "未配通知卡片模板（COHIVE_DINGTALK_NOTICE_TEMPLATE），群通知不会 @ 到人")
+		notes = append(notes, i18n.T("notify.status.no_notice_template"))
 	}
 	if d.ApprovalTemplate == "" {
-		notes = append(notes, "未配审批卡片模板（COHIVE_DINGTALK_APPROVAL_TEMPLATE），审批消息不带按钮")
+		notes = append(notes, i18n.T("notify.status.no_approval_template"))
 	}
-	return online, strings.Join(notes, "；")
+	return online, strings.Join(notes, i18n.T("notify.status.sep"))
 }
 
 // dtText 把按行拼好的正文换成钉钉 Markdown 的换行（行末两个空格）。
@@ -114,7 +115,7 @@ func (d *DingTalkChannel) Send(ctx context.Context, chat string, m Rendered) err
 func (d *DingTalkChannel) SendApproval(ctx context.Context, chat string, m Rendered, a Approval) (string, error) {
 	online, _ := d.streamOf().status()
 	if d.ApprovalTemplate == "" || !online {
-		text := dtText(m.Text + "\n（群里暂时不能直接点按钮审批，请到 Cohive 网页“管理 → 待审”里处理）")
+		text := dtText(m.Text + "\n" + m.lang().T("notify.dingtalk.no_buttons"))
 		return "", d.API.GroupMarkdown(ctx, chat, m.Title, text)
 	}
 	ref := fmt.Sprintf("cohive-%s-%d-%d-%s", a.Kind, a.RefID, a.WorkspaceID, randomRef())
@@ -211,7 +212,7 @@ func (d *DingTalkChannel) onCard(_ context.Context, data []byte) any {
 		defer cancel()
 		if late && res.Result != nil {
 			if err := d.API.UpdateCard(ctx, c.MsgRef, resultParams(*res.Result)); err != nil {
-				d.logf("更新审批卡片失败：%v", err)
+				d.logf("failed to update approval card: %v", err)
 			}
 		}
 		if res.After != nil {
@@ -229,7 +230,10 @@ func (d *DingTalkChannel) onCard(_ context.Context, data []byte) any {
 			CardUpdateOptions: map[string]bool{"updateCardDataByKey": true, "updatePrivateDataByKey": true}}
 	case <-time.After(wait):
 		go func() { finish(<-done, true) }()
-		return tipOnly("处理中，稍后结果会更新到卡片上")
+		// 结果还没出来，按审批消息所属工作空间的语言提示
+		lctx, lcancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer lcancel()
+		return tipOnly(d.Hub.ClickLang(lctx, c).T("notify.toast.processing"))
 	}
 }
 
@@ -260,13 +264,10 @@ func command(text string) (cmd, first string, args []string) {
 	return strings.ToLower(strings.TrimPrefix(fields[0], "/")), fields[0], fields[1:]
 }
 
-const dtGroupHelp = "我是 Cohive 机器人。在群里 @我 可以发：  \n" +
-	"- `绑定群 绑定码`：把本群绑定到工作空间（绑定码在网页“管理 → 工作空间”里生成）  \n" +
-	"- `群编号`：查看本群的编号  \n" +
-	"- `我是谁`：查看你连接的 Cohive 账号  \n" +
-	"连接钉钉账号的码请**私聊**发给我。"
+// 机器人的帮助说明按语言写，英文说明里写英文指令（中文指令与英文指令都认，见 handleBot）。
+func dtGroupHelp(l i18n.Lang) string { return l.T("notify.dingtalk.group_help") }
 
-const dtPrivateHelp = "我是 Cohive 机器人。要把你的钉钉账号连接到 Cohive，请在网页“个人中心”点“连接钉钉”，把网页上的绑定码发给我。"
+func dtPrivateHelp(l i18n.Lang) string { return l.T("notify.dingtalk.private_help") }
 
 // onBot 处理机器人消息：确认已在 Stream 层做过，这里开协程处理并经会话 Webhook 回复。
 func (d *DingTalkChannel) onBot(_ context.Context, data []byte) {
@@ -282,7 +283,7 @@ func (d *DingTalkChannel) onBot(_ context.Context, data []byte) {
 			return
 		}
 		if err := d.API.Reply(ctx, m.SessionWebhook, "Cohive", reply); err != nil {
-			d.logf("回复钉钉消息失败：%v", err)
+			d.logf("failed to reply to DingTalk message: %v", err)
 		}
 	}()
 }
@@ -291,20 +292,32 @@ func (d *DingTalkChannel) who(m botMessage) core.ChatSender {
 	return core.ChatSender{Tenant: m.SenderCorpID, UserID: m.SenderStaffID, Name: m.SenderNick}
 }
 
-func (d *DingTalkChannel) whoami(ctx context.Context, m botMessage, chat string) string {
+func (d *DingTalkChannel) whoami(ctx context.Context, lang i18n.Lang, m botMessage, chat string) string {
 	esc := DingTalkFormat{}.Esc
 	if d.Hub == nil {
 		return ""
 	}
-	acc, wsLabel, role, ok := d.Hub.Whoami(ctx, ChatUser{Provider: store.ProviderDingTalk, Tenant: m.SenderCorpID, UserID: m.SenderStaffID}, chat)
+	acc, wsLabel, role, ok := d.Hub.Whoami(ctx, lang, ChatUser{Provider: store.ProviderDingTalk, Tenant: m.SenderCorpID, UserID: m.SenderStaffID}, chat)
 	if !ok {
-		return "你的钉钉账号还没有连接 Cohive。请在网页“个人中心”点“连接钉钉”，把绑定码私聊发给我。"
+		return lang.T("notify.dingtalk.whoami_unlinked")
 	}
-	text := "你的钉钉账号已连接 Cohive 账号 " + esc(acc) + "。"
+	text := lang.T("notify.dingtalk.whoami_linked", i18n.D{"Account": esc(acc)})
 	if wsLabel != "" {
-		text += "  \n在本群对应的工作空间 " + esc(wsLabel) + " 里：" + role
+		text += "  \n" + lang.T("notify.dingtalk.whoami_role", i18n.D{"Workspace": esc(wsLabel), "Role": role})
 	}
 	return text
+}
+
+// replyLang 是机器人回复这条消息用的语言：群里用群所属工作空间的语言，单聊用对方连接的 Cohive 账号的语言；
+// 群还没绑定、对方还没连接账号时用服务器缺省语言。
+func (d *DingTalkChannel) replyLang(ctx context.Context, m botMessage, private bool) i18n.Lang {
+	if d.Hub == nil {
+		return i18n.Default()
+	}
+	if private {
+		return d.Hub.accountLang(ctx, store.ProviderDingTalk, m.SenderCorpID, m.SenderStaffID)
+	}
+	return d.Hub.chatLang(ctx, store.ProviderDingTalk, m.ConversationID)
 }
 
 // handleBot 返回要回复的内容（已是钉钉 Markdown）；空串表示不回复。
@@ -316,9 +329,10 @@ func (d *DingTalkChannel) handleBot(ctx context.Context, m botMessage) string {
 	}
 	cmd, first, args := command(text)
 	private := m.ConversationType == "1"
+	lang := d.replyLang(ctx, m, private)
 	code := ""
 	switch {
-	case (cmd == "绑定" || cmd == "bind") && len(args) == 1:
+	case (cmd == "绑定" || cmd == "bind") && len(args) == 1: // i18n-ignore 解析用户输入，中文指令继续认
 		code = args[0]
 	case len(args) == 0 && core.LooksLikeCode(first):
 		code = first
@@ -329,50 +343,52 @@ func (d *DingTalkChannel) handleBot(ctx context.Context, m botMessage) string {
 		case code != "" && d.Core != nil:
 			res, err := d.Core.SubmitLinkCode(ctx, store.ProviderDingTalk, code, d.who(m), true)
 			if err != nil {
-				return d.userErr(err, "连接钉钉")
+				return d.userErr(lang, err, "link account")
 			}
-			return "已收到。请回到 Cohive 网页确认：把这个钉钉账号连接到 Cohive 账号 " + esc(res.Account) + "。"
-		case cmd == "我是谁" || cmd == "whoami":
-			return d.whoami(ctx, m, "")
+			return lang.T("notify.dingtalk.link_received", i18n.D{"Account": esc(res.Account)})
+		case cmd == "我是谁" || cmd == "whoami": // i18n-ignore 解析用户输入，中文指令继续认
+			return d.whoami(ctx, lang, m, "")
 		}
-		return dtPrivateHelp
+		return dtPrivateHelp(lang)
 	}
 
 	switch {
-	case cmd == "群编号" || cmd == "chatid":
-		return fmt.Sprintf("这个群（%s）的编号是 %s  \n工作空间管理员也可以在网页“管理 → 工作空间”生成绑定码，在群里 @我 发 `绑定群 绑定码` 一步绑定。",
-			esc(m.ConversationTitle), DingTalkFormat{}.Code(m.ConversationID))
-	case cmd == "我是谁" || cmd == "whoami":
-		return d.whoami(ctx, m, m.ConversationID)
-	case (cmd == "绑定群" || cmd == "bindgroup") && len(args) == 1 && d.Core != nil:
+	case cmd == "群编号" || cmd == "chatid": // i18n-ignore 解析用户输入，中文指令继续认
+		return lang.T("notify.dingtalk.chatid", i18n.D{"Title": esc(m.ConversationTitle), "ID": DingTalkFormat{}.Code(m.ConversationID)})
+	case cmd == "我是谁" || cmd == "whoami": // i18n-ignore 解析用户输入，中文指令继续认
+		return d.whoami(ctx, lang, m, m.ConversationID)
+	case (cmd == "绑定群" || cmd == "bindgroup") && len(args) == 1 && d.Core != nil: // i18n-ignore 解析用户输入，中文指令继续认
 		label, err := d.Core.CompleteChatBind(ctx, store.ProviderDingTalk, m.ConversationID, m.ConversationTitle, args[0])
 		if err != nil {
-			return d.userErr(err, "绑定群")
+			return d.userErr(lang, err, "bind group")
 		}
-		return "已把本群绑定到工作空间 " + esc(label) + "。之后的问题单通知与审批消息会发到这里。"
+		// 绑定成功后这个群的语言就是工作空间的语言
+		lang = d.replyLang(ctx, m, false)
+		return lang.T("notify.dingtalk.bound", i18n.D{"Workspace": esc(label)})
 	case code != "" && d.Core != nil:
 		// 账号绑定码出现在群里：作废（回复里不复述码）；不是账号绑定码时，可能是群绑定码少写了“群”
 		_, err := d.Core.SubmitLinkCode(ctx, store.ProviderDingTalk, code, d.who(m), false)
 		if errors.Is(err, core.ErrLinkCodeLeaked) {
-			return core.ErrLinkCodeLeaked.Error()
+			return i18n.Message(lang, core.ErrLinkCodeLeaked)
 		}
 		label, err := d.Core.CompleteChatBind(ctx, store.ProviderDingTalk, m.ConversationID, m.ConversationTitle, code)
 		if err == nil {
-			return "已把本群绑定到工作空间 " + esc(label) + "。之后的问题单通知与审批消息会发到这里。"
+			lang = d.replyLang(ctx, m, false)
+			return lang.T("notify.dingtalk.bound", i18n.D{"Workspace": esc(label)})
 		}
 	}
-	return dtGroupHelp
+	return dtGroupHelp(lang)
 }
 
 // userErr 把业务层的错误写成给人看的回复；内部错误只记日志。
-func (d *DingTalkChannel) userErr(err error, what string) string {
+func (d *DingTalkChannel) userErr(lang i18n.Lang, err error, what string) string {
 	var ie *core.InputError
 	var se *core.StateError
 	switch {
 	case errors.Is(err, core.ErrLinkCodeGone), errors.Is(err, core.ErrLinkCodeLeaked), errors.Is(err, core.ErrBindCodeGone),
 		errors.Is(err, store.ErrAccountDisabled), errors.As(err, &ie), errors.As(err, &se):
-		return DingTalkFormat{}.Esc(err.Error())
+		return DingTalkFormat{}.Esc(i18n.Message(lang, err))
 	}
-	d.logf("钉钉机器人处理“%s”失败：%v", what, err)
-	return "暂时无法完成，请稍后再试。"
+	d.logf("DingTalk bot failed to handle %q: %v", what, err)
+	return lang.T("notify.dingtalk.try_later")
 }

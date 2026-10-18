@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -62,14 +63,14 @@ type dtError struct {
 
 // classify 把钉钉的错误归到通道的四类错误里：限流、通道整体不可用、不值得重试、其余（照常重试）。
 func classify(api string, status int, e dtError) error {
-	desc := fmt.Sprintf("钉钉 %s 失败（HTTP %d，%s）：%s", api, status, e.Code, e.Message)
+	desc := fmt.Sprintf("DingTalk %s failed (HTTP %d, %s): %s", api, status, e.Code, e.Message)
 	switch {
 	case strings.Contains(e.Code, "QpsLimit") || status == http.StatusTooManyRequests:
 		return &RetryAfterError{Seconds: 2}
 	case e.Code == "Forbidden.AccessDenied.ApiCountLimitForOrg" || strings.Contains(e.Code, "ApiCountLimit"):
-		return &ChannelDownError{Msg: "钉钉接口本月调用额度已用完（" + e.Code + "），通知会保留，额度恢复或扩容后自动补发；审批请在网页上处理"}
+		return &ChannelDownError{Msg: "DingTalk API quota for this month is used up (" + e.Code + "); notifications are kept and will be sent once the quota recovers or is raised; handle approvals on the web instead"}
 	case strings.HasPrefix(e.Code, "Forbidden.AccessDenied") || status == http.StatusUnauthorized:
-		return &ChannelDownError{Msg: "钉钉应用没有所需权限或凭据无效（" + e.Code + "）：请在钉钉开发者后台检查应用权限与发布状态"}
+		return &ChannelDownError{Msg: "DingTalk app lacks the required permissions or its credentials are invalid (" + e.Code + "): check the app permissions and release status in the DingTalk developer console"}
 	case status == http.StatusBadRequest || status == http.StatusNotFound || status == http.StatusForbidden:
 		return &PermanentError{Msg: desc}
 	}
@@ -86,12 +87,12 @@ func (d *DingTalk) accessToken(ctx context.Context) (string, error) {
 	body, _ := json.Marshal(map[string]string{"appKey": d.ClientID, "appSecret": d.ClientSecret})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.base()+"/v1.0/oauth2/accessToken", bytes.NewReader(body))
 	if err != nil {
-		return "", errors.New("构造钉钉请求失败")
+		return "", errors.New("failed to build DingTalk request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := d.client().Do(req)
 	if err != nil {
-		return "", fmt.Errorf("获取钉钉访问令牌失败：%v", unwrapURL(err))
+		return "", fmt.Errorf("failed to get DingTalk access token: %v", unwrapURL(err))
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -103,9 +104,9 @@ func (d *DingTalk) accessToken(ctx context.Context) (string, error) {
 	_ = json.Unmarshal(raw, &out)
 	if resp.StatusCode != http.StatusOK || out.AccessToken == "" {
 		if resp.StatusCode >= 500 {
-			return "", fmt.Errorf("获取钉钉访问令牌失败（HTTP %d）", resp.StatusCode)
+			return "", fmt.Errorf("failed to get DingTalk access token (HTTP %d)", resp.StatusCode)
 		}
-		return "", &ChannelDownError{Msg: fmt.Sprintf("钉钉应用凭据无效（HTTP %d，%s）：请检查 COHIVE_DINGTALK_CLIENT_ID 与 COHIVE_DINGTALK_CLIENT_SECRET",
+		return "", &ChannelDownError{Msg: fmt.Sprintf("DingTalk app credentials are invalid (HTTP %d, %s): check COHIVE_DINGTALK_CLIENT_ID and COHIVE_DINGTALK_CLIENT_SECRET",
 			resp.StatusCode, out.Code)}
 	}
 	if out.ExpireIn <= 0 {
@@ -142,20 +143,20 @@ func (d *DingTalk) call(ctx context.Context, api, method, path string, in, out a
 	}
 	req, err := http.NewRequestWithContext(ctx, method, d.base()+path, bytes.NewReader(body))
 	if err != nil {
-		return errors.New("构造钉钉请求失败")
+		return errors.New("failed to build DingTalk request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-acs-dingtalk-access-token", tok)
 	resp, err := d.client().Do(req)
 	if err != nil {
-		return fmt.Errorf("调用钉钉 %s 失败：%v", api, unwrapURL(err))
+		return fmt.Errorf("DingTalk %s request failed: %v", api, unwrapURL(err))
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode == http.StatusOK {
 		if out != nil && len(raw) > 0 {
 			if err := json.Unmarshal(raw, out); err != nil {
-				return fmt.Errorf("解析钉钉 %s 的响应失败", api)
+				return fmt.Errorf("failed to parse DingTalk %s response", api)
 			}
 		}
 		return nil
@@ -200,7 +201,7 @@ func (d *DingTalk) DeliverCard(ctx context.Context, c CardDelivery) error {
 	if len(c.AtUserIDs) == 0 {
 		in["imGroupOpenDeliverModel"] = map[string]any{"robotCode": d.robotCode()}
 	}
-	return d.call(ctx, "投放卡片", http.MethodPost, "/v1.0/card/instances/createAndDeliver", in, nil)
+	return d.call(ctx, "deliver card", http.MethodPost, "/v1.0/card/instances/createAndDeliver", in, nil)
 }
 
 // UpdateCard 按卡片编号更新卡片的模板变量（只改给出的变量）。
@@ -211,14 +212,14 @@ func (d *DingTalk) UpdateCard(ctx context.Context, outTrackID string, params map
 		"cardUpdateOptions": map[string]bool{"updateCardDataByKey": true},
 		"userIdType":        1,
 	}
-	return d.call(ctx, "更新卡片", http.MethodPut, "/v1.0/card/instances", in, nil)
+	return d.call(ctx, "update card", http.MethodPut, "/v1.0/card/instances", in, nil)
 }
 
 // GroupMarkdown 以机器人身份往群里发一条 Markdown 消息（不支持 @，降级时用）。
 func (d *DingTalk) GroupMarkdown(ctx context.Context, chatID, title, text string) error {
 	param, _ := json.Marshal(map[string]string{"title": title, "text": text})
 	in := map[string]any{"msgKey": "sampleMarkdown", "msgParam": string(param), "openConversationId": chatID, "robotCode": d.robotCode()}
-	return d.call(ctx, "发送群消息", http.MethodPost, "/v1.0/robot/groupMessages/send", in, nil)
+	return d.call(ctx, "send group message", http.MethodPost, "/v1.0/robot/groupMessages/send", in, nil)
 }
 
 // webhookHostOK 判断回调里带的会话 Webhook 是否指向钉钉（或测试时配置的接口地址），防止被引到别处。
@@ -237,17 +238,17 @@ func (d *DingTalk) webhookHostOK(raw string) bool {
 // Reply 用机器人消息回调里带的会话 Webhook 回复一条 Markdown 消息（不需要访问令牌）。
 func (d *DingTalk) Reply(ctx context.Context, webhook, title, text string) error {
 	if !d.webhookHostOK(webhook) {
-		return errors.New("会话 Webhook 不是钉钉的地址，已拒绝发送")
+		return errors.New("session webhook is not a DingTalk address, refusing to send")
 	}
 	body, _ := json.Marshal(map[string]any{"msgtype": "markdown", "markdown": map[string]string{"title": title, "text": text}})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook, bytes.NewReader(body))
 	if err != nil {
-		return errors.New("构造钉钉请求失败")
+		return errors.New("failed to build DingTalk request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := d.client().Do(req)
 	if err != nil {
-		return fmt.Errorf("回复钉钉消息失败：%v", unwrapURL(err))
+		return fmt.Errorf("failed to reply to DingTalk message: %v", unwrapURL(err))
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
@@ -257,7 +258,7 @@ func (d *DingTalk) Reply(ctx context.Context, webhook, title, text string) error
 	}
 	_ = json.Unmarshal(raw, &out)
 	if resp.StatusCode != http.StatusOK || out.ErrCode != 0 {
-		return fmt.Errorf("回复钉钉消息失败（HTTP %d，%d）：%s", resp.StatusCode, out.ErrCode, out.ErrMsg)
+		return fmt.Errorf("failed to reply to DingTalk message (HTTP %d, %d): %s", resp.StatusCode, out.ErrCode, out.ErrMsg)
 	}
 	return nil
 }
@@ -267,24 +268,24 @@ func (d *DingTalk) Reply(ctx context.Context, webhook, title, text string) error
 type DingTalkFormat struct{}
 
 var dtEscaper = strings.NewReplacer(
-	"\\", "＼", "*", "＊", "_", "＿", "`", "｀", "[", "［", "]", "］", "(", "（", ")", "）",
-	"#", "＃", "<", "＜", ">", "＞", "|", "｜", "~", "～", "@", "＠", "!", "！",
+	"\\", "＼", "*", "＊", "_", "＿", "`", "｀", "[", "［", "]", "］", "(", "（", ")", "）", // i18n-ignore 转义用的全角字符，不是文案
+	"#", "＃", "<", "＜", ">", "＞", "|", "｜", "~", "～", "@", "＠", "!", "！", // i18n-ignore 转义用的全角字符，不是文案
 	"\r\n", " ", "\n", " ", "\r", " ",
 )
 
 func (DingTalkFormat) Esc(s string) string { return dtEscaper.Replace(s) }
 func (DingTalkFormat) Code(s string) string {
-	return "`" + strings.ReplaceAll(dtEscaper.Replace(s), "｀", "") + "`"
+	return "`" + strings.ReplaceAll(dtEscaper.Replace(s), "｀", "") + "`" // i18n-ignore 转义用的全角字符，不是文案
 }
-func (DingTalkFormat) Link(u string) string {
+func (DingTalkFormat) Link(l i18n.Lang, u string) string {
 	if !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 		return dtEscaper.Replace(u)
 	}
-	return "[查看问题单](" + strings.NewReplacer("(", "%28", ")", "%29", " ", "%20").Replace(u) + ")"
+	return "[" + l.T("notify.link_text") + "](" + strings.NewReplacer("(", "%28", ")", "%29", " ", "%20").Replace(u) + ")"
 }
 
 // Mention 连接了钉钉时写成 @名字（钉钉按卡片的 atUserIds 提醒到人），没连接时只写名字。
-func (DingTalkFormat) Mention(label string, id *store.ChatIdentity, _ bool) string {
+func (DingTalkFormat) Mention(_ i18n.Lang, label string, id *store.ChatIdentity, _ bool) string {
 	if id == nil || id.UserID == "" {
 		return label
 	}

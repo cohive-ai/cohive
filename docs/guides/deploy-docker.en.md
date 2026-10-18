@@ -42,14 +42,14 @@ The new password is shown once in the terminal. Change it right after signing in
 
 After signing in, do these three things in order:
 
-1. **External URL**: under Server admin → Settings (服务器管理 → 设置), confirm the address your teammates use to reach the server (for example `https://cohive.example.com`). You can also lock it by setting `COHIVE_EXTERNAL_URL` in `.env`. Links in group messages and the host name used when coding tools reach MCP through a tunnel both come from this setting.
-2. **Workspace**: one project, one chat group, one workspace. A `default` workspace already exists; create more under Server admin → Workspaces (服务器管理 → 工作空间).
-3. **Invite members**: in a workspace, go to Admin → Invites (管理 → 邀请), generate an invite link and send it to your teammates. For what they do next, see [Onboarding new members](onboarding.en.md).
+1. **External URL**: under Server admin → Settings, confirm the address your teammates use to reach the server (for example `https://cohive.example.com`). You can also lock it by setting `COHIVE_EXTERNAL_URL` in `.env`. Links in group messages and the host name used when coding tools reach MCP through a tunnel both come from this setting.
+2. **Workspace**: one project, one chat group, one workspace. A `default` workspace already exists; create more under Server admin → Workspaces.
+3. **Invite members**: in a workspace, go to Admin → Invites, generate an invite link and send it to your teammates. For what they do next, see [Onboarding new members](onboarding.en.md).
 
 ## 3. Group notifications (optional)
 
 1. In Telegram, create a bot with @BotFather and put its token in `COHIVE_TELEGRAM_BOT_TOKEN` in `.env`. Then run `docker compose up -d`. (After editing `.env`, use `up -d` to recreate the container; `restart` does not pick up new values.)
-2. Add the bot to your project chat group, send `/chatid` in the group to get the group ID, and enter it under Admin → Workspace (管理 → 工作空间) in that workspace.
+2. Add the bot to your project chat group, send `/chatid` in the group to get the group ID, and enter it under Admin → Workspace in that workspace.
 3. Check that it works: `docker compose exec cohive cohive-server notify test --workspace default`.
 
 Cohive works without a bot; you just don't get @-mentions or approval buttons in the group. Notifications waiting to be sent are kept and delivered after you configure the bot and restart. See [Group notifications and public access](group-notify.en.md) for details.
@@ -99,7 +99,7 @@ git pull
 docker compose up -d --build
 ```
 
-The server runs database migrations automatically on startup. The CLI installers are upgraded together with the server: members just run the install command from Profile (个人中心) again, and `cohive status` warns when the versions differ.
+The server runs database migrations automatically on startup. The CLI installers are upgraded together with the server: members just run the install command from Profile again, and `cohive status` warns when the versions differ.
 
 At build time you can set `COHIVE_VERSION` and `COHIVE_COMMIT` in `.env`; they are shown in the web UI and in `cohive version`.
 

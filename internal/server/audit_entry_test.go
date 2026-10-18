@@ -8,6 +8,7 @@ import (
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/httpapi"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 )
@@ -306,6 +307,7 @@ func webCases() []webCase {
 var notAdminWrites = map[string]string{
 	"POST /api/v1/auth/login":              "登录：不改变权限，量大",
 	"POST /api/v1/auth/logout":             "登出：同上",
+	"POST /api/v1/me/language":             "改本人账号语言：个人偏好，不改变权限",
 	"POST /api/v1/auth/web-login":          "cohive web 换一次性登录码：本人已配对的电脑免密打开网页，不改变权限",
 	"POST /api/v1/device/start":            "终端发起设备授权：还没有身份，授权与审批另有记录",
 	"POST /api/v1/device/poll":             "终端轮询领取：领取的是已批准（已记录）的授权",
@@ -325,7 +327,7 @@ func TestEveryWebAdminEndpointRecords(t *testing.T) {
 			e, _ := lastEvent(t, w.f.svc)
 			if e.Action != c.action || e.Via != c.via || e.WorkspaceName != c.ws || e.ActorName != c.actor {
 				t.Fatalf("最后一条记录：%s 入口 %s 工作空间 %q 操作人 %q，应为 %s %s %q %q（%s）", e.Action, e.Via, e.WorkspaceName,
-					e.ActorName, c.action, c.via, c.ws, c.actor, core.EventText(e))
+					e.ActorName, c.action, c.via, c.ws, c.actor, core.EventText(i18n.Default(), e))
 			}
 		})
 	}
@@ -378,7 +380,7 @@ func TestDeniedAdminRequestsRecorded(t *testing.T) {
 		before = n
 		if e.Action != core.ActAccessDenied || e.Via != via || e.Detail["credential"] != cred || e.Detail["reason"] != reason ||
 			e.TargetName != route || e.WorkspaceName != ws || e.ActorName != actor {
-			t.Fatalf("%s：%+v（%s）", name, e, core.EventText(e))
+			t.Fatalf("%s：%+v（%s）", name, e, core.EventText(i18n.Default(), e))
 		}
 	}
 	none := func(name string) {

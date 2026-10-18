@@ -18,7 +18,9 @@
   },
   "language": {
     "title": "Language / 语言",
-    "description": "For now, the interface language is saved only in this computer's browser. On another computer, or after clearing browser data, you'll need to choose it again. (It will be saved to your account in a future version.)"
+    "description": "This is an account setting. The web app, coding tools (MCP), the member CLI and session reminders all follow it, on any computer.",
+    "label": "Account language",
+    "unset": "Not set (the web follows your browser; coding tools and the CLI use the server default language: {{name}})"
   },
   "bind": {
     "title": "Pair a new computer",

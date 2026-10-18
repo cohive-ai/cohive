@@ -12,15 +12,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
-	ErrNotFound        = errors.New("记录不存在")
-	ErrUnauthorized    = errors.New("令牌无效或已吊销")
-	ErrVersionConflict = errors.New("版本已变化")
+	ErrNotFound        = i18n.Errorf("store.err.not_found")
+	ErrUnauthorized    = i18n.Errorf("store.err.unauthorized")
+	ErrVersionConflict = i18n.Errorf("store.err.version_conflict")
 )
 
 // DBTX 同时由 *pgxpool.Pool 和 pgx.Tx 实现。
@@ -65,6 +66,7 @@ type Identity struct {
 	MemberName  string
 	Tool        string
 	DeviceID    *int64 // 令牌所属设备；管理员手工签发的令牌为空
+	Language    string // 账号语言代码；空表示跟随服务器缺省语言（MCP 按它选工具说明的语言）
 }
 
 type Issue struct {
@@ -151,18 +153,18 @@ func IssueToken(ctx context.Context, q DBTX, memberID int64, tool string) (plain
 	return plain, tokenID, err
 }
 
+// LookupToken 按令牌找身份。查询末尾再查一次成员资格与账号状态是第二道防线：移出、停用时令牌已吊销，这里再查一次。
 func LookupToken(ctx context.Context, q DBTX, plain string) (Identity, error) {
 	var id Identity
 	err := q.QueryRow(ctx, `
-		SELECT t.id, a.id, m.id, m.workspace_id, a.name, t.tool, t.device_id
+		SELECT t.id, a.id, m.id, m.workspace_id, a.name, t.tool, t.device_id, coalesce(a.language, '')
 		FROM tokens t JOIN members m ON m.id = t.member_id
 		JOIN accounts a ON a.id = m.account_id
 		LEFT JOIN devices d ON d.id = t.device_id
 		WHERE t.token_hash = $1 AND t.revoked_at IS NULL
 		AND (t.device_id IS NULL OR d.revoked_at IS NULL)
-		-- 第二道防线：移出、停用时令牌已吊销，这里再查一次
 		AND m.status = 'active' AND a.disabled_at IS NULL`,
-		hashToken(plain)).Scan(&id.TokenID, &id.AccountID, &id.MemberID, &id.WorkspaceID, &id.MemberName, &id.Tool, &id.DeviceID)
+		hashToken(plain)).Scan(&id.TokenID, &id.AccountID, &id.MemberID, &id.WorkspaceID, &id.MemberName, &id.Tool, &id.DeviceID, &id.Language)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Identity{}, ErrUnauthorized
 	}
@@ -289,13 +291,13 @@ func GetIssueForUpdate(ctx context.Context, q DBTX, id int64) (Issue, error) {
 
 // UpdateIssue 按 is.Version 做乐观并发更新，成功后版本加一。
 // 版本号是“状态、归属与正文”的版本，评论不经这里（见 TouchIssue）。
+// 超时催办：状态或负责人一变就重新计时、档位归零（SQL 里 CASE 右边引用的是更新前的值）。
 func UpdateIssue(ctx context.Context, q DBTX, is *Issue) error {
 	err := q.QueryRow(ctx, `
 		UPDATE issues SET owner_id=$3, target_service=$4, severity=$5, title=$6, summary=$7,
 			expected=$8, actual=$9, repro_script=$10, repro_env=$11, repro_exit_code=$12,
 			evidence=$13, repo=$14, branch=$15, commit_sha=$16, status=$17, reopen_count=$18,
 			escalated_at=$19, escalation_reason=$20, brief=$21, version=version+1, updated_at=now(),
-			-- 超时催办：状态或负责人一变就重新计时、档位归零（右边引用的是更新前的值）
 			status_since = CASE WHEN status IS DISTINCT FROM $17 OR owner_id IS DISTINCT FROM $3 THEN now() ELSE status_since END,
 			remind_level = CASE WHEN status IS DISTINCT FROM $17 OR owner_id IS DISTINCT FROM $3 THEN 0 ELSE remind_level END
 		WHERE id=$1 AND version=$2
@@ -367,7 +369,7 @@ func InsertEvent(ctx context.Context, q DBTX, ev Event) error {
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("事件附加数据：%w", err)
+		return fmt.Errorf("issue event payload: %w", err)
 	}
 	_, err = q.Exec(ctx, `
 		INSERT INTO issue_events (issue_id, actor_member_id, actor_tool, action, from_status, to_status, note, payload)

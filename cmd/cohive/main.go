@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	i18n.SetDefault(i18n.Local())
+	i18n.SetDefault(client.ResolveLanguage())
 	if err := runCLI(context.Background(), os.Stdin, os.Stdout, os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.T("cli.error", i18n.D{"Err": err.Error()}))
 		os.Exit(1)

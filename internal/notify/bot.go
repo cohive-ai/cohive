@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
 // HandleCommand 处理机器人收到的命令，返回要回复的内容。只认 /chatid 与 /whoami；
 // 群里带 @机器人名 的命令只在机器人名匹配时处理，避免和群里其他机器人冲突。
-func HandleCommand(u Update, botName string) (string, bool) {
+// lang 是回复的语言：群里用群所属工作空间的语言（群还没绑定时是服务器缺省语言），私聊用对方账号的语言。
+func HandleCommand(u Update, botName string, lang i18n.Lang) (string, bool) {
 	if u.Message == nil {
 		return "", false
 	}
@@ -34,19 +36,18 @@ func HandleCommand(u Update, botName string) (string, bool) {
 	switch cmd {
 	case "/chatid":
 		if m.Chat.Type == "private" {
-			return "这是和机器人的私聊。要获取群编号，请把机器人拉进群，在群里发 /chatid。", true
+			return lang.T("notify.tg.chatid_private"), true
 		}
-		return fmt.Sprintf("这个群（%s）的编号是 <code>%d</code>\n\n管理员在 Cohive 网页的“管理 → 工作空间”里填入这个编号，群通知与审批消息就会发到这里。",
-			html.EscapeString(m.Chat.Title), m.Chat.ID), true
+		return lang.T("notify.tg.chatid_group", i18n.D{"Title": html.EscapeString(m.Chat.Title), "ID": m.Chat.ID}), true
 	case "/whoami":
 		if m.From == nil {
 			return "", false
 		}
-		name := "（未设置）"
+		name := lang.T("notify.tg.whoami_no_username")
 		if m.From.Username != "" {
 			name = "<code>" + html.EscapeString(m.From.Username) + "</code>"
 		}
-		return fmt.Sprintf("你的 Telegram 用户名是 %s，用户编号是 <code>%d</code>。\n\n要把这个账号连接到 Cohive，请在网页“个人中心”点“连接 Telegram”。", name, m.From.ID), true
+		return lang.T("notify.tg.whoami", i18n.D{"Name": name, "ID": m.From.ID}), true
 	}
 	return "", false
 }
@@ -109,7 +110,7 @@ func (b *Bot) fetchName(ctx context.Context) {
 	}
 	name, err := b.TG.GetMe(ctx)
 	if err != nil || name == "" {
-		b.logf("Telegram 机器人信息获取失败，稍后重试（带 @机器人名 的命令与连接 Telegram 暂不可用）：%v", err)
+		b.logf("failed to fetch Telegram bot info, will retry (commands with @botname and Telegram linking are unavailable meanwhile): %v", err)
 		return
 	}
 	b.fetched.Store(&name)
@@ -147,7 +148,7 @@ func (b *Bot) Run(ctx context.Context) {
 			}
 			msg := err.Error()
 			b.lastErr.Store(&msg)
-			b.logf("接收 Telegram 消息失败：%v", err)
+			b.logf("failed to receive Telegram updates: %v", err)
 			sleep(ctx, 10*time.Second)
 			continue
 		}
@@ -168,18 +169,19 @@ func (b *Bot) Handle(ctx context.Context, u Update) {
 	if u.Message == nil {
 		return
 	}
-	reply, ok := HandleCommand(u, b.Username())
+	lang := b.replyLang(ctx, u.Message)
+	reply, ok := HandleCommand(u, b.Username(), lang)
 	if ok && b.Core != nil {
-		reply += b.whoamiExtra(ctx, u)
+		reply += b.whoamiExtra(ctx, u, lang)
 	}
 	if !ok && b.Core != nil {
-		reply, ok = b.handleStart(ctx, u)
+		reply, ok = b.handleStart(ctx, u, lang)
 	}
 	if !ok || reply == "" {
 		return
 	}
 	if err := b.api().Reply(ctx, u.Message.Chat.ID, u.Message.MessageID, reply); err != nil {
-		b.logf("回复 Telegram 命令失败：%v", err)
+		b.logf("failed to reply to Telegram command: %v", err)
 	}
 }
 
@@ -196,33 +198,47 @@ func (b *Bot) command(m *TGMessage) (string, []string) {
 	return cmd, fields[1:]
 }
 
-const startWelcome = "我是 Cohive 机器人。要把你的 Telegram 账号连接到 Cohive，请在网页“个人中心”点“连接 Telegram”。"
+// replyLang 是机器人回复这条消息用的语言：群里用群所属工作空间的语言，私聊用对方连接的 Cohive 账号的语言；
+// 群还没绑定、对方还没连接账号、没有业务层时用服务器缺省语言。
+func (b *Bot) replyLang(ctx context.Context, m *TGMessage) i18n.Lang {
+	if b.Core == nil || m == nil {
+		return i18n.Default()
+	}
+	if m.Chat.Type != "private" {
+		return b.hub().chatLang(ctx, store.ProviderTelegram, int64String(m.Chat.ID))
+	}
+	if m.From == nil {
+		return i18n.Default()
+	}
+	return b.hub().accountLang(ctx, store.ProviderTelegram, "", int64String(m.From.ID))
+}
 
 // handleStart 处理私聊里的 /start；带 ln_ 参数时是网页个人中心发起的连接。
-func (b *Bot) handleStart(ctx context.Context, u Update) (string, bool) {
+func (b *Bot) handleStart(ctx context.Context, u Update, lang i18n.Lang) (string, bool) {
 	m := u.Message
 	cmd, args := b.command(m)
 	if cmd != "/start" || m.From == nil || m.Chat.Type != "private" {
 		return "", false
 	}
 	if len(args) == 0 || !strings.HasPrefix(args[0], core.LinkStartPrefix) {
-		return startWelcome, true
+		return lang.T("notify.tg.start_welcome"), true
 	}
 	res, err := b.Core.CompleteTelegramLink(ctx, args[0], m.From.ID, m.From.Username)
 	var ie *core.InputError
 	switch {
 	case errors.Is(err, core.ErrLinkGone), errors.As(err, &ie):
-		return html.EscapeString(err.Error()), true
+		return html.EscapeString(i18n.Message(lang, err)), true
 	case err != nil:
-		b.logf("连接 Telegram 失败：%v", err)
-		return "暂时无法完成连接，请稍后在网页上重试。", true
+		b.logf("failed to link Telegram: %v", err)
+		return lang.T("notify.tg.link_failed"), true
 	}
-	text := fmt.Sprintf("已连接到 Cohive 账号 %s，在你所在的全部工作空间通用。回到网页即可看到。", html.EscapeString(res.Account))
-	return text, true
+	// 刚连接上：之后的话发给这个账号，按账号的语言
+	lang = b.hub().accountLang(ctx, store.ProviderTelegram, "", int64String(m.From.ID))
+	return lang.T("notify.tg.linked", i18n.D{"Account": html.EscapeString(res.Account)}), true
 }
 
 // whoamiExtra 在 /whoami 的回复后补上连接的 Cohive 账号；在群里再补上他在本群工作空间的角色。
-func (b *Bot) whoamiExtra(ctx context.Context, u Update) string {
+func (b *Bot) whoamiExtra(ctx context.Context, u Update, lang i18n.Lang) string {
 	cmd, _ := b.command(u.Message)
 	if cmd != "/whoami" || u.Message.From == nil {
 		return ""
@@ -231,24 +247,24 @@ func (b *Bot) whoamiExtra(ctx context.Context, u Update) string {
 	if u.Message.Chat.Type != "private" {
 		chat = int64String(u.Message.Chat.ID)
 	}
-	acc, wsLabel, role, ok := b.hub().Whoami(ctx, tgUser(u.Message.From), chat)
+	acc, wsLabel, role, ok := b.hub().Whoami(ctx, lang, tgUser(u.Message.From), chat)
 	if !ok {
 		return ""
 	}
-	text := fmt.Sprintf("\n\n已连接的 Cohive 账号：%s", html.EscapeString(acc))
+	text := lang.T("notify.tg.whoami_account", i18n.D{"Account": html.EscapeString(acc)})
 	if wsLabel == "" {
 		return text
 	}
-	return text + fmt.Sprintf("\n在本群对应的工作空间 %s 里：%s", html.EscapeString(wsLabel), role)
+	return text + lang.T("notify.tg.whoami_role", i18n.D{"Workspace": html.EscapeString(wsLabel), "Role": role})
 }
 
 func tgUser(u *TGUser) ChatUser {
 	return ChatUser{Provider: store.ProviderTelegram, UserID: int64String(u.ID), Handle: u.Username, Name: u.FirstName}
 }
 
-func approvalButtons(kind string, wsID, id int64) [][]Button {
+func approvalButtons(l i18n.Lang, kind string, wsID, id int64) [][]Button {
 	key := kind + ":" + strconv.FormatInt(wsID, 10) + ":" + strconv.FormatInt(id, 10)
-	return [][]Button{{{Text: "批准", Data: key + ":y"}, {Text: "拒绝", Data: key + ":n"}}}
+	return [][]Button{{{Text: l.T("notify.button.approve"), Data: key + ":y"}, {Text: l.T("notify.button.reject"), Data: key + ":n"}}}
 }
 
 // ---- Telegram 通知通道 ----
@@ -259,7 +275,7 @@ func (b *Bot) Format() Formatter { return TelegramFormat{} }
 func tgChat(chat string) (int64, error) {
 	id, err := strconv.ParseInt(chat, 10, 64)
 	if err != nil {
-		return 0, &PermanentError{Msg: fmt.Sprintf("Telegram 群编号应为数字：%q", chat)}
+		return 0, &PermanentError{Msg: fmt.Sprintf("Telegram chat ID must be a number: %q", chat)}
 	}
 	return id, nil
 }
@@ -279,7 +295,7 @@ func (b *Bot) SendApproval(ctx context.Context, chat string, m Rendered, a Appro
 	if err != nil {
 		return "", err
 	}
-	msg, err := b.api().SendButtons(ctx, id, m.Text, approvalButtons(a.Kind, a.WorkspaceID, a.RefID))
+	msg, err := b.api().SendButtons(ctx, id, m.Text, approvalButtons(m.lang(), a.Kind, a.WorkspaceID, a.RefID))
 	if err != nil {
 		return "", err
 	}
@@ -294,7 +310,7 @@ func (b *Bot) FinishApproval(ctx context.Context, chat, msgRef string, m Rendere
 	}
 	msg, err := strconv.ParseInt(msgRef, 10, 64)
 	if err != nil {
-		return &PermanentError{Msg: fmt.Sprintf("Telegram 消息编号应为数字：%q", msgRef)}
+		return &PermanentError{Msg: fmt.Sprintf("Telegram message ID must be a number: %q", msgRef)}
 	}
 	return b.api().EditMessage(ctx, id, msg, m.Text, nil)
 }
@@ -324,7 +340,7 @@ func (b *Bot) AnnounceSelfJoined(ctx context.Context, m store.Member) error {
 func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
 	answer := func(text string) {
 		if err := b.api().AnswerCallback(ctx, cb.ID, text); err != nil {
-			b.logf("回应按钮点击失败：%v", err)
+			b.logf("failed to answer button click: %v", err)
 		}
 	}
 	parts := strings.Split(cb.Data, ":")
@@ -345,7 +361,7 @@ func (b *Bot) handleCallback(ctx context.Context, cb *TGCallback) {
 	answer(res.Toast)
 	if res.Result != nil {
 		if err := b.FinishApproval(ctx, chat, msg, *res.Result); err != nil {
-			b.logf("更新审批消息失败：%v", err)
+			b.logf("failed to update approval message: %v", err)
 		}
 	}
 	if res.After != nil {

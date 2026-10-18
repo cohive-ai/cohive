@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -28,7 +30,7 @@ func (s *Service) UpdateAccount(ctx context.Context, act Actor, name string, in 
 		}
 		a, err := store.AccountByName(ctx, tx, name)
 		if errors.Is(err, store.ErrNotFound) {
-			return fmt.Errorf("没有登录名为 %s 的账号：%w", name, store.ErrNotFound)
+			return i18n.Wrap(store.ErrNotFound, "core.err.account_not_found", i18n.D{"Name": name})
 		}
 		if err != nil {
 			return err
@@ -61,14 +63,14 @@ func (s *Service) UpdateAccount(ctx context.Context, act Actor, name string, in 
 			}
 			if to != nil {
 				if other, err := store.AccountByTelegramUserID(ctx, tx, *to); err == nil && other.ID != a.ID {
-					return inputErr("这个 Telegram 账号已经连接了账号 %s：一个 Telegram 账号只能连接一个 Cohive 账号", other.Name)
+					return inputErr("core.err.telegram_linked_other_cli", i18n.D{"Name": other.Name})
 				} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 					return err
 				}
 			}
 			if err := store.SetAccountTelegramUserID(ctx, tx, a.ID, to); err != nil {
 				if isUniqueViolation(err) {
-					return inputErr("这个 Telegram 账号已经连接了别的账号")
+					return inputErr("core.err.telegram_linked_elsewhere_short")
 				}
 				return err
 			}
@@ -108,7 +110,7 @@ func (s *Service) IssueToken(ctx context.Context, act Actor, wsID int64, memberN
 		}
 		m, err := store.MemberByName(ctx, tx, wsID, memberName)
 		if errors.Is(err, store.ErrNotFound) {
-			return fmt.Errorf("成员 %q 不存在：%w", memberName, store.ErrNotFound)
+			return i18n.Wrap(store.ErrNotFound, "core.err.member_named_missing", i18n.D{"Name": strconv.Quote(memberName)})
 		}
 		if err != nil {
 			return err
@@ -160,13 +162,13 @@ func (s *Service) SetServiceOwner(ctx context.Context, act Actor, wsID int64, se
 		var err error
 		m, err = store.MemberByName(ctx, tx, wsID, ownerName)
 		if errors.Is(err, store.ErrNotFound) {
-			return fmt.Errorf("成员 %q 不存在：%w", ownerName, store.ErrNotFound)
+			return i18n.Wrap(store.ErrNotFound, "core.err.member_named_missing", i18n.D{"Name": strconv.Quote(ownerName)})
 		}
 		if err != nil {
 			return err
 		}
 		if m.AccountDisabled {
-			return inputErr("成员 %q 已停用，不能登记为负责人", ownerName)
+			return inputErr("core.err.member_disabled_owner", i18n.D{"Name": strconv.Quote(ownerName)})
 		}
 		list, err := store.ListServices(ctx, tx, wsID)
 		if err != nil {

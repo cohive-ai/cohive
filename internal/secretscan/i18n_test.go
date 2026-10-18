@@ -42,12 +42,12 @@ func TestCategoryIn(t *testing.T) {
 	// 旧字段与旧函数固定中文，不受缺省语言影响
 	i18n.SetDefault(i18n.EN)
 	defer i18n.SetDefault(i18n.ZhCN)
-	if c := category("github-pat"); c != "GitHub 令牌" {
+	if c := CategoryIn(i18n.ZhCN, "github-pat"); c != "GitHub 令牌" {
 		t.Errorf("category 应固定中文：%q", c)
 	}
 	tok := "ghp_" + pick(alnum, 36)
 	got := Scan(Field{Name: "note", Text: "GITHUB_TOKEN=" + tok})
-	if len(got) != 1 || got[0].Category != "GitHub 令牌" || !strings.Contains(got[0].CategoryIn(i18n.EN), "GitHub token") {
+	if len(got) != 1 || got[0].CategoryIn(i18n.ZhCN) != "GitHub 令牌" || !strings.Contains(got[0].CategoryIn(i18n.EN), "GitHub token") {
 		t.Errorf("命中结果的类别：%+v", got)
 	}
 }

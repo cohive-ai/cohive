@@ -3,11 +3,11 @@ package notify
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"strings"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -45,6 +45,45 @@ func (h *Hub) logf(format string, args ...any) {
 	log.Printf(format, args...)
 }
 
+// 机器人在群里的话用群所属工作空间的语言，发给某个人的私聊用他账号的语言；查不到（群没绑定、账号没连接）时
+// 用服务器缺省语言。
+
+// wsLang 是工作空间的语言。
+func (h *Hub) wsLang(ctx context.Context, wsID int64) i18n.Lang {
+	if h.Core == nil {
+		return i18n.Default()
+	}
+	ws, err := h.Core.Workspace(ctx, wsID)
+	if err != nil {
+		return i18n.Default()
+	}
+	return i18n.Pick(ws.Language)
+}
+
+// chatLang 是绑定了这个群的工作空间的语言。
+func (h *Hub) chatLang(ctx context.Context, provider, chatID string) i18n.Lang {
+	if h.Core == nil {
+		return i18n.Default()
+	}
+	ws, err := h.Core.WorkspaceByChat(ctx, provider, "", chatID) // 群编号全局唯一，工作空间群表不记企业
+	if err != nil {
+		return i18n.Default()
+	}
+	return i18n.Pick(ws.Language)
+}
+
+// accountLang 是连接了这个通讯账号的 Cohive 账号的语言。
+func (h *Hub) accountLang(ctx context.Context, provider, tenant, userID string) i18n.Lang {
+	if h.Core == nil {
+		return i18n.Default()
+	}
+	acc, err := h.Core.AccountByChat(ctx, provider, tenant, userID)
+	if err != nil {
+		return i18n.Default()
+	}
+	return i18n.Pick(acc.Language)
+}
+
 // groupOf 返回工作空间绑定的群与对应的通讯工具；没绑群或通讯工具没启用时 ch 为空。
 func (h *Hub) groupOf(ctx context.Context, wsID int64) (store.Workspace, Channel, string, error) {
 	ws, err := h.Core.Workspace(ctx, wsID)
@@ -68,7 +107,7 @@ func (h *Hub) people(ctx context.Context, ms ...store.Member) map[int64]Person {
 	}
 	chats, err := h.Core.ChatIdentities(ctx, ids)
 	if err != nil {
-		h.logf("读取通讯账号失败：%v", err)
+		h.logf("failed to load chat identities: %v", err)
 	}
 	out := make(map[int64]Person, len(ms))
 	for _, m := range ms {
@@ -78,16 +117,17 @@ func (h *Hub) people(ctx context.Context, ms ...store.Member) map[int64]Person {
 }
 
 func signupText(w *writer, s store.Signup, wsName string) string {
+	d := i18n.D{"Name": w.nameLabel(s.Name, s.DisplayName), "Workspace": w.esc(wsName)}
 	if s.Existing {
-		return fmt.Sprintf("%s（已有账号）申请加入工作空间 %s。", w.nameLabel(s.Name, s.DisplayName), w.esc(wsName))
+		return w.lang.T("notify.signup.existing", d)
 	}
-	return fmt.Sprintf("新成员 %s 申请加入工作空间 %s。", w.nameLabel(s.Name, s.DisplayName), w.esc(wsName))
+	return w.lang.T("notify.signup.new", d)
 }
 
 func deviceText(w *writer, a store.DeviceAuth, workspaces []string) string {
-	return fmt.Sprintf("%s 申请添加新设备 %s（工具：%s）。\n批准后这台电脑可用于他所在的全部工作空间：%s。",
-		w.nameLabel(a.AccountName, a.DisplayName), w.esc(a.DeviceName), w.esc(strings.Join(a.Tools, "、")),
-		w.esc(strings.Join(workspaces, "、")))
+	sep := w.lang.T("notify.list_sep")
+	return w.lang.T("notify.device.request", i18n.D{"Name": w.nameLabel(a.AccountName, a.DisplayName),
+		"Device": w.esc(a.DeviceName), "Tools": w.esc(strings.Join(a.Tools, sep)), "Workspaces": w.esc(strings.Join(workspaces, sep))})
 }
 
 // post 发一条审批消息并记下，处理后据此把各群里的消息都改成结果。
@@ -106,8 +146,8 @@ func (h *Hub) AnnounceSignup(ctx context.Context, s store.Signup) error {
 	if err != nil || ch == nil {
 		return err
 	}
-	w := newWriter(ch.Format(), ch.Provider())
-	m := w.done("注册申请", signupText(w, s, ws.Label())+"\n请管理员审批（也可以在网页“管理 → 待审”里处理）：")
+	w := newWriter(ch.Format(), ch.Provider(), i18n.Pick(ws.Language))
+	m := w.done(w.lang.T("notify.title.signup"), signupText(w, s, ws.Label())+"\n"+w.lang.T("notify.signup.ask"))
 	return h.post(ctx, ch, chat, Approval{Kind: "su", WorkspaceID: ws.ID, RefID: s.ID}, m)
 }
 
@@ -126,10 +166,10 @@ func (h *Hub) AnnounceDevice(ctx context.Context, a store.DeviceAuth) error {
 	}
 	var firstErr error
 	for _, m := range ms {
-		_, ch, chat, err := h.groupOf(ctx, m.WorkspaceID)
+		wsOfGroup, ch, chat, err := h.groupOf(ctx, m.WorkspaceID)
 		if err == nil && ch != nil {
-			w := newWriter(ch.Format(), ch.Provider())
-			msg := w.done("新设备申请", deviceText(w, a, names)+"\n请任一工作空间的管理员审批（也可以在网页“管理 → 待审”里处理）：")
+			w := newWriter(ch.Format(), ch.Provider(), i18n.Pick(wsOfGroup.Language))
+			msg := w.done(w.lang.T("notify.title.device"), deviceText(w, a, names)+"\n"+w.lang.T("notify.device.ask"))
 			err = h.post(ctx, ch, chat, Approval{Kind: "da", WorkspaceID: m.WorkspaceID, RefID: a.ID}, msg)
 		}
 		if err != nil && firstErr == nil {
@@ -144,20 +184,24 @@ type resultText func(w *writer) string
 
 func signupResult(d core.SignupDecision, approve bool) resultText {
 	return func(w *writer) string {
-		return signupText(w, d.Signup, d.Workspace.Label()) + fmt.Sprintf("\n%s（审批人 %s）", verdict(approve), w.esc(d.Decider))
+		return signupText(w, d.Signup, d.Workspace.Label()) + "\n" + verdictLine(w, approve, d.Decider)
 	}
 }
 
 func deviceResult(d core.DeviceDecision) resultText {
 	return func(w *writer) string {
-		return deviceText(w, d.Auth, d.Workspaces) + fmt.Sprintf("\n%s（审批人 %s）", verdict(d.Auth.Status == store.AuthApproved),
-			w.esc(d.Decider))
+		return deviceText(w, d.Auth, d.Workspaces) + "\n" + verdictLine(w, d.Auth.Status == store.AuthApproved, d.Decider)
 	}
 }
 
-func renderResult(ch Channel, text resultText) Rendered {
-	w := newWriter(ch.Format(), ch.Provider())
-	return w.done("审批结果", text(w))
+// verdictLine 是结果消息的最后一行：已批准或已拒绝，以及审批人。钉钉卡片把这一行放进 status 变量。
+func verdictLine(w *writer, approve bool, decider string) string {
+	return w.lang.T("notify.verdict.line", i18n.D{"Verdict": verdict(w.lang, approve), "Decider": w.esc(decider)})
+}
+
+func renderResult(ch Channel, l i18n.Lang, text resultText) Rendered {
+	w := newWriter(ch.Format(), ch.Provider(), l)
+	return w.done(l.T("notify.title.result"), text(w))
 }
 
 // postRef 指一条审批消息。
@@ -178,7 +222,8 @@ func (h *Hub) finish(ctx context.Context, kind string, refID int64, text resultT
 		if ch == nil {
 			continue
 		}
-		if err := ch.FinishApproval(ctx, p.ChatID, p.MessageID, renderResult(ch, text)); err != nil && firstErr == nil {
+		// 每个群的结果消息用它所属工作空间的语言
+		if err := ch.FinishApproval(ctx, p.ChatID, p.MessageID, renderResult(ch, h.wsLang(ctx, p.WorkspaceID), text)); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -211,25 +256,28 @@ func (h *Hub) announceJoined(ctx context.Context, m store.Member, at bool) error
 		return err
 	}
 	p := h.people(ctx, m)[m.ID]
-	w := newWriter(ch.Format(), ch.Provider())
+	w := newWriter(ch.Format(), ch.Provider(), i18n.Pick(ws.Language))
 	who := w.nameLabel(m.Name, m.DisplayName)
 	if at {
 		who = w.mention(p, who, true)
 	}
-	text := fmt.Sprintf("%s 已加入工作空间 %s。", who, w.esc(ws.Label()))
-	return ch.Send(ctx, chat, w.done("新成员加入", text))
+	text := w.lang.T("notify.joined.text", i18n.D{"Who": who, "Workspace": w.esc(ws.Label())})
+	return ch.Send(ctx, chat, w.done(w.lang.T("notify.title.joined"), text))
 }
 
 // Click 处理群里的审批按钮。审批对象以审批消息记录为准（按通讯工具与消息编号反查），按钮数据只用来核对；
 // 工作空间由按钮所在的群反查（一个群只绑一个工作空间）；点击者按他连接的通讯账号找到 Cohive 账号，
 // 业务层校验他是否能管理这个工作空间（设备申请还要求申请人在本工作空间在册）。
+// 给点击者的提示在群里，用群所属工作空间的语言；还没查到是哪个工作空间时用服务器缺省语言。
 func (h *Hub) Click(ctx context.Context, c Click) ClickResult {
 	a, chat := c.Approval, c.ChatID
+	lang := i18n.Default()
 	post, err := h.Core.BotPostByMessage(ctx, c.Provider, c.ChatID, c.MsgRef)
 	switch {
 	case err == nil:
+		lang = h.wsLang(ctx, post.WorkspaceID)
 		if a.Kind != "" && (a.Kind != post.Kind || a.RefID != post.RefID || a.WorkspaceID != post.WorkspaceID) {
-			return ClickResult{Toast: "这条审批消息的内容不符，请在网页上处理"}
+			return ClickResult{Toast: lang.T("notify.toast.mismatch")}
 		}
 		a = Approval{Kind: post.Kind, WorkspaceID: post.WorkspaceID, RefID: post.RefID}
 		if chat == "" { // 钉钉卡片回调不带群，以发出时的记录为准
@@ -237,35 +285,37 @@ func (h *Hub) Click(ctx context.Context, c Click) ClickResult {
 		}
 	case errors.Is(err, store.ErrNotFound):
 		if a.Kind == "" { // 没有记录又没有按钮数据（钉钉卡片），无从得知是哪条申请
-			return ClickResult{Toast: "这条审批消息已失效，请在网页上处理"}
+			return ClickResult{Toast: lang.T("notify.toast.expired")}
 		}
 		// Telegram 升级前发的审批消息没有记录：按按钮数据处理，下面照样核对群与工作空间
+		lang = h.chatLang(ctx, c.Provider, chat)
 	default:
-		h.logf("读取审批消息记录失败：%v", err)
-		return ClickResult{Toast: "处理失败，请稍后再试"}
+		h.logf("failed to read approval message record: %v", err)
+		return ClickResult{Toast: lang.T("notify.toast.failed")}
 	}
 	if a.Kind != "su" && a.Kind != "da" {
 		return ClickResult{}
 	}
 	ws, err := h.Core.WorkspaceByChat(ctx, c.Provider, "", chat)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && ws.ID != a.WorkspaceID) {
-		return ClickResult{Toast: "这条审批消息与本群绑定的工作空间不符，请在网页上处理"}
+		return ClickResult{Toast: lang.T("notify.toast.wrong_group")}
 	}
 	if err != nil {
-		h.logf("识别审批群失败：%v", err)
-		return ClickResult{Toast: "处理失败，请稍后再试"}
+		h.logf("failed to identify approval group: %v", err)
+		return ClickResult{Toast: lang.T("notify.toast.failed")}
 	}
+	lang = i18n.Pick(ws.Language)
 	actor, err := h.Core.AccountByChat(ctx, c.Provider, c.From.Tenant, c.From.UserID)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && actor.Disabled()) {
-		return ClickResult{Toast: fmt.Sprintf("你的%s账号还没有连接到 Cohive，或没有审批权限", providerLabel(c.Provider))}
+		return ClickResult{Toast: lang.T("notify.toast.not_linked", i18n.D{"Provider": providerLabel(lang, c.Provider)})}
 	}
 	if err != nil {
-		h.logf("识别审批人失败：%v", err)
-		return ClickResult{Toast: "处理失败，请稍后再试"}
+		h.logf("failed to identify approver: %v", err)
+		return ClickResult{Toast: lang.T("notify.toast.failed")}
 	}
 	ch := h.Channels[c.Provider]
 	if ch == nil {
-		return ClickResult{Toast: "处理失败，请稍后再试"}
+		return ClickResult{Toast: lang.T("notify.toast.failed")}
 	}
 	act := core.ChatActor(actor, c.Provider)
 	var text resultText
@@ -274,33 +324,43 @@ func (h *Hub) Click(ctx context.Context, c Click) ClickResult {
 	case "su":
 		d, err := h.Core.DecideSignup(ctx, act, ws.ID, a.RefID, c.Approve)
 		if err != nil {
-			h.denied(ctx, act, ws, c.Provider, "注册或加入申请的审批按钮", err)
-			return ClickResult{Toast: h.failToast(err)}
+			h.denied(ctx, act, ws, c.Provider, i18n.T("notify.denied.signup_button"), err)
+			return ClickResult{Toast: h.failToast(lang, err)}
 		}
 		text, joined = signupResult(d, c.Approve), d.Member
 	case "da":
 		d, err := h.Core.DecideDeviceAuth(ctx, act, ws.ID, a.RefID, c.Approve)
 		if err != nil {
-			h.denied(ctx, act, ws, c.Provider, "新设备的审批按钮", err)
-			return ClickResult{Toast: h.failToast(err)}
+			h.denied(ctx, act, ws, c.Provider, i18n.T("notify.denied.device_button"), err)
+			return ClickResult{Toast: h.failToast(lang, err)}
 		}
 		text = deviceResult(d)
 	}
-	result := renderResult(ch, text)
-	return ClickResult{Toast: verdict(c.Approve), Result: &result, After: func(ctx context.Context) {
+	result := renderResult(ch, lang, text)
+	return ClickResult{Toast: verdict(lang, c.Approve), Result: &result, After: func(ctx context.Context) {
 		if err := h.finish(ctx, a.Kind, a.RefID, text, postRef{c.Provider, chat, c.MsgRef}); err != nil {
-			h.logf("更新审批消息失败：%v", err)
+			h.logf("failed to update approval message: %v", err)
 		}
 		if joined != nil {
 			if err := h.AnnounceJoined(ctx, *joined); err != nil {
-				h.logf("发送新成员加入消息失败：%v", err)
+				h.logf("failed to send member-joined message: %v", err)
 			}
 		}
 	}}
 }
 
+// ClickLang 是处理这次点击时给点击者的提示用的语言：审批消息所属工作空间的语言，查不到时是服务器缺省语言。
+func (h *Hub) ClickLang(ctx context.Context, c Click) i18n.Lang {
+	post, err := h.Core.BotPostByMessage(ctx, c.Provider, c.ChatID, c.MsgRef)
+	if err != nil {
+		return i18n.Default()
+	}
+	return h.wsLang(ctx, post.WorkspaceID)
+}
+
 // Whoami 返回通讯账号连接的 Cohive 账号，以及他在该群对应工作空间里的角色（chatID 为空或群没绑工作空间时 role 为空）。
-func (h *Hub) Whoami(ctx context.Context, who ChatUser, chatID string) (account, wsLabel, role string, ok bool) {
+// 角色按 lang 写成文字。
+func (h *Hub) Whoami(ctx context.Context, lang i18n.Lang, who ChatUser, chatID string) (account, wsLabel, role string, ok bool) {
 	acc, err := h.Core.AccountByChat(ctx, who.Provider, who.Tenant, who.UserID)
 	if err != nil {
 		return "", "", "", false
@@ -312,60 +372,61 @@ func (h *Hub) Whoami(ctx context.Context, who ChatUser, chatID string) (account,
 	if err != nil {
 		return acc.Name, "", "", true
 	}
-	role = "不是成员"
+	role = lang.T("notify.role.none")
 	if ms, err := h.Core.Memberships(ctx, acc.ID); err == nil {
 		for _, m := range ms {
 			if m.WorkspaceID == ws.ID {
-				role = roleLabel(m.Role)
+				role = roleLabel(lang, m.Role)
 			}
 		}
 	}
 	return acc.Name, ws.Label(), role, true
 }
 
-func roleLabel(role string) string {
+func roleLabel(l i18n.Lang, role string) string {
 	if role == store.RoleAdmin {
-		return "管理员"
+		return l.T("notify.role.admin")
 	}
-	return "成员"
+	return l.T("notify.role.member")
 }
 
-func verdict(approve bool) string {
+func verdict(l i18n.Lang, approve bool) string {
 	if approve {
-		return "已批准"
+		return l.T("notify.verdict.approved")
 	}
-	return "已拒绝"
+	return l.T("notify.verdict.rejected")
 }
 
-func providerLabel(provider string) string {
+func providerLabel(l i18n.Lang, provider string) string {
 	switch provider {
 	case store.ProviderTelegram:
-		return " Telegram "
+		return l.T("notify.provider.telegram")
 	case store.ProviderDingTalk:
-		return "钉钉"
+		return l.T("notify.provider.dingtalk")
 	}
 	return provider
 }
 
 // denied 记下已连接通讯账号的人在群里点审批按钮却没有权限（与网页上被拒的管理请求同样记录）。
+// button 写进管理操作记录，是存进数据库的文字，用服务器缺省语言。
 func (h *Hub) denied(ctx context.Context, act core.Actor, ws store.Workspace, provider, button string, err error) {
 	if !errors.Is(err, core.ErrNotAdmin) && !errors.Is(err, core.ErrNotManager) {
 		return
 	}
 	d := core.DeniedAttempt{Workspace: ws.Name, Route: button, Reason: core.DenyNoPermission, Credential: core.ChatCredential(provider)}
 	if err := h.Core.RecordDenied(ctx, act, d); err != nil {
-		h.logf("记录被拒的审批失败：%v", err)
+		h.logf("failed to record denied approval: %v", err)
 	}
 }
 
-func (h *Hub) failToast(err error) string {
+func (h *Hub) failToast(l i18n.Lang, err error) string {
 	switch {
 	case errors.Is(err, core.ErrNotAdmin), errors.Is(err, core.ErrNotManager), errors.Is(err, core.ErrDecided),
 		errors.Is(err, store.ErrAccountDisabled):
-		return err.Error()
+		return i18n.Message(l, err)
 	case errors.Is(err, store.ErrNotFound):
-		return "这条申请不存在"
+		return l.T("notify.toast.not_found")
 	}
-	h.logf("处理审批失败：%v", err)
-	return "处理失败，请稍后再试"
+	h.logf("failed to process approval: %v", err)
+	return l.T("notify.toast.failed")
 }

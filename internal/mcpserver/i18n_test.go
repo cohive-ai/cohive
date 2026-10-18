@@ -162,3 +162,26 @@ func TestHandlerFollowsServerDefaultLanguage(t *testing.T) {
 		t.Fatalf("status_label 应按语言渲染：%v", d["status_label"])
 	}
 }
+
+// 按账号语言选工具说明的语言：lee-claude 设为英文后看到英文，lee-codex 仍是服务器缺省语言（中文）；清掉后回到缺省。
+func TestToolsFollowAccountLanguage(t *testing.T) {
+	f := newFixture(t)
+	f.setLang("lee-claude", "en")
+	desc := func(token string) string {
+		res, err := mustConnect(t, f.url, token).ListTools(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Tools[0].Description
+	}
+	if d := desc(f.tokenA); hasCJK(d) {
+		t.Fatalf("账号语言为英文时应是英文说明：%q", d)
+	}
+	if d := desc(f.tokenB); !hasCJK(d) {
+		t.Fatalf("没设语言的账号应跟随服务器缺省（中文）：%q", d)
+	}
+	f.setLang("lee-claude", "")
+	if d := desc(f.tokenA); !hasCJK(d) {
+		t.Fatalf("清掉后应回到缺省：%q", d)
+	}
+}

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // ---- 设备 ----
@@ -49,7 +51,7 @@ func DeviceBySecret(ctx context.Context, q DBTX, secretHash []byte) (Device, Acc
 		WHERE d.secret_hash = $1 AND d.revoked_at IS NULL AND a.id = d.account_id AND a.disabled_at IS NULL
 		RETURNING d.id, d.account_id, d.name, d.created_at, `+accountColumns, secretHash).
 		Scan(&d.ID, &d.AccountID, &d.Name, &d.CreatedAt,
-			&a.ID, &a.Name, &a.DisplayName, &a.TelegramUsername, &a.TelegramUserID, &a.ServerAdmin, &a.DisabledAt, &a.CreatedAt)
+			&a.ID, &a.Name, &a.DisplayName, &a.TelegramUsername, &a.TelegramUserID, &a.ServerAdmin, &a.Language, &a.DisabledAt, &a.CreatedAt)
 	if errors.Is(notFound(err), ErrNotFound) {
 		return Device{}, Account{}, ErrUnauthorized
 	}
@@ -72,7 +74,7 @@ func IssueDeviceToken(ctx context.Context, q DBTX, memberID, deviceID int64, too
 }
 
 // ErrDeviceRevoked 表示设备已被吊销。
-var ErrDeviceRevoked = errors.New("这台设备已被吊销")
+var ErrDeviceRevoked = i18n.Errorf("store.err.device_revoked")
 
 // LockActiveDevice 在事务内锁住设备行并确认未吊销；签发令牌前调用，和吊销互斥。
 func LockActiveDevice(ctx context.Context, q DBTX, deviceID int64) error {
@@ -265,6 +267,7 @@ type Signup struct {
 	Name         string
 	DisplayName  string
 	PasswordHash string
+	Language     string // 注册时的界面语言，获批建账号时写到账号上
 	Status       string
 	MemberID     *int64
 	CreatedAt    time.Time
@@ -273,7 +276,7 @@ type Signup struct {
 // 加入申请时名字取账号的：申请行上的 name 为空
 const signupColumns = `s.id, s.invite_id, s.workspace_id, s.account_id, s.name IS NULL,
 	coalesce(s.name, a.name, ''), CASE WHEN s.name IS NULL THEN coalesce(a.display_name, '') ELSE s.display_name END,
-	coalesce(s.password_hash, ''),
+	coalesce(s.password_hash, ''), coalesce(s.language, ''),
 	s.status, s.member_id, s.created_at`
 
 const signupFrom = ` FROM signups s LEFT JOIN accounts a ON a.id = s.account_id `
@@ -281,15 +284,16 @@ const signupFrom = ` FROM signups s LEFT JOIN accounts a ON a.id = s.account_id 
 func scanSignup(row interface{ Scan(...any) error }) (Signup, error) {
 	var s Signup
 	err := row.Scan(&s.ID, &s.InviteID, &s.WorkspaceID, &s.AccountID, &s.Existing, &s.Name, &s.DisplayName, &s.PasswordHash,
-		&s.Status, &s.MemberID, &s.CreatedAt)
+		&s.Language, &s.Status, &s.MemberID, &s.CreatedAt)
 	return s, notFound(err)
 }
 
 // CreateSignup 保存新人的注册申请。
 func CreateSignup(ctx context.Context, q DBTX, s Signup) (Signup, error) {
 	var id int64
-	if err := q.QueryRow(ctx, `INSERT INTO signups (invite_id, workspace_id, name, display_name, password_hash)
-		VALUES ($1, $2, $3, $4, $5) RETURNING id`, s.InviteID, s.WorkspaceID, s.Name, s.DisplayName, s.PasswordHash).Scan(&id); err != nil {
+	if err := q.QueryRow(ctx, `INSERT INTO signups (invite_id, workspace_id, name, display_name, password_hash, language)
+		VALUES ($1, $2, $3, $4, $5, nullif($6, '')) RETURNING id`, s.InviteID, s.WorkspaceID, s.Name, s.DisplayName, s.PasswordHash,
+		s.Language).Scan(&id); err != nil {
 		return Signup{}, err
 	}
 	return GetSignup(ctx, q, id)

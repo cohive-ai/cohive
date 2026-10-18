@@ -10,6 +10,7 @@ import (
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/db"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/cohive-ai/cohive/internal/testutil"
 )
@@ -417,7 +418,7 @@ func checkEvent(t *testing.T, got store.AdminEvent, w wantEvent) {
 			t.Errorf("附加信息 %s：得到 %v，应为 %v（全部：%v）", k, got.Detail[k], v, got.Detail)
 		}
 	}
-	if core.EventText(got) == "" || core.ActionLabel(got.Action) == "" {
+	if core.EventText(i18n.Default(), got) == "" || core.ActionLabel(i18n.Default(), got.Action) == "" {
 		t.Errorf("应能写成人话：%+v", got)
 	}
 }
@@ -472,7 +473,7 @@ func assertNoSecrets(t *testing.T, es []store.AdminEvent, secrets []string) {
 	t.Helper()
 	for _, e := range es {
 		raw, _ := json.Marshal(e.Detail)
-		text := string(raw) + "\x00" + e.TargetName + "\x00" + e.ActorName + "\x00" + core.EventText(e)
+		text := string(raw) + "\x00" + e.TargetName + "\x00" + e.ActorName + "\x00" + core.EventText(i18n.ZhCN, e)
 		for _, s := range secrets {
 			if s != "" && strings.Contains(text, s) {
 				t.Errorf("记录 %s 里出现了秘密 %q：%s", e.Action, s, text)
@@ -586,7 +587,7 @@ func TestFailedOperationLeavesNoRecord(t *testing.T) {
 				case core.ActInviteCreate, core.ActSignupApprove:
 					continue
 				}
-				t.Errorf("失败的操作留下了记录：%s %s", e.Action, core.EventText(e))
+				t.Errorf("失败的操作留下了记录：%s %s", e.Action, core.EventText(i18n.ZhCN, e))
 			}
 			if c.name == "重复审批" && countAction(allEvents(t, f.svc), core.ActSignupApprove) != 1 {
 				t.Error("重复审批只应留第一次的记录")
@@ -628,7 +629,7 @@ func TestNoopLeavesNoRecord(t *testing.T) {
 		}
 	}
 	if es := allEvents(t, f.svc); len(es) != 0 {
-		t.Fatalf("没有变化的请求不应留记录：%s", core.EventText(es[0]))
+		t.Fatalf("没有变化的请求不应留记录：%s", core.EventText(i18n.ZhCN, es[0]))
 	}
 }
 
@@ -742,13 +743,13 @@ func TestEventTextCoversEveryAction(t *testing.T) {
 	}
 	id := int64(1)
 	for _, a := range core.Actions() {
-		if core.ActionLabel(a) == "" || !inCat[a] {
+		if core.ActionLabel(i18n.ZhCN, a) == "" || !inCat[a] {
 			t.Errorf("动作 %s 缺中文名或类别", a)
 		}
-		for via := range core.ViaLabels {
+		for _, via := range core.ViaIDs {
 			for _, actor := range []string{"lee", ""} {
 				e := store.AdminEvent{Action: a, Via: via, ActorName: actor, TargetName: "ann", TargetID: &id, Detail: map[string]any{}}
-				txt := core.EventText(e)
+				txt := core.EventText(i18n.ZhCN, e)
 				if txt == "" || strings.Contains(txt, "%!") || strings.Contains(txt, a) {
 					t.Errorf("%s/%s 的人话不对：%q", a, via, txt)
 				}
@@ -756,27 +757,27 @@ func TestEventTextCoversEveryAction(t *testing.T) {
 		}
 	}
 	e := store.AdminEvent{Action: core.ActSignupApprove, Via: core.ViaTelegram, ActorName: "lee", Detail: map[string]any{"applicant": "tester-d"}}
-	if got := core.EventText(e); got != "lee 在群里批准了 tester-d 的注册申请" {
+	if got := core.EventText(i18n.ZhCN, e); got != "lee 在群里批准了 tester-d 的注册申请" {
 		t.Errorf("人话：%q", got)
 	}
 	e = store.AdminEvent{Action: core.ActAccessDenied, Via: core.ViaAgent, ActorName: "lee", TargetName: "POST /api/v1/w/{ws}/admin/invites",
 		Detail: map[string]any{"reason": core.DenyNeedPassword}}
-	if got := core.EventText(e); got != "lee 用编程工具令牌调用管理接口 POST /api/v1/w/{ws}/admin/invites，被拒绝：管理操作只认账号密码登录的网页" {
+	if got := core.EventText(i18n.ZhCN, e); got != "lee 用编程工具令牌调用管理接口 POST /api/v1/w/{ws}/admin/invites，被拒绝：管理操作只认账号密码登录的网页" {
 		t.Errorf("人话：%q", got)
 	}
 	// 预留给 M6-d 的两个动作
 	e = store.AdminEvent{Action: core.ActWorkspaceDisplayName, Via: core.ViaWeb, ActorName: "lee", TargetName: "pay",
 		Detail: map[string]any{"display_name": map[string]any{"from": "支付", "to": "支付组"}}}
-	if got := core.EventText(e); got != "lee 在网页上把工作空间 pay 的显示名从“支付”改为“支付组”" {
+	if got := core.EventText(i18n.ZhCN, e); got != "lee 在网页上把工作空间 pay 的显示名从“支付”改为“支付组”" {
 		t.Errorf("人话：%q", got)
 	}
 	e = store.AdminEvent{Action: core.ActServerSettings, Via: core.ViaWeb, ActorName: "lee",
 		Detail: map[string]any{"external_url": map[string]any{"from": "", "to": "https://c.example"}}}
-	if got := core.EventText(e); got != "lee 在网页上修改了服务器设置：对外地址" {
+	if got := core.EventText(i18n.ZhCN, e); got != "lee 在网页上修改了服务器设置：对外地址" {
 		t.Errorf("人话：%q", got)
 	}
 	e = store.AdminEvent{Action: core.ActResetPassword, Via: core.ViaServerCLI, TargetName: "tester-a"}
-	if got := core.EventText(e); got != "服务器命令行重置了 tester-a 的密码" {
+	if got := core.EventText(i18n.ZhCN, e); got != "服务器命令行重置了 tester-a 的密码" {
 		t.Errorf("人话：%q", got)
 	}
 }
