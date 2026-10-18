@@ -64,7 +64,7 @@ Check that it works:
 
 ## 3. Which events are posted to the group
 
-Group messages use the server's default language, `COHIVE_DEFAULT_LANGUAGE` (`en` or `zh-CN`; English when unset).
+Group messages (notifications, reminders and the bot's replies in the group) use the workspace's language: a workspace admin picks it under Admin → Workspace → Group message language on the web, or a server operator runs `cohive-server workspace set --name <path> --language en`. When it is not set, the server's default language `COHIVE_DEFAULT_LANGUAGE` is used (`en` or `zh-CN`; English when unset). Direct messages to a person use the language that person chose in their Profile.
 
 | Event | Who is @-mentioned |
 |---|---|

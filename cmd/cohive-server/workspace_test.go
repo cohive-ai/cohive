@@ -143,3 +143,18 @@ func TestServerExternalURL(t *testing.T) {
 		t.Fatalf("环境变量不合法应报错：%v", err)
 	}
 }
+
+// workspace set --language：设置、清除（跟随服务器缺省）、拒绝不认识的语言；记管理操作记录由 core 测试覆盖。
+func TestWorkspaceSetLanguage(t *testing.T) {
+	adminEnv(t)
+	mustRun(t, "migrate")
+	if out := mustRun(t, "workspace", "set", "--name", "default", "--language", "en"); !strings.Contains(out, "群消息语言：en") {
+		t.Fatalf("设置英文：%s", out)
+	}
+	if out := mustRun(t, "workspace", "set", "--name", "default", "--language", ""); !strings.Contains(out, "跟随服务器缺省（zh-CN）") {
+		t.Fatalf("清除：%s", out)
+	}
+	if _, err := runCmd(t, "workspace", "set", "--name", "default", "--language", "tlh"); err == nil || !strings.Contains(err.Error(), "不支持的语言") {
+		t.Fatalf("不认识的语言应报错：%v", err)
+	}
+}
