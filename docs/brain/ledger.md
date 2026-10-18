@@ -26,13 +26,14 @@
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
-| I18N-GH | 仓库设置（lee 亲手做，清单见下）：开启讨论区；开启私密漏洞报告与依赖告警；Actions 保持首次贡献者需批准、权限只读，并手动运行一次 CI；main 加禁止强推、禁止删除规则（要求 CI 通过时给管理员留绕过）；用 gh 建标签；填仓库简介与主题标签 | 做 / 暂缓 | 做（SECURITY.md 与议题模板已指向讨论区和私密漏洞报告） | 社区入口可用 |
+| I18N-GH | 仓库安全类设置（lee 亲手做；讨论区、简介、主题标签、标签已由主脑代做，Actions 工作流权限本来就是只读，CI 已在 main 推送时跑过且通过）：开启私密漏洞报告；开启依赖告警；main 加禁止强推、禁止删除规则（要求 CI 通过时给管理员留绕过） | 做 / 暂缓 | 做（SECURITY.md 指向私密漏洞报告，目前未开启） | 安全报告入口可用 |
 | I18N-D13 | README 默认语言 | A README.md 改英文、中文移到 README.zh-CN.md；B 维持中文为默认 | A（GitHub 首页默认展示 README.md，面向外部用户） | I18N 第一段的 README 部分 |
 | I18N-D15 | 贡献者是否签 CLA 或 DCO | A 都不要；B DCO；C CLA | A；若将来可能改许可证或做商业双授权，应现在选 C | 不阻塞（先按 A 写） |
 | I18N-D18 | 行为准则的举报邮箱 | lee 提供一个地址 | 专用别名，不用个人主邮箱 | 行为准则定稿 |
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
+- P2 DEP-1 依赖更新机器人开的 3 个合并请求（cohive-ai/cohive #1 pnpm/action-setup 4→6、#2 Go 依赖 3 项、#3 网页依赖 10 项），CI 均通过；等 I18N 第二段合入后逐个验收再合，避免与第二段的网页改动冲突；#3 若含 i18next 大版本，按“发布满两周”原则核对 —— 来源 社区规范合入后自动产生
 - P2 T-5 cmd/cohive 用例从当前目录往上找 `.mcp.json`，在执行过 cohive init 的克隆里会读到本机配置，3 条用例失败（TestRevokedDeviceHintsForce、TestLoginOpensBrowserAndSaves、TestLegacyCredentials）；开源贡献者照着做也会碰到，测试应隔离仓库目录 —— 来源 N-2 合入时主脑发现
 - P2 OS-4 打标签时用 GitHub Actions 构建多架构镜像推到 ghcr，compose 缺省用预构建镜像（公开后第一个小任务）；另：机器人入群后 /bind 绑群、未配对时 init 自动走 login、安装脚本经同意写 PATH、Caddy 自动 HTTPS 示例、发布物附第三方许可证清单 —— 来源 OSS-1 建议
 - P3 T-3 转交或发单给正在被移出的成员时，assignable 不锁成员行，可能留下负责人是已移出成员的单（推测未验证）；在问题单锁之后对接收人成员行加 FOR SHARE 并复查状态 —— 来源 稳定性修复遗留
