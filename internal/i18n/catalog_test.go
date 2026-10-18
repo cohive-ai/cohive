@@ -16,8 +16,9 @@ import (
 
 // entry 是语言包里的一条：普通文案只有 other，复数文案有多种形式。
 type entry struct {
-	file  string
-	forms map[string]string
+	file   string
+	plural bool // 值写成了复数对象
+	forms  map[string]string
 }
 
 var pluralForms = []string{"zero", "one", "two", "few", "many", "other"}
@@ -60,6 +61,7 @@ func readCatalog(t *testing.T, fsys fs.FS, dir string) map[string]entry {
 			if json.Unmarshal(raw, &s) == nil {
 				e.forms["other"] = s
 			} else {
+				e.plural = true
 				var m map[string]string
 				if err := json.Unmarshal(raw, &m); err != nil {
 					t.Errorf("%s: %s: value must be a string or a plural object of strings", f, key)
@@ -150,7 +152,7 @@ func TestCatalogComplete(t *testing.T) {
 		}
 	}
 	for key, e := range en {
-		if len(e.forms) > 1 {
+		if e.plural {
 			if _, ok := e.forms["one"]; !ok {
 				t.Errorf("en: plural key %q needs a \"one\" form", key)
 			}

@@ -253,7 +253,7 @@ func escapeSh(s string) string { return shEscaper.Replace(s) }
 func escapePs(s string) string { return psEscaper.Replace(s) }
 
 // scriptLang 决定安装脚本的语言：请求参数 lang > Accept-Language > 服务器缺省语言。
-// curl 不带语言头，网页上复制的命令在界面语言与服务器缺省不同时会带 ?lang=。
+// curl 不带语言头；网页“绑定新电脑”里复制的命令总带 ?lang=（当前界面语言）。
 func scriptLang(r *http.Request) i18n.Lang {
 	if l, ok := i18n.Match(r.URL.Query().Get("lang")); ok {
 		return l

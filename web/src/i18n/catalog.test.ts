@@ -17,12 +17,13 @@ const pluralSuffix = /_(zero|one|two|few|many|other)$/;
 
 // 按“命名空间:键（去掉复数后缀）”汇总每种语言的文案
 function catalog(lang: string) {
-  const out = new Map<string, { forms: Record<string, string> }>();
+  const out = new Map<string, { plural: boolean; forms: Record<string, string> }>();
   for (const [ns, data] of Object.entries(resources[lang])) {
     for (const [key, text] of Object.entries(flatten(data))) {
       const m = key.match(pluralSuffix);
       const base = `${ns}:${m ? key.slice(0, -m[0].length) : key}`;
-      const e = out.get(base) ?? { forms: {} };
+      const e = out.get(base) ?? { plural: false, forms: {} };
+      if (m) e.plural = true;
       e.forms[m ? m[1] : "other"] = text;
       out.set(base, e);
     }
@@ -55,7 +56,7 @@ it("en 与 zh-CN 的键完全一致，其他语言不能多出英文里没有的
     }
   }
   for (const [key, e] of en) {
-    if (Object.keys(e.forms).length > 1 && !("one" in e.forms)) problems.push(`en: plural ${key} needs _one`);
+    if (e.plural && !("one" in e.forms)) problems.push(`en: plural ${key} needs _one`);
   }
   expect(problems).toEqual([]);
 });
