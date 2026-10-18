@@ -19,13 +19,14 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| I18N 多语言与社区规范 | `claude/i18n-community-8501fd` | i18n-community / `local_2d4cac2f-f92f-4352-a1aa-63c9ec1d1e8c` | `605c4ba` | 实施中（方案 `f505c97` 已认可，做第一段；N-2 已合入，已通知变基） | 中英两种，其他语言社区维护；抽取与翻译用 sonnet 子代理；第一段避开 internal/notify、core、store 与 Admin 页，第二段等 N-1、N-2 合入后做群通知与工作空间语言；社区规范（贡献指南、行为准则、安全、模板、鸣谢），仓库设置只列清单给 lee；交回 `docs/brain/inbox/I18N-*.md` |
+| I18N 多语言与社区规范 | `claude/i18n-community-8501fd` | i18n-community / `local_2d4cac2f-f92f-4352-a1aa-63c9ec1d1e8c` | `955622e`（第一段已合入 `66d74b0`） | 实施中（第二段：core、notify、store、Admin 页文案，账号与工作空间语言，命令行与钩子跟随账号语言，脚本参考 macOS 界面语言，onboarding 修正） | 中英两种，其他语言社区维护；抽取与翻译用 sonnet 子代理；第一段避开 internal/notify、core、store 与 Admin 页，第二段等 N-1、N-2 合入后做群通知与工作空间语言；社区规范（贡献指南、行为准则、安全、模板、鸣谢），仓库设置只列清单给 lee；交回 `docs/brain/inbox/I18N-*.md` |
 | IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
+| I18N-GH | 仓库设置（lee 亲手做，清单见下）：开启讨论区；开启私密漏洞报告与依赖告警；Actions 保持首次贡献者需批准、权限只读，并手动运行一次 CI；main 加禁止强推、禁止删除规则（要求 CI 通过时给管理员留绕过）；用 gh 建标签；填仓库简介与主题标签 | 做 / 暂缓 | 做（SECURITY.md 与议题模板已指向讨论区和私密漏洞报告） | 社区入口可用 |
 | I18N-D13 | README 默认语言 | A README.md 改英文、中文移到 README.zh-CN.md；B 维持中文为默认 | A（GitHub 首页默认展示 README.md，面向外部用户） | I18N 第一段的 README 部分 |
 | I18N-D15 | 贡献者是否签 CLA 或 DCO | A 都不要；B DCO；C CLA | A；若将来可能改许可证或做商业双授权，应现在选 C | 不阻塞（先按 A 写） |
 | I18N-D18 | 行为准则的举报邮箱 | lee 提供一个地址 | 专用别名，不用个人主邮箱 | 行为准则定稿 |
@@ -45,7 +46,7 @@
 ## 4. 环境与待清理
 - 本仓库自用 Cohive（2026-10-18 起）：主检出已 `cohive init` 接入测试服工作空间 `cohive-internal`（只配 Claude Code，含会话钩子），生成的 `.mcp.json`、`.claude/settings.json`、`.claude/skills/` 写在本地 `.git/info/exclude`，不提交；服务 `cohive` 负责人 lee。工作树里的实施会话没有这些文件，不受提醒打扰。朋友与同事在该空间报的问题单，由 lee 或主脑在主检出会话里用 /cohive 拉取，再分派。
 - 仓库：公开在 `https://github.com/cohive-ai/cohive`（2026-10-17 起），Apache-2.0。往 main 提交的一切都会公开，台账里不写本机绝对路径、令牌、公司事项。
-- 测试服（2026-10-16 起）：main 构建的程序（`<仓库根>/bin/`，当前 `9149ada`，已执行至 0012 迁移；钉钉未配凭据，未启用）+ 长期测试库 `cohive_test`，由 launchd 服务 `com.anormlylee.cohive.server` 常驻（KeepAlive；登录后自动启动，环境用 env -i 清空、以 server.env 为准），管理用 `scripts/cohive-server.sh start|stop|restart|status`（restart 即 kickstart -k）（配置 `~/.local/share/cohive-server/server.env`，数据目录 `…/data`，日志 `…/logs`，详见 `docs/guides/single-host.md`）。监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（2026-10-17 起隧道由 launchd 服务 `com.anormlylee.cohive.tunnel` 常驻，日志 `~/.local/share/cohive-server/logs/tunnel.log`；主脑终端 c1 的旧隧道已停）。
+- 测试服（2026-10-16 起）：main 构建的程序（`<仓库根>/bin/`，当前 `1d173bc`，已执行至 0012 迁移；server.env 已加 COHIVE_DEFAULT_LANGUAGE=zh-CN；钉钉未配凭据，未启用）+ 长期测试库 `cohive_test`，由 launchd 服务 `com.anormlylee.cohive.server` 常驻（KeepAlive；登录后自动启动，环境用 env -i 清空、以 server.env 为准），管理用 `scripts/cohive-server.sh start|stop|restart|status`（restart 即 kickstart -k）（配置 `~/.local/share/cohive-server/server.env`，数据目录 `…/data`，日志 `…/logs`，详见 `docs/guides/single-host.md`）。监听 `127.0.0.1:8787`，经 Cloudflare 隧道 `cohive-test` 对外（2026-10-17 起隧道由 launchd 服务 `com.anormlylee.cohive.tunnel` 常驻，日志 `~/.local/share/cohive-server/logs/tunnel.log`；主脑终端 c1 的旧隧道已停）。
 - 备份：`scripts/backup-db.sh` 手动可用，备份在 `~/.local/share/cohive-server/backups/`，保留 14 份；launchd 定时备份已安装（`~/Library/LaunchAgents/com.anormlylee.cohive.backup.plist`，每天 03:30，日志 `…/logs/backup.log`；撤销见 `docs/guides/single-host.md` 第 5 节），2026-10-16 已试跑成功。Docker Desktop 没开时备份会失败。迁移 M5b 前的备份在主脑临时目录 `…/scratchpad/backup/`。
 - 测试账号：admin（服务器管理员）、tester-a、tester-b（已停用）；密码文件在 `~/.local/share/cohive-server/data/`（权限 600，测试凭据）。工作空间：default、proj-b、proj-c。
 - 旧库：`cohive`（M4 数据，群编号 `<旧测试群编号>`，停用不删）、`cohive_m5`（旧版第六号，停用）。
