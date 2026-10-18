@@ -430,3 +430,11 @@ func TestHookSessionRestartDoesNotRepeat(t *testing.T) {
 	}
 	tellsUser(t, o, fmt.Sprintf("Cohive 提醒：#%d tester-a 交给你处理，可用 /cohive %d 查看", second.ID, second.ID))
 }
+
+// 超时催办的会话内提醒：写明“等你处理已超时”，不写操作人（催办没有操作人）。
+func TestAlertPhraseOverdue(t *testing.T) {
+	got := alertPhrase(client.AlertItem{IssueID: 7, Kind: "overdue", Actor: "lee-codex"})
+	if got != "#7 等你处理已超时，请尽快处理" {
+		t.Fatalf("催办提醒：%q", got)
+	}
+}

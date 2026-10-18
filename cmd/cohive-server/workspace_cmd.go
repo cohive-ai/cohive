@@ -38,32 +38,51 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 		return nil
 	case "set":
 		var name, display string
-		set := false
+		var openH, verifyH int
+		set := map[string]bool{}
 		fs := flag.NewFlagSet("workspace set", flag.ContinueOnError)
 		fs.StringVar(&name, "name", "", "工作空间路径")
 		fs.StringVar(&display, "display", "", "显示名；传空字符串恢复为与路径相同")
+		fs.IntVar(&openH, "remind-open-hours", 0, "待接单超时催办时长（小时，0 表示关闭）")
+		fs.IntVar(&verifyH, "remind-verify-hours", 0, "待验证超时催办时长（小时，0 表示关闭）")
 		if err := fs.Parse(args); err != nil {
 			return err
 		}
-		fs.Visit(func(f *flag.Flag) { set = set || f.Name == "display" })
+		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 		if err := required("name", name); err != nil {
 			return err
 		}
-		if !set {
-			return fmt.Errorf("没有要修改的项：用 --display（路径不能改）")
+		if !set["display"] && !set["remind-open-hours"] && !set["remind-verify-hours"] {
+			return fmt.Errorf("没有要修改的项：用 --display（路径不能改）、--remind-open-hours 或 --remind-verify-hours")
 		}
 		wsID, err := resolveWorkspace(ctx, pool, name)
 		if err != nil {
 			return err
 		}
-		if err := (&core.Service{Pool: pool}).SetWorkspaceDisplayName(ctx, core.ServerCLI(), wsID, display); err != nil {
-			return err
+		svc := &core.Service{Pool: pool}
+		if set["display"] {
+			if err := svc.SetWorkspaceDisplayName(ctx, core.ServerCLI(), wsID, display); err != nil {
+				return err
+			}
+		}
+		if set["remind-open-hours"] || set["remind-verify-hours"] {
+			in := core.WorkspaceSettings{}
+			if set["remind-open-hours"] {
+				in.RemindOpenHours = &openH
+			}
+			if set["remind-verify-hours"] {
+				in.RemindVerifyHours = &verifyH
+			}
+			if err := svc.SetRemindHours(ctx, core.ServerCLI(), wsID, in.RemindOpenHours, in.RemindVerifyHours); err != nil {
+				return err
+			}
 		}
 		w, err := store.GetWorkspace(ctx, pool, wsID)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "工作空间 %s 的显示名为 %s\n", w.Name, w.Label())
+		fmt.Fprintf(out, "工作空间 %s：显示名 %s，超时催办 待接单 %s、待验证 %s\n", w.Name, w.Label(),
+			hoursLabel(w.Remind.OpenHours), hoursLabel(w.Remind.VerifyHours))
 		return nil
 	case "remove":
 		var name string
@@ -110,6 +129,13 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 	}
 	fmt.Fprint(out, usage)
 	return fmt.Errorf("未知命令 %q", "workspace "+sub)
+}
+
+func hoursLabel(h int) string {
+	if h == 0 {
+		return "关闭"
+	}
+	return fmt.Sprintf("%d 小时", h)
 }
 
 func onOff(b bool) string {

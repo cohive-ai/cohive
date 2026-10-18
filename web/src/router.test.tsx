@@ -193,7 +193,12 @@ it("工作空间设置页：设了对外地址时只读显示链接；保存时�
   expect(input.value).toBe("<b>运维</b>");
   fireEvent.change(input, { target: { value: " 运维组 " } });
   fireEvent.click(screen.getByText("保存"));
-  await waitFor(() => expect(posts).toEqual([{ telegram_chat: "-100", show_title: true, show_brief: true, display_name: "运维组" }]));
+  await waitFor(() =>
+    expect(posts).toEqual([
+      // 超时催办时长：接口没给时用默认 4、24 小时
+      { telegram_chat: "-100", show_title: true, show_brief: true, display_name: "运维组", remind_open_hours: 4, remind_verify_hours: 24 },
+    ]),
+  );
 });
 
 it("顶栏切换器：显示名与路径不同时写成“显示名（路径）”", async () => {

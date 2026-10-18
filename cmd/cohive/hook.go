@@ -205,6 +205,8 @@ func alertPhrase(it client.AlertItem) string {
 		return fmt.Sprintf("#%d %s 已接单", it.IssueID, who)
 	case "closed":
 		return fmt.Sprintf("#%d %s 验证通过，已关闭", it.IssueID, who)
+	case "overdue":
+		return fmt.Sprintf("#%d 等你处理已超时，请尽快处理", it.IssueID)
 	}
 	return fmt.Sprintf("#%d 有新动态", it.IssueID)
 }

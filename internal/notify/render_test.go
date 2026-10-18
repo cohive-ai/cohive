@@ -171,3 +171,41 @@ func TestAcceptedAndClosedDingTalk(t *testing.T) {
 		t.Fatalf("钉钉接单消息（发起人没连钉钉，只写名字）：%+v", m)
 	}
 }
+
+// 超时催办：待接单催负责人、待验证催发起人，写出工作空间设置的时长；第 2 档同时请管理员协调；钉钉标题。
+func TestOverdueMessages(t *testing.T) {
+	is := sampleIssue()
+	w := workspace(true, false, "")
+	w.ws.Remind = store.RemindConfig{OpenHours: 4, VerifyHours: 24}
+	n := store.Notification{Event: "overdue", IssueStatus: "OPEN", ActorMemberID: codex.ID, ActorTool: "cohive", Recipients: []int64{codex.ID}}
+	text := notify.Render(w.base, w.ws, is, n, members())
+	for _, want := range []string{"#12 已等待接单超过 4 小时，请 lee-codex 接单、退回或转交", "下单接口返回 500", "处理"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("待接单催办应包含 %q：\n%s", want, text)
+		}
+	}
+	n = store.Notification{Event: "overdue_admin", IssueStatus: "READY_FOR_VERIFICATION", ActorMemberID: claude.ID, ActorTool: "cohive",
+		Recipients: []int64{claude.ID, linked.ID}}
+	text = notify.Render(w.base, w.ws, is, n, members())
+	if !strings.Contains(text, "#12 已等待验证超过 48 小时，仍没有动作：请 @lee_claude 尽快验证；请管理员 <a href=\"tg://user?id=777\">") {
+		t.Fatalf("第 2 档：\n%s", text)
+	}
+	n.Recipients = []int64{claude.ID}
+	if text = notify.Render(w.base, w.ws, is, n, members()); !strings.Contains(text, "仍没有动作，请 @lee_claude 尽快验证") || strings.Contains(text, "管理员") {
+		t.Fatalf("没有别的管理员时只催当事人：\n%s", text)
+	}
+	w.ws.Remind.OpenHours = 0 // 投递前关掉了：不写具体小时数
+	n = store.Notification{Event: "overdue", IssueStatus: "OPEN", Recipients: []int64{codex.ID}}
+	if text = notify.Render(w.base, w.ws, is, n, members()); !strings.Contains(text, "已等待接单较长时间") {
+		t.Fatalf("时长已关时：\n%s", text)
+	}
+	m := notify.RenderFor(notify.DingTalkFormat{}, store.ProviderDingTalk, "", w.ws, is,
+		store.Notification{Event: "overdue_admin", IssueStatus: "OPEN", Recipients: []int64{codex.ID}},
+		map[int64]notify.Person{codex.ID: {Name: codex.Name, Chats: []store.ChatIdentity{{Provider: store.ProviderDingTalk, UserID: "u-codex"}}}})
+	if m.Title != "#12 催办（已请管理员协调）" || len(m.Mentions) != 1 || !strings.Contains(m.Text, "@lee-codex") {
+		t.Fatalf("钉钉催办：%+v", m)
+	}
+	if text := render(t, workspace(true, true, ""), is, "overdue", codex.ID, "cohive", codex.ID); strings.Contains(text, "SECRET") {
+		t.Fatalf("催办不带正文：\n%s", text)
+	}
+}

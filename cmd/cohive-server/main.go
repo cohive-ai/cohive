@@ -25,6 +25,8 @@ const usage = `用法：cohive-server <命令>
   workspace add --name <路径> [--display <显示名>] [--admin <登录名>]
                                                   创建工作空间并指定首位管理员
   workspace set --name <路径> --display <显示名>   修改显示名（传空字符串恢复为与路径相同）
+  workspace set --name <路径> --remind-open-hours <小时> --remind-verify-hours <小时>
+                                                  超时催办时长（默认 4、24，0 表示关闭）
   workspace remove --name <路径>                  删除工作空间（只限没有任何问题单的）
   workspace list                                  列出工作空间与群通知配置
   workspace notify --workspace <路径> --telegram-chat <群聊编号（群里发 /chatid 获取）>

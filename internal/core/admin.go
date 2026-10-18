@@ -71,6 +71,17 @@ type WorkspaceSettings struct {
 	ShowTitle    bool
 	ShowBrief    bool
 	DisplayName  *string // 为空时不改显示名；指向空串表示恢复为路径
+	// 超时催办时长（小时），为空时不改；0 表示关闭
+	RemindOpenHours   *int
+	RemindVerifyHours *int
+}
+
+// checkRemindHours 校验催办时长：0 到 720 小时的整数。
+func checkRemindHours(what string, h *int) error {
+	if h != nil && (*h < 0 || *h > store.MaxRemindHours) {
+		return inputErr("%s催办时长应为 0 到 %d 小时（0 表示关闭）", what, store.MaxRemindHours)
+	}
+	return nil
 }
 
 // UpdateWorkspace 由管理员修改工作空间设置。群编号为空表示关闭群通知；一个群只能绑一个工作空间。
@@ -88,6 +99,12 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 		if _, err := strconv.ParseInt(chat, 10, 64); err != nil {
 			return inputErr("Telegram 群编号应为数字，例如 -1001234567890（群里发 /chatid 获取）")
 		}
+	}
+	if err := checkRemindHours("待接单", in.RemindOpenHours); err != nil {
+		return err
+	}
+	if err := checkRemindHours("待验证", in.RemindVerifyHours); err != nil {
+		return err
 	}
 	cfg := store.NotifyConfig{Target: chat, ShowTitle: in.ShowTitle, ShowBrief: in.ShowBrief}
 	if chat != "" {
@@ -134,6 +151,20 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 		diff("telegram_chat", oldTG, chat)
 		diff("show_title", old.Notify.ShowTitle, in.ShowTitle)
 		diff("show_brief", old.Notify.ShowBrief, in.ShowBrief)
+		remind := old.Remind
+		if in.RemindOpenHours != nil {
+			remind.OpenHours = *in.RemindOpenHours
+		}
+		if in.RemindVerifyHours != nil {
+			remind.VerifyHours = *in.RemindVerifyHours
+		}
+		if remind != old.Remind {
+			if err := store.SetWorkspaceRemind(ctx, tx, wsID, remind); err != nil {
+				return err
+			}
+			diff("remind_open_hours", old.Remind.OpenHours, remind.OpenHours)
+			diff("remind_verify_hours", old.Remind.VerifyHours, remind.VerifyHours)
+		}
 		if len(changes) > 0 {
 			if err := record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(wsID), Action: ActWorkspaceSettings,
 				TargetKind: "workspace", TargetID: idp(wsID), TargetName: old.Name, Detail: changes}); err != nil {

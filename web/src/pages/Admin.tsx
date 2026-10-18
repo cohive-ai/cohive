@@ -1086,6 +1086,10 @@ export function WorkspaceForm({
   const [chat, setChat] = useState(initial.telegram_chat == null ? "" : String(initial.telegram_chat));
   const [showTitle, setShowTitle] = useState(initial.show_title);
   const [showBrief, setShowBrief] = useState(initial.show_brief);
+  const [remindOpen, setRemindOpen] = useState(String(initial.remind_open_hours ?? 4));
+  const [remindVerify, setRemindVerify] = useState(String(initial.remind_verify_hours ?? 24));
+  const hoursOk = (v: string) => /^\d{1,3}$/.test(v.trim()) && Number(v) <= 720;
+  const remindOk = hoursOk(remindOpen) && hoursOk(remindVerify);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1101,7 +1105,7 @@ export function WorkspaceForm({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!displayOk) return;
+    if (!displayOk || !remindOk) return;
     setBusy(true);
     setError("");
     setOk("");
@@ -1111,6 +1115,8 @@ export function WorkspaceForm({
         show_title: showTitle,
         show_brief: showBrief,
         display_name: display.trim(),
+        remind_open_hours: Number(remindOpen),
+        remind_verify_hours: Number(remindVerify),
       });
       setOk("已保存。");
       await qc.invalidateQueries({ queryKey: ["admin", ws, "workspace"] });
@@ -1215,6 +1221,38 @@ export function WorkspaceForm({
             问题单简述
           </label>
           <p className="text-xs text-muted">群里有外部人员时可以关掉，只发编号与链接。</p>
+        </fieldset>
+        <fieldset className="space-y-2 text-sm">
+          <legend className="mb-1">超时催办</legend>
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2">
+              待接单超过
+              <input
+                aria-label="待接单催办时长（小时）"
+                inputMode="numeric"
+                value={remindOpen}
+                onChange={(e) => setRemindOpen(e.target.value)}
+                className={`${inputClass} w-20`}
+              />
+              小时
+            </label>
+            <label className="flex items-center gap-2">
+              待验证超过
+              <input
+                aria-label="待验证催办时长（小时）"
+                inputMode="numeric"
+                value={remindVerify}
+                onChange={(e) => setRemindVerify(e.target.value)}
+                className={`${inputClass} w-20`}
+              />
+              小时
+            </label>
+          </div>
+          {!remindOk && <p className="text-xs text-danger">请填 0 到 720 的整数小时。</p>}
+          <p className="text-xs text-muted">
+            到点在群里再 @ 当事人一次；再过同样时长仍没有动作，同时 @ 工作空间管理员，之后不再催。按自然时间计算，“修复中”不计时，状态一变就重新计时。填
+            0 表示关闭。
+          </p>
         </fieldset>
         <ErrorText>{error}</ErrorText>
         <SuccessText>{ok}</SuccessText>

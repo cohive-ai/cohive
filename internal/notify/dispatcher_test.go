@@ -233,6 +233,48 @@ func TestDispatchAcceptedNotStale(t *testing.T) {
 	}
 }
 
+// 催办是“要动手”的通知：写入后、投递前负责人已经接单，就不再发。
+func TestDispatchOverdueStale(t *testing.T) {
+	e := newDispatchEnv(t)
+	ctx := context.Background()
+	is := e.submitOne(t)
+	if _, err := e.pool.Exec(ctx, `UPDATE issues SET status_since = now() - interval '5 hours' WHERE id = $1`, is.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.QueueReminders(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Act(ctx, e.b, core.ActInput{IssueID: is.ID, Action: issue.ActAccept, ExpectedVersion: is.Version}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.d.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range e.sender.sent {
+		if strings.Contains(m, "已等待接单") {
+			t.Fatalf("接单后催办不应再发：%v", e.sender.sent)
+		}
+	}
+	if len(e.sender.sent) != 1 || !strings.Contains(e.sender.sent[0], "已被 lee-codex 接单") {
+		t.Fatalf("只发“已接单”：%v", e.sender.sent)
+	}
+}
+
+// 投递循环顺带写催办：Reminders 设了就调用（每分钟一次，第一轮立即调）。
+func TestDispatcherRunCallsReminders(t *testing.T) {
+	e := newDispatchEnv(t)
+	calls := make(chan struct{}, 4)
+	e.d.Reminders = func(context.Context) (int, error) { calls <- struct{}{}; return 0, nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go e.d.Run(ctx, 10*time.Millisecond)
+	select {
+	case <-calls:
+	case <-time.After(3 * time.Second):
+		t.Fatal("投递循环应调用催办")
+	}
+}
+
 func TestDispatchRetriesThenFails(t *testing.T) {
 	e := newDispatchEnv(t)
 	is := e.submitOne(t)

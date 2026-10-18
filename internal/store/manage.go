@@ -75,8 +75,12 @@ func SetServiceOwner(ctx context.Context, q DBTX, wsID int64, name string, owner
 }
 
 // SetIssueSource 改问题单发起人（管理员改派用；版本号由随后的 UpdateIssue 加一）。
+// 发起人换了人，超时催办重新计时（待验证时催的是发起人）。
 func SetIssueSource(ctx context.Context, q DBTX, issueID, sourceID int64) error {
-	return execOne(ctx, q, `UPDATE issues SET source_member_id = $2 WHERE id = $1`, issueID, sourceID)
+	return execOne(ctx, q, `UPDATE issues SET
+		status_since = CASE WHEN source_member_id IS DISTINCT FROM $2 THEN now() ELSE status_since END,
+		remind_level = CASE WHEN source_member_id IS DISTINCT FROM $2 THEN 0 ELSE remind_level END,
+		source_member_id = $2 WHERE id = $1`, issueID, sourceID)
 }
 
 // ---- 服务器管理用列表 ----
@@ -156,7 +160,7 @@ func ListWorkspaceSummaries(ctx context.Context, q DBTX) ([]WorkspaceSummary, er
 	for rows.Next() {
 		var s WorkspaceSummary
 		if err := rows.Scan(&s.ID, &s.Name, &s.DisplayName, &s.Notify.Channel, &s.Notify.Target, &s.Notify.ShowTitle,
-			&s.Notify.ShowBrief, &s.CreatedAt, &s.Members, &s.Admins, &s.OpenIssues); err != nil {
+			&s.Notify.ShowBrief, &s.Remind.OpenHours, &s.Remind.VerifyHours, &s.CreatedAt, &s.Members, &s.Admins, &s.OpenIssues); err != nil {
 			return nil, err
 		}
 		s.TelegramBound = s.Notify.Target != "" // 绑了群（任一种通讯工具）；接口字段名沿用 telegram_bound
