@@ -246,3 +246,52 @@ func TestNoSelfMention(t *testing.T) {
 		t.Fatalf("钉钉催办照常 @：%+v", m)
 	}
 }
+
+// N-4 新事件：转交告知发起人写出新负责人、开始修复、留言（只说来自谁，正文不进群）、改派写出现在的负责人与发起人；
+// 中英文各一，钉钉卡片标题；都是告知型，指引写“查看”。
+func TestNewInfoEventMessages(t *testing.T) {
+	is := sampleIssue() // 发起人 claude（只登记了用户名），负责人 codex
+	w := workspace(true, false, "")
+	cases := []struct {
+		event string
+		actor int64
+		to    []int64
+		zh    []string
+		en    []string
+		title string
+	}{
+		{"transferred", claude.ID, []int64{claude.ID}, []string{"#12 已由 lee-claude 转交给 lee-codex，告知发起人 lee-claude", "转交"},
+			[]string{"#12 transferred by lee-claude to lee-codex, FYI reporter lee-claude"}, "#12 已转交"},
+		{"started", codex.ID, []int64{claude.ID}, []string{"#12 lee-codex 已开始修复，告知发起人 @lee_claude", "开始修复"},
+			[]string{"#12 lee-codex started fixing, FYI reporter @lee_claude"}, "#12 开始修复"},
+		{"commented", codex.ID, []int64{claude.ID}, []string{"#12 有新留言，来自 lee-codex，告知 @lee_claude"},
+			[]string{"#12 new comment from lee-codex, FYI @lee_claude"}, "#12 新留言"},
+		{"reassigned", linked.ID, []int64{claude.ID}, []string{"已由管理员", "现在负责人是 lee-codex，发起人是 lee-claude；告知 @lee_claude"},
+			[]string{"reassigned by admin", "owner is now lee-codex, reporter is lee-claude; FYI @lee_claude"}, "#12 已改派"},
+	}
+	for _, c := range cases {
+		n := store.Notification{Event: c.event, ActorMemberID: c.actor, ActorTool: "codex", Recipients: c.to}
+		text := notify.Render(w.base, w.ws, is, n, members())
+		for _, want := range append(c.zh, "下单接口返回 500", "查看") {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s 中文应包含 %q：\n%s", c.event, want, text)
+			}
+		}
+		if strings.Contains(text, "处理") || strings.Contains(text, "SECRET") {
+			t.Errorf("%s：告知型指引不写“处理”、不带正文：\n%s", c.event, text)
+		}
+		en := w.ws
+		en.Language = "en"
+		text = notify.Render(w.base, en, is, n, members())
+		for _, want := range c.en {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s 英文应包含 %q：\n%s", c.event, want, text)
+			}
+		}
+		m := notify.RenderFor(notify.DingTalkFormat{}, store.ProviderDingTalk, "", w.ws, is, n, map[int64]notify.Person{
+			claude.ID: {Name: claude.Name}, codex.ID: {Name: codex.Name}, linked.ID: {Name: "admin"}})
+		if m.Title != c.title {
+			t.Errorf("%s 钉钉标题应为 %q，实际 %q", c.event, c.title, m.Title)
+		}
+	}
+}

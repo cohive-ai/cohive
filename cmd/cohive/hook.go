@@ -206,6 +206,14 @@ func alertPhrase(it client.AlertItem) string {
 		return i18n.T("cli.hook.alert_closed", d)
 	case "overdue":
 		return i18n.T("cli.hook.alert_overdue", d)
+	case "transferred":
+		return i18n.T("cli.hook.alert_transferred", d)
+	case "started":
+		return i18n.T("cli.hook.alert_started", d)
+	case "commented":
+		return i18n.T("cli.hook.alert_commented", d)
+	case "reassigned":
+		return i18n.T("cli.hook.alert_reassigned", d)
 	}
 	return i18n.T("cli.hook.alert_other", d)
 }

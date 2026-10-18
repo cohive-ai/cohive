@@ -228,8 +228,10 @@ func TestDispatchAcceptedNotStale(t *testing.T) {
 	if _, err := e.d.RunOnce(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if len(e.sender.sent) != 1 || !strings.Contains(e.sender.sent[0], "已被 lee-codex 接单") {
-		t.Fatalf("只应发出“已接单”：%v", e.sender.sent)
+	// “新单交给你”已过时不发；“已接单”“已开始修复”都是告知型，照样发（N-4）
+	if len(e.sender.sent) != 2 || !strings.Contains(e.sender.sent[0], "已被 lee-codex 接单") ||
+		!strings.Contains(e.sender.sent[1], "lee-codex 已开始修复") {
+		t.Fatalf("应发出“已接单”“已开始修复”两条：%v", e.sender.sent)
 	}
 }
 

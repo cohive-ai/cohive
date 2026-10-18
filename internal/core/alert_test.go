@@ -43,7 +43,7 @@ func sameAlerts(t *testing.T, got, want []alertRow) {
 	}
 }
 
-// 6.2 第 1、2 条：整个闭环里每一步给谁提醒；没配群也写；评论、开始修复不提醒。
+// 6.2 第 1、2 条：整个闭环里每一步给谁提醒；没配群也写；开始修复、留言告知发起人（N-4）。
 func TestAlertsAlongTheLoop(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t) // 没配群
@@ -62,6 +62,8 @@ func TestAlertsAlongTheLoop(t *testing.T) {
 	sameAlerts(t, alertsOf(t, e, is.ID), []alertRow{
 		{b, core.AlertAssigned, a},
 		{a, core.AlertAccepted, b},
+		{a, core.AlertStarted, b},
+		{a, core.AlertCommented, b},
 		{a, core.AlertVerify, b},
 		{b, core.AlertReopened, a},
 		{a, core.AlertVerify, b},

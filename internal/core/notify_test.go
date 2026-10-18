@@ -75,10 +75,12 @@ func TestNotificationsAlongTheLoop(t *testing.T) {
 	is = e.act(t, e.b, is, issue.ActRequestVerification)
 	e.act(t, e.a, is, issue.ActClose)
 
-	// 接单告知发起人、验证通过关单告知负责人；开始修复、评论不通知；验证不通过只发重开，不发关单
+	// 每一步都通知另一方（N-4）：接单、开始修复、留言告知发起人，验证通过关单告知负责人；验证不通过只发重开，不发关单
 	want := []sent{
 		{"assigned", []int64{e.b.MemberID}},
 		{"accepted", []int64{e.a.MemberID}},
+		{"started", []int64{e.a.MemberID}},
+		{"commented", []int64{e.a.MemberID}},
 		{"verify", []int64{e.a.MemberID}},
 		{"reopened", []int64{e.b.MemberID}},
 		{"verify", []int64{e.a.MemberID}},
@@ -86,7 +88,7 @@ func TestNotificationsAlongTheLoop(t *testing.T) {
 	}
 	got2 := pending(t, e, is.ID)
 	if len(got2) != len(want) {
-		t.Fatalf("应写入 %d 条待发通知（开始修复、评论不通知），得到 %v", len(want), got2)
+		t.Fatalf("应写入 %d 条待发通知，得到 %v", len(want), got2)
 	}
 	for i := range want {
 		if got2[i].event != want[i].event || !sameIDs(got2[i].recipients, want[i].recipients) {
