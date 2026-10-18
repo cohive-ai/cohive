@@ -1,7 +1,7 @@
 # DOC-2 交回：开源文档三项定稿
 
 - 分支：`docs/readme-english-default`（基于 origin/main `c74c96e`）
-- 改动在一个提交里，交回同一个提交
+- 提交：改动与交回 `d78940f`，交回里改名历史说明的更正单独一个提交
 - 未合入 main，未推送到 main
 
 ## D13：README 默认语言改为英文
@@ -9,7 +9,8 @@
 - 文件改名：
   - `README.md`（中文）改名为 `README.zh-CN.md`；
   - `README.en.md` 改名为 `README.md`。
-  - 都用 `git mv`，提交里显示为改名，历史能接上。
+  - 都用 `git mv`。中文版用 `git log --follow README.zh-CN.md` 能接上原来 `README.md` 的历史。
+  - 英文版占了 `README.md` 这个路径：在 Git 看来，这个路径还是原来那个文件，只是内容换成了英文，所以按路径查到的是原中文版的历史；英文版改名前的历史要查 `README.en.md`。这是两个文件对调名字必然出现的情况，不影响使用。
 - 顶部语言切换链接：
   - 英文版 `README.md`：`[中文](README.zh-CN.md)`；
   - 中文版 `README.zh-CN.md`：`[English](README.md)`。
