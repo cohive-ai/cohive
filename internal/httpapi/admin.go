@@ -7,14 +7,15 @@ import (
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/i18n"
+	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
-func handoverJSON(h core.Handover) map[string]any {
+func handoverJSON(l i18n.Lang, h core.Handover) map[string]any {
 	issues := make([]map[string]any, 0, len(h.Issues))
 	for _, it := range h.Issues {
 		issues = append(issues, map[string]any{"id": it.IssueID, "title": it.Title, "status": string(it.Status),
-			"status_label": it.Status.Label(), "as": it.As, "version": it.Version})
+			"status_label": issue.StatusLabelIn(l, it.Status), "as": it.As, "version": it.Version})
 	}
 	services := make([]map[string]string, 0, len(h.Services))
 	for _, n := range h.Services {
@@ -174,7 +175,7 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, handoverJSON(h))
+		writeJSON(w, http.StatusOK, handoverJSON(i18n.FromContext(r.Context()), h))
 	})
 	applyHandover := func(remove bool) func(http.ResponseWriter, *http.Request, store.Workspace, *store.Account) {
 		return func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {

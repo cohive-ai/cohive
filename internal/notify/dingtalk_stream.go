@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/gorilla/websocket"
 )
 
@@ -71,7 +72,7 @@ func (s *dingStream) status() (bool, string) {
 	if p := s.reason.Load(); p != nil {
 		return false, *p
 	}
-	return false, "正在连接"
+	return false, i18n.T("notify.stream.connecting")
 }
 
 // open 换取连接地址与票据。
@@ -82,13 +83,13 @@ func (s *dingStream) open(ctx context.Context) (string, error) {
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.api.base()+"/v1.0/gateway/connections/open", bytes.NewReader(body))
 	if err != nil {
-		return "", errors.New("构造钉钉请求失败")
+		return "", errors.New("failed to build DingTalk request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	resp, err := s.api.client().Do(req)
 	if err != nil {
-		return "", fmt.Errorf("连接钉钉 Stream 失败：%v", unwrapURL(err))
+		return "", fmt.Errorf("failed to connect to DingTalk Stream: %v", unwrapURL(err))
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
@@ -100,10 +101,10 @@ func (s *dingStream) open(ctx context.Context) (string, error) {
 	_ = json.Unmarshal(raw, &out)
 	if resp.StatusCode != http.StatusOK || out.Endpoint == "" || out.Ticket == "" {
 		// 消息服务被暂停（多半是 Webhook 与 Stream 的月度额度用完）、凭据错误等都在这里
-		return "", fmt.Errorf("钉钉 Stream 拒绝连接（HTTP %d，%s）：%s", resp.StatusCode, out.Code, out.Message)
+		return "", fmt.Errorf("DingTalk Stream refused the connection (HTTP %d, %s): %s", resp.StatusCode, out.Code, out.Message)
 	}
 	if !strings.HasPrefix(out.Endpoint, "wss://") && !strings.HasPrefix(out.Endpoint, "ws://") {
-		return "", errors.New("钉钉 Stream 返回的连接地址不是 WebSocket 地址")
+		return "", errors.New("DingTalk Stream returned a connection address that is not a WebSocket address")
 	}
 	sep := "?"
 	if strings.Contains(out.Endpoint, "?") {
@@ -122,7 +123,7 @@ func (s *dingStream) Run(ctx context.Context) {
 			return
 		}
 		s.setDown(err.Error())
-		s.logf("钉钉 Stream 连接断开，稍后重连：%v", err)
+		s.logf("DingTalk Stream disconnected, reconnecting later: %v", err)
 		if time.Since(started) > time.Minute {
 			wait = 3 * time.Second
 		}
@@ -148,11 +149,11 @@ func (s *dingStream) session(ctx context.Context) error {
 		resp.Body.Close()
 	}
 	if err != nil {
-		return fmt.Errorf("连接钉钉 Stream 失败：%v", err) // 错误里不带地址（地址里有票据）
+		return fmt.Errorf("failed to connect to DingTalk Stream: %v", err) // 错误里不带地址（地址里有票据）
 	}
 	defer conn.Close()
 	s.online.Store(true)
-	s.logf("钉钉：Stream 已连接")
+	s.logf("DingTalk: Stream connected")
 
 	var wmu sync.Mutex
 	write := func(v any) error {
@@ -191,7 +192,7 @@ func (s *dingStream) session(ctx context.Context) error {
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
-			return fmt.Errorf("钉钉 Stream 读取失败：%v", err)
+			return fmt.Errorf("DingTalk Stream read failed: %v", err)
 		}
 		_ = conn.SetReadDeadline(time.Now().Add(idle))
 		var f streamFrame
@@ -209,7 +210,7 @@ func (s *dingStream) session(ctx context.Context) error {
 				return err
 			}
 		case f.Type == "SYSTEM" && topic == "disconnect":
-			return errors.New("钉钉要求重连")
+			return errors.New("DingTalk requested a reconnect")
 		case f.Type == "CALLBACK" && topic == streamTopicBot:
 			// 先确认收到，再处理（回复走会话 Webhook，不依赖这条确认）
 			if err := ack(""); err != nil {
@@ -228,7 +229,7 @@ func (s *dingStream) session(ctx context.Context) error {
 				}
 				b, _ := json.Marshal(map[string]any{"response": resp})
 				if err := ack(string(b)); err != nil {
-					s.logf("回应钉钉卡片回调失败：%v", err)
+					s.logf("failed to answer DingTalk card callback: %v", err)
 				}
 			}()
 		default:

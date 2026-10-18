@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -25,11 +26,11 @@ const (
 
 var (
 	// ErrBadLogin 表示登录名或密码不对。不区分是哪一项，避免探测登录名。
-	ErrBadLogin = errors.New("登录名或密码不对")
+	ErrBadLogin = i18n.Errorf("core.err.bad_login")
 	// ErrSignupPending 表示注册申请还在等管理员批准。
-	ErrSignupPending = errors.New("你的注册申请还在等待管理员批准，批准后即可登录")
+	ErrSignupPending = i18n.Errorf("core.err.signup_pending")
 	// ErrWebLoginCode 表示一次性网页登录码无效。
-	ErrWebLoginCode = errors.New("登录链接已失效，请在终端重新执行 cohive web")
+	ErrWebLoginCode = i18n.Errorf("core.err.web_login_code")
 )
 
 // 一个固定的哈希，账号不存在时也做一次比较，让响应时间不暴露登录名是否存在。
@@ -127,11 +128,11 @@ func (s *Service) ChangePassword(ctx context.Context, a store.Account, currentSe
 			return err
 		}
 		if !match {
-			return inputErr("旧密码不对")
+			return inputErr("core.err.old_password_wrong")
 		}
 	}
 	if oldPw != "" && oldPw == newPw {
-		return inputErr("新密码不能和旧密码相同")
+		return inputErr("core.err.new_password_same")
 	}
 	hash, err := hashPassword(ctx, newPw)
 	if err != nil {
@@ -185,7 +186,7 @@ func randomPassword() (string, error) {
 // 密码不写进日志。
 func (s *Service) EnsureInitialAdmin(ctx context.Context) (string, error) {
 	if s.DataDir == "" {
-		return "", errors.New("没有设置数据目录，无法保存初始管理员密码")
+		return "", errors.New("data directory is not set; cannot save the initial admin password")
 	}
 	var path string
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
@@ -221,7 +222,8 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context) (string, error) {
 		if err != nil {
 			return err
 		}
-		acc, err := store.CreateAccount(ctx, tx, name, "管理员")
+		// 显示名存进数据库，用服务器缺省语言写
+		acc, err := store.CreateAccount(ctx, tx, name, i18n.T("core.initial_admin.display_name"))
 		if err != nil {
 			return err
 		}
@@ -239,10 +241,14 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context) (string, error) {
 			return err
 		}
 		if err := os.MkdirAll(s.DataDir, 0o700); err != nil {
-			return fmt.Errorf("创建数据目录：%w", err)
+			return fmt.Errorf("create data directory: %w", err)
 		}
 		path = filepath.Join(s.DataDir, InitialPasswordFile)
-		content := fmt.Sprintf("Cohive 初始管理员\n登录名：%s\n密码：%s\n\n首次登录网页后必须修改密码，修改后本文件会自动删除。\n", name, pw)
+		// 文件按服务器缺省语言写；removeInitialPasswordFile 认得所有语言的“登录名”前缀
+		content := i18n.T("core.initial_admin.file_title") + "\n" +
+			i18n.T("core.initial_admin.file_login") + name + "\n" +
+			i18n.T("core.initial_admin.file_password") + pw + "\n\n" +
+			i18n.T("core.initial_admin.file_footer") + "\n"
 		// 先写文件再提交：文件写失败则不建账号，避免出现无人知道密码的管理员
 		return os.WriteFile(path, []byte(content), 0o600)
 	})
@@ -340,9 +346,14 @@ func (s *Service) removeInitialPasswordFile(a store.Account) {
 	if err != nil {
 		return
 	}
+	// 服务器缺省语言可能在写文件之后改过：认所有语言的“登录名”前缀
+	prefixes := []string{"成员名："} // i18n-ignore M5 生成的旧文件
+	for _, l := range i18n.Supported() {
+		prefixes = append(prefixes, l.T("core.initial_admin.file_login"))
+	}
 	name := ""
 	for _, line := range strings.Split(string(b), "\n") {
-		for _, prefix := range []string{"登录名：", "成员名："} { // 成员名：M5 生成的旧文件
+		for _, prefix := range prefixes {
 			if v, ok := strings.CutPrefix(line, prefix); ok {
 				name = strings.TrimSpace(v)
 			}

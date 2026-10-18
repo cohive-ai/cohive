@@ -34,7 +34,7 @@ func InsertAdminEvent(ctx context.Context, tx pgx.Tx, e AdminEvent) error {
 	}
 	raw, err := json.Marshal(detail)
 	if err != nil {
-		return fmt.Errorf("管理操作记录的附加信息：%w", err)
+		return fmt.Errorf("admin event detail: %w", err)
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO admin_events (actor_account_id, actor_name, via, workspace_id, workspace_name,
 		action, target_kind, target_id, target_name, detail) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,

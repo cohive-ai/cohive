@@ -290,7 +290,7 @@ func writeError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, errBody(w, "secret_detected", err))
 	case errors.As(err, &he):
 		body := errBody(w, "handover_required", err)
-		body["handover"] = handoverJSON(he.Handover)
+		body["handover"] = handoverJSON(i18n.FromResponse(w), he.Handover)
 		writeJSON(w, http.StatusConflict, body)
 	case errors.Is(err, store.ErrAccountDisabled):
 		writeJSON(w, http.StatusForbidden, errBody(w, "account_disabled", err))

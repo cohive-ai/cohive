@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 )
@@ -118,6 +119,7 @@ type AlertsResult struct {
 func (s *Service) Alerts(ctx context.Context, who store.Identity, after *int64) (AlertsResult, error) {
 	var out AlertsResult
 	if after == nil {
+		l := i18n.FromContext(ctx)
 		list, err := store.ListInbox(ctx, s.Pool, who.MemberID)
 		if err != nil {
 			return out, err
@@ -128,7 +130,7 @@ func (s *Service) Alerts(ctx context.Context, who store.Identity, after *int64) 
 			}
 			out.PendingCount++
 			if len(out.PendingTop) < pendingTop {
-				out.PendingTop = append(out.PendingTop, PendingItem{IssueID: is.ID, Needs: needsMe(who, is)})
+				out.PendingTop = append(out.PendingTop, PendingItem{IssueID: is.ID, Needs: needsMe(l, who, is)})
 			}
 		}
 		if out.Cursor, err = store.LastAlertID(ctx, s.Pool, who.MemberID); err != nil {

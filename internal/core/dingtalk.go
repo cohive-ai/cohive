@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"math/big"
 	"strings"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -24,11 +24,11 @@ const (
 
 var (
 	// ErrLinkCodeGone 表示绑定码不存在、已用过或已过期。
-	ErrLinkCodeGone = errors.New("这个绑定码已失效，请回到 Cohive 网页“个人中心”重新点“连接钉钉”")
+	ErrLinkCodeGone = i18n.Errorf("core.err.link_code_gone")
 	// ErrLinkCodeLeaked 表示账号绑定码出现在群里：码可能被别人看到，立即作废。
-	ErrLinkCodeLeaked = errors.New("绑定码要私聊发给机器人。这个码出现在了群里，已作废，请回网页重新生成")
+	ErrLinkCodeLeaked = i18n.Errorf("core.err.link_code_leaked")
 	// ErrBindCodeGone 表示群绑定码不存在、已用过或已过期。
-	ErrBindCodeGone = errors.New("这个群绑定码已失效，请回到 Cohive 网页“管理 → 工作空间”重新生成")
+	ErrBindCodeGone = i18n.Errorf("core.err.bind_code_gone")
 )
 
 // newCode 生成一个绑定码。
@@ -47,7 +47,7 @@ func newCode() (string, error) {
 // NormalizeCode 把用户发来的码规范化：去空白与连字符、转大写。
 func NormalizeCode(s string) string {
 	s = strings.ToUpper(strings.TrimSpace(s))
-	return strings.NewReplacer(" ", "", "-", "", "　", "").Replace(s)
+	return strings.NewReplacer(" ", "", "-", "", "　", "").Replace(s) // i18n-ignore 全角空格，用户输入的码里可能夹带
 }
 
 // LooksLikeCode 判断一段文字是不是绑定码的样子（用于识别单聊里直接发来的码、群里误发的码）。
@@ -94,16 +94,16 @@ func (s *Service) SubmitLinkCode(ctx context.Context, provider, code string, who
 			result = ErrLinkCodeGone
 			if !private && l.Status == store.LinkAwaitingConfirm { // 已收到过、等确认的码又出现在群里：一样作废
 				result = ErrLinkCodeLeaked
-				return store.FinishLinkRequest(ctx, tx, l.ID, store.LinkFailed, "绑定码出现在了群里，已作废")
+				return store.FinishLinkRequest(ctx, tx, l.ID, store.LinkFailed, i18n.T("core.link.detail_leaked"))
 			}
 			return nil
 		}
 		if !private {
 			result = ErrLinkCodeLeaked
-			return store.FinishLinkRequest(ctx, tx, l.ID, store.LinkFailed, "绑定码出现在了群里，已作废")
+			return store.FinishLinkRequest(ctx, tx, l.ID, store.LinkFailed, i18n.T("core.link.detail_leaked"))
 		}
 		if who.UserID == "" {
-			result = inputErr("没能识别你的%s账号，请稍后再试", providerName(provider))
+			result = inputErr("core.err.chat_account_unrecognized", i18n.D{"Provider": providerKey(provider)})
 			return nil
 		}
 		a, err := store.LockAccount(ctx, tx, l.AccountID)
@@ -115,14 +115,15 @@ func (s *Service) SubmitLinkCode(ctx context.Context, provider, code string, who
 			return store.FinishLinkRequest(ctx, tx, l.ID, store.LinkFailed, result.Error())
 		}
 		if other, err := store.AccountByChatIdentity(ctx, tx, provider, who.Tenant, who.UserID); err == nil && other.ID != a.ID {
-			result = inputErr("这个%s账号已经连接了账号 %s，请先在网页上解除", providerName(provider), other.Name)
+			result = inputErr("core.err.chat_account_linked", i18n.D{"Provider": providerKey(provider), "Name": other.Name})
 			return store.FinishLinkRequest(ctx, tx, l.ID, store.LinkFailed, result.Error())
 		} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
 		res = LinkSubmit{Account: a.Name}
 		return store.SetLinkCandidate(ctx, tx, l.ID, who.Tenant, who.UserID, who.Name,
-			fmt.Sprintf("收到%s用户 %s 发来的绑定码，等你确认", providerName(provider), who.Name))
+			// 进展说明存进数据库，用服务器缺省语言写
+			i18n.T("core.link.detail_candidate", i18n.D{"Provider": providerNameIn(i18n.Default(), provider), "Name": who.Name}))
 	})
 	if err != nil {
 		return LinkSubmit{}, err
@@ -142,10 +143,10 @@ func (s *Service) ConfirmLink(ctx context.Context, act Actor, id int64, accept b
 			return err
 		}
 		if l.Status != store.LinkAwaitingConfirm || time.Now().After(l.ExpiresAt) {
-			return stateErr("这个连接请求已失效，请重新点“连接%s”", strings.TrimSpace(providerName(l.Provider)))
+			return stateErr("core.err.link_request_expired", i18n.D{"Provider": providerKey(l.Provider)})
 		}
 		if !accept {
-			return store.FinishLinkRequest(ctx, tx, l.ID, store.LinkFailed, "已取消")
+			return store.FinishLinkRequest(ctx, tx, l.ID, store.LinkFailed, i18n.T("core.link.detail_cancelled"))
 		}
 		a, err := store.LockAccount(ctx, tx, accountID)
 		if err != nil {
@@ -155,20 +156,20 @@ func (s *Service) ConfirmLink(ctx context.Context, act Actor, id int64, accept b
 			return store.ErrAccountDisabled
 		}
 		if other, err := store.AccountByChatIdentity(ctx, tx, l.Provider, l.CandidateTenant, l.CandidateUserID); err == nil && other.ID != a.ID {
-			return stateErr("这个%s账号已经连接了账号 %s，请先在网页上解除", providerName(l.Provider), other.Name)
+			return stateErr("core.err.chat_account_linked", i18n.D{"Provider": providerKey(l.Provider), "Name": other.Name})
 		} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
 		err = store.UpsertChatIdentity(ctx, tx, store.ChatIdentity{AccountID: a.ID, Provider: l.Provider, Tenant: l.CandidateTenant,
 			UserID: l.CandidateUserID, DisplayName: l.CandidateName})
 		if isUniqueViolation(err) {
-			return stateErr("这个%s账号已经连接了别的账号，请先在网页上解除", providerName(l.Provider))
+			return stateErr("core.err.chat_account_linked_elsewhere", i18n.D{"Provider": providerKey(l.Provider)})
 		}
 		if err != nil {
 			return err
 		}
 		if err := store.FinishLinkRequest(ctx, tx, l.ID, store.LinkLinked,
-			fmt.Sprintf("已连接%s用户 %s", providerName(l.Provider), l.CandidateName)); err != nil {
+			i18n.T("core.link.detail_linked", i18n.D{"Provider": providerNameIn(i18n.Default(), l.Provider), "Name": l.CandidateName})); err != nil {
 			return err
 		}
 		return record(ctx, tx, act, store.AdminEvent{Action: ActDingTalkLink, TargetKind: "account", TargetID: idp(a.ID),
@@ -179,7 +180,7 @@ func (s *Service) ConfirmLink(ctx context.Context, act Actor, id int64, accept b
 // StartChatBind 由工作空间管理员生成群绑定码（第一期只有钉钉用绑定码绑群）。
 func (s *Service) StartChatBind(ctx context.Context, act Actor, wsID int64, provider string) (store.ChatBindRequest, error) {
 	if provider != ProviderDingTalk {
-		return store.ChatBindRequest{}, inputErr("暂只支持用绑定码绑定钉钉群")
+		return store.ChatBindRequest{}, inputErr("core.err.bind_by_code_dingtalk_only")
 	}
 	code, err := newCode()
 	if err != nil {
@@ -195,7 +196,7 @@ func (s *Service) StartChatBind(ctx context.Context, act Actor, wsID int64, prov
 			return err
 		}
 		if ws.Notify.Channel != "" && ws.Notify.Channel != provider {
-			return stateErr("工作空间已绑定%s群，请先解绑再绑%s群", providerName(ws.Notify.Channel), strings.TrimSpace(providerName(provider)))
+			return stateErr("core.err.ws_bound_unbind_rebind", i18n.D{"Provider": providerKey(ws.Notify.Channel), "Target": providerKey(provider)})
 		}
 		by := int64(0)
 		if act.Account != nil {
@@ -271,17 +272,17 @@ func bindChat(ctx context.Context, tx pgx.Tx, act Actor, wsID int64, provider, c
 		return ws, err
 	}
 	if ws.Notify.Channel != "" && ws.Notify.Channel != provider {
-		return ws, stateErr("工作空间已绑定%s群，请先解绑", providerName(ws.Notify.Channel))
+		return ws, stateErr("core.err.ws_bound_unbind", i18n.D{"Provider": providerKey(ws.Notify.Channel)})
 	}
 	if c, err := store.WorkspaceChatOf(ctx, tx, provider, "", chatID); err == nil && c.WorkspaceID != ws.ID {
 		other, _ := store.GetWorkspace(ctx, tx, c.WorkspaceID)
-		return ws, stateErr("这个群已经绑定了工作空间 %s：一个群只能对应一个工作空间", other.Label())
+		return ws, stateErr("core.err.chat_bound_other_ws", i18n.D{"Name": other.Label()})
 	} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return ws, err
 	}
 	err = store.SetWorkspaceChat(ctx, tx, store.WorkspaceChat{WorkspaceID: ws.ID, Provider: provider, ChatID: chatID, Title: title, BoundBy: by})
 	if isUniqueViolation(err) {
-		return ws, stateErr("这个群已经绑定了别的工作空间：一个群只能对应一个工作空间")
+		return ws, stateErr("core.err.chat_bound_elsewhere")
 	}
 	if err != nil {
 		return ws, err
@@ -295,7 +296,7 @@ func bindChat(ctx context.Context, tx pgx.Tx, act Actor, wsID int64, provider, c
 func (s *Service) BindChat(ctx context.Context, act Actor, wsID int64, provider, chatID string) error {
 	chatID = strings.TrimSpace(chatID)
 	if provider != ProviderDingTalk || chatID == "" {
-		return inputErr("请给出钉钉群编号（在群里 @机器人 发“群编号”获取）")
+		return inputErr("core.err.chat_id_required")
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		if err := canAdmin(ctx, tx, act.Account, wsID); err != nil {

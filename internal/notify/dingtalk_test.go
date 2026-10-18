@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/notify"
 )
 
@@ -127,7 +128,7 @@ func TestDingTalkErrorClasses(t *testing.T) {
 		{"Forbidden.AccessDenied.QpsLimitForAppkeyAndApi", 403, func(e error) bool { var r *notify.RetryAfterError; return errors.As(e, &r) }},
 		{"Forbidden.AccessDenied.ApiCountLimitForOrg", 403, func(e error) bool {
 			var d *notify.ChannelDownError
-			return errors.As(e, &d) && strings.Contains(d.Msg, "额度")
+			return errors.As(e, &d) && strings.Contains(d.Msg, "quota")
 		}},
 		{"Forbidden.AccessDenied.AccessTokenPermissionDenied", 403, func(e error) bool { var d *notify.ChannelDownError; return errors.As(e, &d) }},
 		{"invalidParameter.robotCode.notExist", 400, notify.IsPermanent},
@@ -187,7 +188,7 @@ func TestDingTalkFormat(t *testing.T) {
 	if got := f.Esc("a*b_[x](y)#<b>@all\nz"); strings.ContainsAny(got, "*_[]()#<>@\n") {
 		t.Fatalf("应转义 Markdown 记号与换行：%q", got)
 	}
-	if got := f.Link("https://c.example.com/w/pay/issues/12"); got != "[查看问题单](https://c.example.com/w/pay/issues/12)" {
+	if got := f.Link(i18n.ZhCN, "https://c.example.com/w/pay/issues/12"); got != "[查看问题单](https://c.example.com/w/pay/issues/12)" {
 		t.Fatalf("链接：%q", got)
 	}
 }

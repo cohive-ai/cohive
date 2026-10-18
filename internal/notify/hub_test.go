@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/notify"
 	"github.com/cohive-ai/cohive/internal/store"
 )
@@ -12,10 +13,10 @@ import (
 // plainFormat 是测试用的第二种通讯工具格式：@ 写成 [@编号]，便于断言。
 type plainFormat struct{}
 
-func (plainFormat) Esc(s string) string  { return strings.ReplaceAll(s, "*", `\*`) }
-func (plainFormat) Code(s string) string { return "`" + s + "`" }
-func (plainFormat) Link(u string) string { return "<" + u + ">" }
-func (plainFormat) Mention(label string, id *store.ChatIdentity, _ bool) string {
+func (plainFormat) Esc(s string) string               { return strings.ReplaceAll(s, "*", `\*`) }
+func (plainFormat) Code(s string) string              { return "`" + s + "`" }
+func (plainFormat) Link(_ i18n.Lang, u string) string { return "<" + u + ">" }
+func (plainFormat) Mention(_ i18n.Lang, label string, id *store.ChatIdentity, _ bool) string {
 	if id == nil || id.UserID == "" {
 		return label
 	}

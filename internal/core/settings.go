@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -23,7 +24,7 @@ type ExternalURL struct {
 }
 
 // ErrExternalURLLocked 表示对外地址由环境变量锁定。
-var ErrExternalURLLocked = &StateError{Msg: "对外地址由环境变量 COHIVE_EXTERNAL_URL 锁定：请改环境变量后重启协作服务"}
+var ErrExternalURLLocked = &StateError{Key: "core.err.external_url_locked"}
 
 // NormalizeExternalURL 校验并规范化对外地址：只允许 http/https 加主机名与可选端口，不带路径、查询参数、片段与用户信息；
 // 协议与主机名转小写，去掉末尾的 /。空串合法，表示清除。
@@ -33,7 +34,7 @@ func NormalizeExternalURL(raw string) (string, error) {
 		return "", nil
 	}
 	bad := func() (string, error) {
-		return "", inputErr("对外地址应为 https://主机名 或 http://主机名:端口，不带路径，例如 https://cohive.example.com")
+		return "", inputErr("core.err.external_url_invalid")
 	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || strings.Contains(raw, "#") ||
@@ -142,7 +143,9 @@ func (s *Service) SetExternalURL(ctx context.Context, act Actor, raw string) (Ex
 		if err := store.SetExternalURL(ctx, tx, v, actorID(act.Account)); err != nil {
 			return err
 		}
-		return record(ctx, tx, act, store.AdminEvent{Action: ActServerSettings, TargetKind: "server", TargetName: "对外地址",
+		return record(ctx, tx, act, store.AdminEvent{Action: ActServerSettings, TargetKind: "server",
+			TargetName: i18n.T("core.audit.target_external_url"), // 存进记录，用服务器缺省语言写
+
 			Detail: map[string]any{"external_url": map[string]any{"from": old.ExternalURL, "to": v}}})
 	})
 	if err != nil {

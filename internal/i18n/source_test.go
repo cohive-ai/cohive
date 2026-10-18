@@ -87,13 +87,6 @@ func TestKeysUsedExist(t *testing.T) {
 	}
 }
 
-// stage1Pending 是第一段暂不改动的目录（在另一条分支上），第二段清空。
-var stage1Pending = []string{
-	"internal/core/",
-	"internal/notify/",
-	"internal/store/",
-}
-
 // guardExempt 永久不检查：测试辅助代码只给开发者看。
 var guardExempt = []string{
 	"internal/testutil/",
@@ -112,7 +105,7 @@ func hasCJK(s string) bool {
 // 确有必要的行（例如解析用户输入的中文指令）在同一行写注释 i18n-ignore。
 func TestNoHardcodedChinese(t *testing.T) {
 	for _, rel := range goSources(t) {
-		if hasPrefix(rel, stage1Pending) || hasPrefix(rel, guardExempt) {
+		if hasPrefix(rel, guardExempt) {
 			continue
 		}
 		src, err := os.ReadFile(filepath.Join(repoRoot, rel))

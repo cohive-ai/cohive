@@ -82,7 +82,7 @@ func (s *Service) QueueReminders(ctx context.Context) (int, error) {
 					ActorMemberID: party, ActorTool: "cohive", Recipients: to,
 					IssueStatus: string(d.Status), IssueOwnerID: d.OwnerID,
 				}); err != nil {
-					return fmt.Errorf("写催办通知：%w", err)
+					return fmt.Errorf("queue overdue reminder notification: %w", err)
 				}
 			}
 			if err := store.InsertAlert(ctx, tx, store.Alert{WorkspaceID: d.WorkspaceID, MemberID: party,
@@ -100,10 +100,10 @@ func (s *Service) QueueReminders(ctx context.Context) (int, error) {
 
 // SetRemindHours 只改超时催办时长（命令行用；网页随工作空间设置一起保存）。为空的不改。
 func (s *Service) SetRemindHours(ctx context.Context, act Actor, wsID int64, openH, verifyH *int) error {
-	if err := checkRemindHours("待接单", openH); err != nil {
+	if err := checkRemindHours("core.err.remind_open_hours", openH); err != nil {
 		return err
 	}
-	if err := checkRemindHours("待验证", verifyH); err != nil {
+	if err := checkRemindHours("core.err.remind_verify_hours", verifyH); err != nil {
 		return err
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {

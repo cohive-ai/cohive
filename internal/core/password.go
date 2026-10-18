@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -24,10 +25,10 @@ func withHashSlot(ctx context.Context, fn func()) error {
 // hashPassword 校验密码长度后计算 bcrypt 哈希。
 func hashPassword(ctx context.Context, pw string) (string, error) {
 	if len([]rune(pw)) < minPasswordLength {
-		return "", inputErr("密码至少 %d 位", minPasswordLength)
+		return "", inputErr("core.err.password_too_short", i18n.D{"Min": minPasswordLength})
 	}
 	if len(pw) > 72 {
-		return "", inputErr("密码太长（最多 72 字节）")
+		return "", inputErr("core.err.password_too_long")
 	}
 	return bcryptHash(ctx, pw)
 }

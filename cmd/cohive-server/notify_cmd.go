@@ -103,10 +103,13 @@ func notifyCmd(ctx context.Context, out io.Writer, args []string) error {
 	}
 	sendCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	// 测试消息发到群里，用服务器缺省语言，不跟随运维人员终端的语言
+	// 测试消息发到群里，用该工作空间的语言（没设时用服务器缺省语言），不跟随运维人员终端的语言
 	lang, err := defaultLanguage()
 	if err != nil {
 		return err
+	}
+	if l, ok := i18n.Match(ws.Language); ws.Language != "" && ok {
+		lang = l
 	}
 	text := lang.T("server.notify.test_text", i18n.D{"Name": ch.Format().Esc(name)})
 	if err := ch.Send(sendCtx, ws.Notify.Target, notify.Rendered{Title: lang.T("server.notify.test_title"), Text: text}); err != nil {

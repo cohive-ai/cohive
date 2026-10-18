@@ -8,6 +8,7 @@ import (
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/db"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/notify"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/cohive-ai/cohive/internal/testutil"
@@ -125,7 +126,7 @@ func TestGroupButtonsRecord(t *testing.T) {
 			}
 			e := es[0]
 			if e.Action != c.action || e.Via != core.ViaTelegram || e.WorkspaceName != "pay" || e.ActorName != "lee" {
-				t.Fatalf("记录：%s 入口 %s 工作空间 %q 操作人 %q（%s）", e.Action, e.Via, e.WorkspaceName, e.ActorName, core.EventText(e))
+				t.Fatalf("记录：%s 入口 %s 工作空间 %q 操作人 %q（%s）", e.Action, e.Via, e.WorkspaceName, e.ActorName, core.EventText(i18n.Default(), e))
 			}
 		})
 	}
@@ -146,7 +147,7 @@ func TestGroupButtonsRecord(t *testing.T) {
 		e := es[0]
 		if e.Action != core.ActAccessDenied || e.Via != core.ViaTelegram || e.ActorName != "ann" || e.WorkspaceName != "pay" ||
 			e.Detail["reason"] != core.DenyNoPermission {
-			t.Fatalf("记录：%+v（%s）", e, core.EventText(e))
+			t.Fatalf("记录：%+v（%s）", e, core.EventText(i18n.Default(), e))
 		}
 		sg, err := store.GetSignupForUpdate(ctx, s.svc.Pool, id)
 		if err != nil || sg.Status != store.SignupPending {

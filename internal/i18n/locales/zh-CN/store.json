@@ -1,0 +1,8 @@
+{
+  "store.err.not_found": "记录不存在",
+  "store.err.unauthorized": "令牌无效或已吊销",
+  "store.err.version_conflict": "版本已变化",
+  "store.err.account_disabled": "账号已停用，请联系服务器管理员",
+  "store.err.already_member": "已经是这个工作空间的成员",
+  "store.err.device_revoked": "这台设备已被吊销"
+}

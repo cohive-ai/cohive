@@ -3,10 +3,11 @@ package core
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -20,7 +21,7 @@ const (
 )
 
 // ErrLinkGone 表示连接链接不存在、已使用或已过期。
-var ErrLinkGone = errors.New("这个连接链接已失效，请回到 Cohive 网页“个人中心”重新点“连接 Telegram”")
+var ErrLinkGone = i18n.Errorf("core.err.link_gone")
 
 // StartLink 由账号在个人中心发起通讯工具连接，返回链接参数。
 func (s *Service) StartLink(ctx context.Context, accountID int64, provider string) (store.LinkRequest, error) {
@@ -33,7 +34,7 @@ func (s *Service) StartLink(ctx context.Context, accountID int64, provider strin
 	case ProviderDingTalk: // 发给机器人的绑定码，人要照着输入
 		nonce, err = newCode()
 	default:
-		return store.LinkRequest{}, inputErr("暂只支持连接 telegram、dingtalk")
+		return store.LinkRequest{}, inputErr("core.err.link_provider_unsupported")
 	}
 	if err != nil {
 		return store.LinkRequest{}, err
@@ -87,7 +88,7 @@ func (s *Service) CompleteTelegramLink(ctx context.Context, startParam string, t
 		}
 		res = LinkResult{Account: a.Name}
 		if other, err := store.AccountByTelegramUserID(ctx, tx, tgUserID); err == nil && other.ID != a.ID {
-			result = inputErr("这个 Telegram 账号已经连接了账号 %s，请先在网页上解除", other.Name)
+			result = inputErr("core.err.telegram_linked_other", i18n.D{"Name": other.Name})
 			return store.FinishLinkRequest(ctx, tx, l.ID, store.LinkFailed, result.Error())
 		} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
@@ -95,14 +96,15 @@ func (s *Service) CompleteTelegramLink(ctx context.Context, startParam string, t
 		if err := store.SetAccountTelegram(ctx, tx, a.ID, &tgUserID, username); err != nil {
 			if isUniqueViolation(err) {
 				// 同一 Telegram 账号并发连接两个账号时，由唯一索引兜底
-				result = inputErr("这个 Telegram 账号已经连接了别的账号，请先在网页上解除")
+				result = inputErr("core.err.telegram_linked_elsewhere")
 				return nil
 			}
 			return err
 		}
-		detail := fmt.Sprintf("已连接 Telegram 账号 @%s", username)
+		// 进展说明存进数据库，用服务器缺省语言写
+		detail := i18n.T("core.link.detail_telegram", i18n.D{"Username": username})
 		if username == "" {
-			detail = fmt.Sprintf("已连接 Telegram 账号（编号 %d，没有设置用户名，群通知无法 @ 到你）", tgUserID)
+			detail = i18n.T("core.link.detail_telegram_nouser", i18n.D{"ID": tgUserID})
 		}
 		if err := store.FinishLinkRequest(ctx, tx, l.ID, store.LinkLinked, detail); err != nil {
 			return err
@@ -128,7 +130,7 @@ var unlinkActions = map[string]string{ProviderTelegram: ActTelegramUnlink, Provi
 func (s *Service) Unlink(ctx context.Context, act Actor, accountID int64, provider string) error {
 	action, ok := unlinkActions[provider]
 	if !ok {
-		return inputErr("不支持的通讯工具 %q", provider)
+		return inputErr("core.err.provider_unsupported", i18n.D{"Name": strconv.Quote(provider)})
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		self := act.Account != nil && act.Account.ID == accountID

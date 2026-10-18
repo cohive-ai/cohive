@@ -4,6 +4,8 @@ import (
 	"math/rand"
 	"strings"
 	"testing"
+
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // 样例里的“密钥”都在运行时按格式随机生成，源码里不出现形似真密钥的字面量，
@@ -125,22 +127,22 @@ func TestFieldLineAndDedupe(t *testing.T) {
 		t.Fatalf("应有 3 处（evidence 第 3 行、note 第 1、2 行；通用规则与具体规则同行只报具体规则），得到 %+v", got)
 	}
 	want := []Finding{
-		{Field: "evidence", Line: 3, RuleID: "github-pat", Category: "GitHub 令牌"},
-		{Field: "note", Line: 1, RuleID: "github-pat", Category: "GitHub 令牌"},
-		{Field: "note", Line: 2, RuleID: "github-pat", Category: "GitHub 令牌"},
+		{Field: "evidence", Line: 3, RuleID: "github-pat"},
+		{Field: "note", Line: 1, RuleID: "github-pat"},
+		{Field: "note", Line: 2, RuleID: "github-pat"},
 	}
 	for i := range want {
-		if got[i] != want[i] {
+		if got[i] != want[i] || got[i].CategoryIn(i18n.ZhCN) != "GitHub 令牌" {
 			t.Errorf("第 %d 处应为 %+v，得到 %+v", i, want[i], got[i])
 		}
 	}
 }
 
 func TestCategoryFallback(t *testing.T) {
-	if c := category("some-new-rule"); c != "密钥或令牌" {
+	if c := CategoryIn(i18n.ZhCN, "some-new-rule"); c != "密钥或令牌" {
 		t.Fatalf("未登记类别的规则应显示通用说法，得到 %q", c)
 	}
-	if c := category("github-fine-grained-pat"); c != "GitHub 令牌" {
+	if c := CategoryIn(i18n.ZhCN, "github-fine-grained-pat"); c != "GitHub 令牌" {
 		t.Fatalf("前缀匹配：%q", c)
 	}
 }
@@ -149,7 +151,7 @@ func TestCategoryFallback(t *testing.T) {
 func TestFindingCarriesNoSecret(t *testing.T) {
 	tok := "glpat-" + pick(alnum, 20)
 	for _, f := range Scan(Field{Name: "note", Text: "token " + tok}) {
-		s := f.Field + f.RuleID + f.Category
+		s := f.Field + f.RuleID + f.CategoryIn(i18n.ZhCN)
 		if strings.Contains(s, tok[6:14]) {
 			t.Fatalf("命中结果不应带密钥片段：%+v", f)
 		}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/httpapi"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 )
@@ -326,7 +327,7 @@ func TestEveryWebAdminEndpointRecords(t *testing.T) {
 			e, _ := lastEvent(t, w.f.svc)
 			if e.Action != c.action || e.Via != c.via || e.WorkspaceName != c.ws || e.ActorName != c.actor {
 				t.Fatalf("最后一条记录：%s 入口 %s 工作空间 %q 操作人 %q，应为 %s %s %q %q（%s）", e.Action, e.Via, e.WorkspaceName,
-					e.ActorName, c.action, c.via, c.ws, c.actor, core.EventText(e))
+					e.ActorName, c.action, c.via, c.ws, c.actor, core.EventText(i18n.Default(), e))
 			}
 		})
 	}
@@ -379,7 +380,7 @@ func TestDeniedAdminRequestsRecorded(t *testing.T) {
 		before = n
 		if e.Action != core.ActAccessDenied || e.Via != via || e.Detail["credential"] != cred || e.Detail["reason"] != reason ||
 			e.TargetName != route || e.WorkspaceName != ws || e.ActorName != actor {
-			t.Fatalf("%s：%+v（%s）", name, e, core.EventText(e))
+			t.Fatalf("%s：%+v（%s）", name, e, core.EventText(i18n.Default(), e))
 		}
 	}
 	none := func(name string) {

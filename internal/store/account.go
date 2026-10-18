@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -220,4 +221,4 @@ func execOne(ctx context.Context, q DBTX, sql string, args ...any) error {
 }
 
 // ErrAccountDisabled 表示账号已停用。
-var ErrAccountDisabled = errors.New("账号已停用，请联系服务器管理员")
+var ErrAccountDisabled = i18n.Errorf("store.err.account_disabled")

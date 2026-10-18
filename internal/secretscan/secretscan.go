@@ -33,10 +33,9 @@ type Field struct {
 
 // Finding 是一处命中：哪个字段、第几行（字段内从 1 开始）、哪条规则。不含密钥。
 type Finding struct {
-	Field    string
-	Line     int
-	RuleID   string
-	Category string // 中文类别，例如“GitHub 令牌”；固定中文，按语言取用 CategoryIn
+	Field  string
+	Line   int
+	RuleID string
 }
 
 // CategoryIn 返回这条命中的规则类别，按指定语言（例如 GitHub token）。
@@ -313,7 +312,7 @@ func (rs *ruleset) scanText(field, text string) []Finding {
 			if allowed {
 				continue
 			}
-			out = append(out, Finding{Field: field, Line: line, RuleID: r.id, Category: CategoryIn(i18n.ZhCN, r.id)})
+			out = append(out, Finding{Field: field, Line: line, RuleID: r.id})
 		}
 	}
 	return out

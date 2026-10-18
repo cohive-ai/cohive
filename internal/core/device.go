@@ -4,10 +4,10 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -17,7 +17,7 @@ import (
 const DeviceSecretPrefix = "cohive_dev_"
 
 // ErrNotMember 表示账号不是该工作空间的在册成员。
-var ErrNotMember = errors.New("你还不是这个工作空间的成员，请联系它的管理员")
+var ErrNotMember = i18n.Errorf("core.err.not_member")
 
 // DeviceAuthStart 是终端发起授权的结果；PollSecret 只在这里出现一次。
 type DeviceAuthStart struct {
@@ -199,7 +199,8 @@ func (s *Service) DecideDeviceAuth(ctx context.Context, act Actor, wsID, id int6
 		if err != nil {
 			return err
 		}
-		d.Decider = deciderName(actor)
+		// 审批人写进群里的审批消息：从工作空间管理页批的按那个工作空间的群消息语言，否则用服务器缺省语言
+		d.Decider = deciderName(i18n.Pick(wsLanguage(ctx, tx, wsID)), actor)
 		a.DecidedBy = actorID(actor)
 		if approve && !applicant.Disabled() {
 			if err := approveAuth(ctx, tx, &a); err != nil {
@@ -385,7 +386,7 @@ func (s *Service) IssueWorkspaceTokens(ctx context.Context, dev store.Device, wo
 		}
 		ws, err := store.WorkspaceByName(ctx, tx, workspace)
 		if errors.Is(err, store.ErrNotFound) {
-			return fmt.Errorf("工作空间 %s：%w", workspace, ErrNotMember)
+			return i18n.Wrap(ErrNotMember, "core.err.workspace_named", i18n.D{"Name": workspace})
 		}
 		if err != nil {
 			return err
@@ -393,7 +394,7 @@ func (s *Service) IssueWorkspaceTokens(ctx context.Context, dev store.Device, wo
 		// 锁成员资格行，与移出互斥：移出后不会再签出这个工作空间的令牌
 		m, err := store.MemberOf(ctx, tx, acc.ID, ws.ID)
 		if errors.Is(err, store.ErrNotFound) {
-			return fmt.Errorf("工作空间 %s：%w", workspace, ErrNotMember)
+			return i18n.Wrap(ErrNotMember, "core.err.workspace_named", i18n.D{"Name": workspace})
 		}
 		if err != nil {
 			return err
@@ -402,7 +403,7 @@ func (s *Service) IssueWorkspaceTokens(ctx context.Context, dev store.Device, wo
 			return err
 		}
 		if m.Status != store.MemberActive {
-			return fmt.Errorf("工作空间 %s：%w", workspace, ErrNotMember)
+			return i18n.Wrap(ErrNotMember, "core.err.workspace_named", i18n.D{"Name": workspace})
 		}
 		out, err = issueTokens(ctx, tx, store.Membership{MemberID: m.ID, WorkspaceID: ws.ID, Workspace: ws.Name, Role: m.Role},
 			dev.ID, tools)
@@ -415,7 +416,7 @@ func (s *Service) IssueWorkspaceTokens(ctx context.Context, dev store.Device, wo
 // （wsID 非 0 时要求设备主人是该工作空间在册成员）。看不到的设备一律报不存在。
 func (s *Service) RevokeDevice(ctx context.Context, act Actor, wsID, deviceID int64) error {
 	if act.Account == nil {
-		return errors.New("吊销设备需要操作人")
+		return i18n.Errorf("core.err.revoke_needs_actor")
 	}
 	actor := *act.Account
 	return s.inTx(ctx, func(tx pgx.Tx) error {
@@ -430,14 +431,14 @@ func (s *Service) RevokeDevice(ctx context.Context, act Actor, wsID, deviceID in
 				err = canManagePerson(ctx, tx, &actor, d.AccountID)
 			}
 			if errors.Is(err, ErrNotManager) || errors.Is(err, ErrNotAdmin) {
-				return fmt.Errorf("设备 %d：%w", deviceID, store.ErrNotFound)
+				return i18n.Wrap(store.ErrNotFound, "core.err.device_id", i18n.D{"ID": deviceID})
 			}
 			if err != nil {
 				return err
 			}
 		}
 		if d.RevokedAt != nil {
-			return fmt.Errorf("设备 %d：%w", deviceID, store.ErrNotFound)
+			return i18n.Wrap(store.ErrNotFound, "core.err.device_id", i18n.D{"ID": deviceID})
 		}
 		if err := store.LockActiveDevice(ctx, tx, deviceID); err != nil {
 			return err

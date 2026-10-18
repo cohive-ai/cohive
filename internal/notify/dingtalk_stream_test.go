@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -208,7 +209,8 @@ func TestDingTalkStreamEndToEnd(t *testing.T) {
 		resp.Response.UserPrivateData.CardParamMap["tip"] != "已批准" {
 		t.Fatalf("应在应答里把卡片改成结果：%+v", resp.Response)
 	}
-	if len(fc.calls) < 3 || fc.calls[2] != "signup" || fc.calls[5] != int64(5) {
+	// 单聊回复时按账号取过语言（who），审批在其后
+	if i := slices.Index(fc.calls, any("signup")); i < 0 || len(fc.calls) < i+4 || fc.calls[i+3] != int64(5) {
 		t.Fatalf("应按卡片编号反查到申请 5 并审批：%v", fc.calls)
 	}
 

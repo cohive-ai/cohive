@@ -167,11 +167,25 @@ func callbackIn(data string, from, chat int64) notify.Update {
 
 func callback(data string, from int64) notify.Update { return callbackIn(data, from, -100) }
 
+// withoutLangLookups 去掉机器人为选择回复语言而查账号留下的 who 记录（"who" 后面跟着一个用户编号）。
+func withoutLangLookups(calls []any) []any {
+	var out []any
+	for i := 0; i < len(calls); i++ {
+		if calls[i] == "who" {
+			i++
+			continue
+		}
+		out = append(out, calls[i])
+	}
+	return out
+}
+
 func TestStartLinksTelegram(t *testing.T) {
 	c := &fakeCore{link: core.LinkResult{Account: "lee"}}
 	api := &fakeAPI{}
 	newBot(c, api).Handle(context.Background(), msg("/start ln_abc", "private", 42, "lee_ut"))
-	if len(c.calls) != 4 || c.calls[1] != "ln_abc" || c.calls[2] != int64(42) || c.calls[3] != "lee_ut" {
+	// 机器人回复前按账号查语言（who），与连接本身无关；去掉后只剩连接这一次调用
+	if calls := withoutLangLookups(c.calls); len(calls) != 4 || calls[1] != "ln_abc" || calls[2] != int64(42) || calls[3] != "lee_ut" {
 		t.Fatalf("应以私聊发送人身份完成连接：%v", c.calls)
 	}
 	if len(api.replies) != 1 || !strings.Contains(api.replies[0], "已连接") {

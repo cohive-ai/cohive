@@ -124,7 +124,7 @@ func TestServeAppliesDefaultLanguage(t *testing.T) {
 	}
 }
 
-// notify test 发进群的消息用服务器缺省语言（COHIVE_DEFAULT_LANGUAGE），终端输出用本机语言。
+// notify test 发进群的消息用该工作空间的语言，没设时用服务器缺省语言（COHIVE_DEFAULT_LANGUAGE），终端输出用本机语言。
 func TestNotifyTestMessageUsesServerDefaultLanguage(t *testing.T) {
 	adminEnv(t)
 	mustRun(t, "migrate")
@@ -151,5 +151,18 @@ func TestNotifyTestMessageUsesServerDefaultLanguage(t *testing.T) {
 	mustRun(t, "notify", "test", "--workspace", "payments")
 	if !strings.HasPrefix(text, "Cohive 测试消息") {
 		t.Fatalf("缺省语言为 zh-CN 时群里应收到中文：%q", text)
+	}
+
+	// 工作空间设了语言：以工作空间为准，不管服务器缺省语言是什么
+	mustRun(t, "workspace", "set", "--name", "payments", "--language", "en")
+	mustRun(t, "notify", "test", "--workspace", "payments")
+	if !strings.HasPrefix(text, "Cohive test message") {
+		t.Fatalf("工作空间语言为 en 时群里应收到英文：%q", text)
+	}
+	t.Setenv("COHIVE_DEFAULT_LANGUAGE", "en")
+	mustRun(t, "workspace", "set", "--name", "payments", "--language", "zh-CN")
+	mustRun(t, "notify", "test", "--workspace", "payments")
+	if !strings.HasPrefix(text, "Cohive 测试消息") {
+		t.Fatalf("工作空间语言为 zh-CN 时群里应收到中文：%q", text)
 	}
 }

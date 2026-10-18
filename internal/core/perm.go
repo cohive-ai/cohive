@@ -2,8 +2,8 @@ package core
 
 import (
 	"context"
-	"errors"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -12,11 +12,11 @@ import (
 
 var (
 	// ErrNotAdmin 表示操作者不是该工作空间的管理员。
-	ErrNotAdmin = errors.New("只有工作空间管理员能执行这个操作")
+	ErrNotAdmin = i18n.Errorf("core.err.not_admin")
 	// ErrNotServerAdmin 表示操作者不是服务器管理员。
-	ErrNotServerAdmin = errors.New("只有服务器管理员能执行这个操作")
+	ErrNotServerAdmin = i18n.Errorf("core.err.not_server_admin")
 	// ErrNotManager 表示操作者管不到这个人（他不在操作者管理的任何工作空间里在册）。
-	ErrNotManager = errors.New("只有此人所在工作空间的管理员能执行这个操作")
+	ErrNotManager = i18n.Errorf("core.err.not_manager")
 )
 
 // freshActor 重新读取操作者账号；已停用的视为无权。

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/cohive-ai/cohive/internal/i18n"
 )
 
 // ---- 设备 ----
@@ -72,7 +74,7 @@ func IssueDeviceToken(ctx context.Context, q DBTX, memberID, deviceID int64, too
 }
 
 // ErrDeviceRevoked 表示设备已被吊销。
-var ErrDeviceRevoked = errors.New("这台设备已被吊销")
+var ErrDeviceRevoked = i18n.Errorf("store.err.device_revoked")
 
 // LockActiveDevice 在事务内锁住设备行并确认未吊销；签发令牌前调用，和吊销互斥。
 func LockActiveDevice(ctx context.Context, q DBTX, deviceID int64) error {

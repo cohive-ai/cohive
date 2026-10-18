@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -70,7 +71,7 @@ func LockMember(ctx context.Context, q DBTX, memberID int64) (Member, error) {
 }
 
 // ErrAlreadyMember 表示账号已经是该工作空间的在册成员。
-var ErrAlreadyMember = errors.New("已经是这个工作空间的成员")
+var ErrAlreadyMember = i18n.Errorf("store.err.already_member")
 
 // AddMembership 把账号加入工作空间：没有成员资格时新建，已移出时复用原成员资格改回在册（角色按本次）。
 // 已是在册成员时返回 ErrAlreadyMember。

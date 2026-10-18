@@ -21,7 +21,7 @@ func normLanguage(code string) (string, error) {
 	}
 	l, err := i18n.Parse(code)
 	if err != nil {
-		return "", inputErrT("core.language.unsupported", i18n.D{"Code": code})
+		return "", inputErr("core.language.unsupported", i18n.D{"Code": code})
 	}
 	return string(l), nil
 }

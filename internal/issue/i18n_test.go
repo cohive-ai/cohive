@@ -31,11 +31,8 @@ func TestStatusLabelsComplete(t *testing.T) {
 			}
 		}
 	}
-	// 旧函数固定中文，不受缺省语言影响
-	i18n.SetDefault(i18n.EN)
-	defer i18n.SetDefault(i18n.ZhCN)
-	if got := issue.StatusOpen.Label(); got != "待接单" {
-		t.Errorf("Label() 应固定为中文，得到 %q", got)
+	if got := issue.StatusLabelIn(i18n.ZhCN, issue.StatusOpen); got != "待接单" {
+		t.Errorf("中文状态名不符：%q", got)
 	}
 	if got := issue.StatusLabelIn(i18n.EN, issue.StatusReadyForVerification); got != "Ready for verification" {
 		t.Errorf("英文状态名不符：%q", got)

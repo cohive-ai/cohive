@@ -101,6 +101,3 @@ func CategoryIn(l i18n.Lang, ruleID string) string {
 	}
 	return l.T(key)
 }
-
-// category 是固定中文的旧函数，调用方迁移到 CategoryIn 后删除。
-func category(id string) string { return CategoryIn(i18n.ZhCN, id) }

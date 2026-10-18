@@ -1,9 +1,9 @@
 package core
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/secretscan"
 )
 
@@ -16,17 +16,21 @@ type SecretError struct {
 	Findings []secretscan.Finding
 }
 
-func (e *SecretError) Error() string {
+func (e *SecretError) Error() string { return e.Localize(i18n.Default()) }
+
+// Localize 按语言渲染；规则类别也按这个语言写。
+func (e *SecretError) Localize(l i18n.Lang) string {
 	var b strings.Builder
-	b.WriteString("内容里疑似有密钥，已拒绝写入，什么都没有保存：\n")
+	b.WriteString(l.T("core.err.secret_header") + "\n")
 	for i, f := range e.Findings {
 		if i == maxListedFindings {
-			fmt.Fprintf(&b, "- 另有 %d 处\n", len(e.Findings)-maxListedFindings)
+			b.WriteString("- " + l.T("core.err.secret_more", i18n.D{"Count": len(e.Findings) - maxListedFindings}) + "\n")
 			break
 		}
-		fmt.Fprintf(&b, "- %s 第 %d 行：%s（规则 %s）\n", f.Field, f.Line, f.Category, f.RuleID)
+		b.WriteString("- " + l.T("core.err.secret_line", i18n.D{"Field": f.Field, "Line": f.Line,
+			"Category": f.CategoryIn(l), "Rule": f.RuleID}) + "\n")
 	}
-	b.WriteString("请把这些位置的密钥换成 [已脱敏] 之类的占位后重试。不要把原值展示给用户，也不要写进别的字段。")
+	b.WriteString(l.T("core.err.secret_footer"))
 	return b.String()
 }
 

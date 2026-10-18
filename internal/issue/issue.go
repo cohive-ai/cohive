@@ -42,9 +42,6 @@ func StatusLabelIn(l i18n.Lang, s Status) string {
 	return string(s)
 }
 
-// Label 返回状态的中文名。固定中文的旧函数：调用方（core、notify）迁移到 StatusLabelIn 后删除。
-func (s Status) Label() string { return StatusLabelIn(i18n.ZhCN, s) }
-
 // ParseStatus 校验并转换数据库中的状态值。
 func ParseStatus(v string) (Status, error) {
 	s := Status(v)
@@ -153,9 +150,8 @@ type TransitionError struct {
 	reason reason
 }
 
-// Error 固定用中文渲染：core 与它的测试还在按中文文案处理这个错误，第二段改完后改为用缺省语言。
-// 接口层和 MCP 不走这里，而是用 Localize 按请求或账号的语言展示。
-func (e *TransitionError) Error() string { return e.Localize(i18n.ZhCN) }
+// Error 用本进程的缺省语言渲染；接口层和 MCP 用 Localize 按请求或账号的语言展示。
+func (e *TransitionError) Error() string { return e.Localize(i18n.Default()) }
 
 // Localize 按指定语言渲染完整的说明。与 *i18n.Error 一样有 Localize(Lang) string，
 // 接口层和 MCP 据此按请求或账号的语言展示。
