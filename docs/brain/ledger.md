@@ -19,7 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| N-2 超时催办 | `feature/overdue-reminder` | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245` | `02e97ef` | 实施中（N-2 已交回，等 N-3 补充；主脑另要求催办不能被“不 @ 操作者”误伤） | 按 decisions“超时催办”；待接单、待验证计时，时长由工作空间管理员配置；第二次同时 @ 管理员；催办投递前状态已变则不发；不引入 river；避开 I18N 第一段的文件；并入 N-3：群通知不 @ 操作者本人、只写名字；交回 `docs/brain/inbox/N-2-overdue-reminder.md` |
+| N-2 超时催办 | `feature/overdue-reminder` | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245` | `59dd3e1` | 打回（小项：补“转交后计时重来”的断言；其余验收通过，含 N-3） | 按 decisions“超时催办”；待接单、待验证计时，时长由工作空间管理员配置；第二次同时 @ 管理员；催办投递前状态已变则不发；不引入 river；避开 I18N 第一段的文件；并入 N-3：群通知不 @ 操作者本人、只写名字；交回 `docs/brain/inbox/N-2-overdue-reminder.md` |
 | I18N 多语言与社区规范 | `claude/i18n-community-8501fd` | i18n-community / `local_2d4cac2f-f92f-4352-a1aa-63c9ec1d1e8c` | `605c4ba` | 实施中（方案 `f505c97` 已认可，做第一段；N-2 合入后需变基） | 中英两种，其他语言社区维护；抽取与翻译用 sonnet 子代理；第一段避开 internal/notify、core、store 与 Admin 页，第二段等 N-1、N-2 合入后做群通知与工作空间语言；社区规范（贡献指南、行为准则、安全、模板、鸣谢），仓库设置只列清单给 lee；交回 `docs/brain/inbox/I18N-*.md` |
 | IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
