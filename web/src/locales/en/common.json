@@ -69,7 +69,8 @@
     "close": "closed",
     "reopen": "reopened",
     "comment": "commented",
-    "reassign": "reassigned"
+    "reassign": "reassigned",
+    "cancel": "cancelled"
   },
   "status": {
     "all": "All statuses",
@@ -80,7 +81,8 @@
     "READY_FOR_VERIFICATION": "Ready for verification",
     "REOPENED": "Reopened",
     "CLOSED": "Closed",
-    "DECLINED": "Declined"
+    "DECLINED": "Declined",
+    "CANCELLED": "Cancelled"
   },
   "severity": {
     "low": "Low",

@@ -13,6 +13,12 @@ approval_mode = "prompt"
 [mcp_servers.cohive.tools.cohive_close_issue]
 approval_mode = "prompt"
 
+[mcp_servers.cohive.tools.cohive_cancel_issue]
+approval_mode = "prompt"
+
+[mcp_servers.cohive.tools.cohive_delete_draft]
+approval_mode = "prompt"
+
 # 只读工具与只影响自己或已接手单子的工具：直接放行
 [mcp_servers.cohive.tools.cohive_inbox]
 approval_mode = "approve"

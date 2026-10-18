@@ -39,6 +39,7 @@ The user may call this with an issue number, for example `/cohive 12` (Claude Co
    | Start fixing, add progress | `cohive_update_issue` (start_fixing or note) |
    | Ask the other side to verify after a fix | `cohive_request_verification` (note says what changed, the merge request, and where it is deployed) |
    | Verification passed / failed | `cohive_close_issue` (verdict is pass / reopen) |
+   | Cancel an issue you submitted that has not been accepted | `cohive_cancel_issue` (a reason is required; it cannot be undone and then only accepts comments) |
 5. **Wait for the user to decide**, then call the matching tool. Every status change must pass the issue's current `version` as `expected_version`; if it says the version has changed, read the issue again and tell the user what changed, and do not just retry. Adding only a note (`cohive_update_issue` with only note filled in) does not change the version, so you may omit `expected_version`, and it will not invalidate an action that someone else is confirming.
 
 When verifying someone else's fix: show the repro script and get agreement before running it, compare the output with the "exit code expected after the fix" in the issue, tell the user the result, and let the user decide whether to close or reopen.
@@ -52,6 +53,7 @@ When the user asks you to hand a problem you found to another member:
 2. Call `cohive_draft_issue` to draft it, providing as much of this as you can: expected and actual results, a repro script that can be run directly, the exit code expected after the fix, the repository, the branch, and the commit.
 3. Write the `brief` (the short text for the group notification): say in one sentence what the problem is and what it affects, in no more than 80 characters, **with no logs, secrets, internal addresses, or customer data**. The title and the brief appear in the team's chat group exactly as written.
 4. Show the user the draft's title, brief, and owner, and call `cohive_submit_issue` to submit only after the user confirms.
+5. If the user no longer wants the issue: delete a draft that has not been submitted with `cohive_delete_draft`; cancel a submitted issue that nobody has accepted yet with `cohive_cancel_issue`, which requires a reason and notifies the owner. Neither can be undone, so call them only after the user confirms. Once an issue is accepted, only a workspace admin can cancel it, on the web.
 
 ## A write is rejected: suspected secret
 

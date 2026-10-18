@@ -14,6 +14,7 @@ const actionKeys = {
   reopen: "action.reopen",
   comment: "action.comment",
   reassign: "action.reassign",
+  cancel: "action.cancel",
 } as const;
 
 // 事件动作的说法（过去式）；不认识的动作原样返回
@@ -31,6 +32,7 @@ const statusKeys = {
   REOPENED: "status.REOPENED",
   CLOSED: "status.CLOSED",
   DECLINED: "status.DECLINED",
+  CANCELLED: "status.CANCELLED",
 } as const;
 
 export const statusIds = Object.keys(statusKeys);

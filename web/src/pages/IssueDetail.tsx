@@ -1,8 +1,10 @@
-import { Link, useParams } from "@tanstack/react-router";
+import { useId, useState } from "react";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { safeTrans } from "../i18n/safeTrans";
 import { Trans, useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
-import { api, ApiError, type IssueEvent } from "../api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, ApiError, type Issue, type IssueEvent } from "../api";
+import { btn, ConfirmButton, Dialog, ErrorText, errMsg, Field as FormField, inputClass } from "../ui";
 import { Notice, StatusTag, ToolMark } from "../components";
 import {
   absoluteTime,
@@ -59,7 +61,7 @@ export function IssueDetailPage() {
     );
   }
 
-  const { issue: is, events } = detail.data;
+  const { issue: is, events, can_cancel, can_delete } = detail.data;
   const unset = <span className="text-muted">{t("unset")}</span>;
   const meta: [string, React.ReactNode][] = [
     [t("detail.reporter"), <span className="inline-flex items-center gap-1.5">{is.source}<ToolMark tool={is.source_tool} /></span>],
@@ -87,6 +89,12 @@ export function IssueDetailPage() {
           {is.escalated && <span className="text-danger">{t("detail.escalatedWhy", { reason: is.escalation_reason })}</span>}
         </div>
         <h1 className="mt-1 text-2xl leading-snug font-semibold">{is.title}</h1>
+        {(can_cancel || can_delete) && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {can_cancel && <CancelButton ws={ws} issue={is} />}
+            {can_delete && <DeleteDraftButton ws={ws} id={is.id} />}
+          </div>
+        )}
       </header>
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -172,11 +180,99 @@ function Event({ e }: { e: IssueEvent }) {
           <span className="text-muted">{t("event.statusTo", { status: statusLabel(e.to) })}</span>
         )}
         {e.payload?.escalated === true && <span className="text-danger">{t("event.escalated")}</span>}
+        {e.action === "cancel" && e.payload?.by_admin === true && <span className="text-muted">{t("event.byAdmin")}</span>}
       </p>
       {e.note && <p className="mt-1 rounded bg-surface px-3 py-2 text-sm whitespace-pre-wrap break-words">{e.note}</p>}
       <time className="mt-0.5 block text-xs text-muted" dateTime={e.at} title={absoluteTime(e.at)}>
         {relativeTime(e.at)}
       </time>
     </li>
+  );
+}
+
+// 作废：必须写理由。发起人作废自己还没被接单的单；管理员可以作废任何进行中的单（服务端判定，can_cancel 只决定显不显示）
+function CancelButton({ ws, issue }: { ws: string; issue: Issue }) {
+  const { t } = useTranslation("issues");
+  const { t: tc } = useTranslation();
+  const qc = useQueryClient();
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const asReporter = issue.your_actions.includes("cancel");
+  const close = () => {
+    if (busy) return;
+    setOpen(false);
+    setError("");
+  };
+  const run = async () => {
+    if (!reason.trim()) {
+      setError(t("detail.cancelReasonRequired"));
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await api.cancelIssue(ws, issue.id, { expected_version: issue.version, reason });
+      setOpen(false);
+      setReason("");
+      await qc.invalidateQueries({ queryKey: ["issue", ws] });
+      await qc.invalidateQueries({ queryKey: ["board", ws] });
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={btn.danger}>
+        {t("detail.cancel")}
+      </button>
+      <Dialog open={open} onClose={close} title={t("detail.cancelTitle", { id: issue.id })} dismissible={!busy}>
+        <p className="mb-3 text-sm text-muted">{asReporter ? t("detail.cancelMessage") : t("detail.cancelMessageAdmin")}</p>
+        <FormField label={t("detail.cancelReason")} htmlFor={id}>
+          <textarea
+            id={id}
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder={t("detail.cancelReasonPlaceholder")}
+            className={inputClass}
+            disabled={busy}
+          />
+        </FormField>
+        <ErrorText>{error}</ErrorText>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={close} disabled={busy} className={btn.secondary}>
+            {tc("ui.cancel")}
+          </button>
+          <button type="button" onClick={run} disabled={busy} className={btn.dangerSolid}>
+            {busy ? tc("ui.processing") : t("detail.cancelConfirm")}
+          </button>
+        </div>
+      </Dialog>
+    </>
+  );
+}
+
+// 删除自己的草稿：删掉后回到看板
+function DeleteDraftButton({ ws, id }: { ws: string; id: number }) {
+  const { t } = useTranslation("issues");
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  return (
+    <ConfirmButton
+      label={t("detail.deleteDraft")}
+      title={t("detail.deleteDraftTitle", { id })}
+      message={t("detail.deleteDraftMessage")}
+      confirmLabel={t("detail.deleteDraftConfirm")}
+      action={async () => {
+        await api.deleteDraft(ws, id);
+        await qc.invalidateQueries({ queryKey: ["board", ws] });
+        await navigate({ to: "/w/$ws", params: { ws } });
+      }}
+    />
   );
 }

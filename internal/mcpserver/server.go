@@ -398,6 +398,8 @@ func NewServerFor(svc *core.Service, l i18n.Lang) *mcp.Server {
 				Note: in.Note, IdempotencyKey: in.IdempotencyKey})
 		})
 
+	registerCancel(s, l, svc, act, fail)
+
 	register(s, l, spec{name: "cohive_get_issue", ann: readOnly, desc: "mcp.tool.get_issue"}, nil, getOutDescs,
 		func(ctx context.Context, req *mcp.CallToolRequest, in GetArgs) (*mcp.CallToolResult, GetResult, error) {
 			who, err := identity(req)

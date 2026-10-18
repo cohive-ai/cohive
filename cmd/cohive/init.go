@@ -25,9 +25,9 @@ import (
 
 var knownTools = []string{"claude-code", "codex"}
 
-// 影响他人工作的工具每次都要用户确认；其余直接放行。
+// 影响他人工作、不可撤销的工具每次都要用户确认；其余直接放行。
 var (
-	confirmTools = []string{"cohive_submit_issue", "cohive_accept_issue", "cohive_close_issue"}
+	confirmTools = []string{"cohive_submit_issue", "cohive_accept_issue", "cohive_close_issue", "cohive_cancel_issue", "cohive_delete_draft"}
 	allowTools   = []string{"cohive_inbox", "cohive_get_issue", "cohive_search", "cohive_who_owns", "cohive_find_member",
 		"cohive_draft_issue", "cohive_update_issue", "cohive_request_verification"}
 )

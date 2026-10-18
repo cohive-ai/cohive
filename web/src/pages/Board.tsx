@@ -30,6 +30,7 @@ const needsKeys = {
   READY_FOR_VERIFICATION: "board.needs.READY_FOR_VERIFICATION",
   DECLINED: "board.needs.DECLINED",
   CLOSED: "board.needs.CLOSED",
+  CANCELLED: "board.needs.CANCELLED",
 } as const;
 
 function needsText(t: TFunction<"issues">, issue: BoardIssue, forMe: boolean): string {
@@ -44,6 +45,8 @@ export function BoardPage() {
   const ws = useWs();
   const board = useQuery({ queryKey: ["board", ws], queryFn: () => api.board(ws), refetchInterval: 5000 });
   const moved = useHandoffs(board.data?.issues);
+  // 已作废的单默认隐藏，可以打开开关查看（#12）
+  const [showCancelled, setShowCancelled] = useState(false);
   const [, tick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 1000);
@@ -53,7 +56,9 @@ export function BoardPage() {
   if (board.isPending) return <Notice>{t("board.loading")}</Notice>;
   if (board.isError) return <WorkspaceLoadError error={board.error} what="board" />;
 
-  const { me, members, issues } = board.data;
+  const { me, members } = board.data;
+  const cancelled = board.data.issues.filter((i) => i.status === "CANCELLED").length;
+  const issues = showCancelled ? board.data.issues : board.data.issues.filter((i) => i.status !== "CANCELLED");
   const columns = orderColumns(t, me, members, issues);
   const active = issues.filter((i) => i.holder);
   const mine = active.filter((i) => i.holder === me).length;
@@ -76,7 +81,15 @@ export function BoardPage() {
             t("board.summaryNone", { count: active.length })
           )}
         </p>
-        <p className="text-sm text-muted">{t("board.refresh", { time: relativeTime(new Date(board.dataUpdatedAt).toISOString()) })}</p>
+        <div className="flex flex-wrap items-baseline gap-4">
+          {cancelled > 0 && (
+            <label className="inline-flex items-center gap-1.5 text-sm text-muted">
+              <input type="checkbox" checked={showCancelled} onChange={(e) => setShowCancelled(e.target.checked)} />
+              {t("board.showCancelled", { count: cancelled })}
+            </label>
+          )}
+          <p className="text-sm text-muted">{t("board.refresh", { time: relativeTime(new Date(board.dataUpdatedAt).toISOString()) })}</p>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-flow-col md:auto-cols-[minmax(280px,1fr)] md:overflow-x-auto md:pb-2">

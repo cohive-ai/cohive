@@ -17,7 +17,7 @@ type BoardItem struct {
 }
 
 // Holder 返回当前需要采取行动的成员：草稿、待验证、已退回等发起人；
-// 待接单、已接单、修复中、已重开等负责人；已关闭没有处理人。
+// 待接单、已接单、修复中、已重开等负责人；已关闭、已作废没有处理人。
 func Holder(is store.Issue) (int64, bool) {
 	switch is.Status {
 	case issue.StatusDraft, issue.StatusReadyForVerification, issue.StatusDeclined:
@@ -41,6 +41,7 @@ var boardNeeds = map[issue.Status]string{
 	issue.StatusReadyForVerification: "core.board.needs_ready_for_verification",
 	issue.StatusDeclined:             "core.board.needs_declined",
 	issue.StatusClosed:               "core.board.needs_closed",
+	issue.StatusCancelled:            "core.board.needs_cancelled",
 }
 
 // Board 返回工作空间成员与看板上的问题单。

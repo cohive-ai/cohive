@@ -119,6 +119,7 @@ const (
 	ActTokenIssue          = "token.issue"
 	ActTokenRevoke         = "token.revoke"
 	ActServiceOwner        = "service.owner"
+	ActIssueCancel         = "issue.cancel"
 	ActAccessDenied        = "access.denied"
 
 	ActServerSettings       = "server.settings"
@@ -140,6 +141,7 @@ const (
 	CatTokenService = "token_service"
 	CatDenied       = "denied"
 	CatServer       = "server"
+	CatIssue        = "issue"
 )
 
 // Category 是一个动作类别。
@@ -155,7 +157,7 @@ func (c Category) Label(l i18n.Lang) string {
 // Categories 按显示顺序列出动作类别。
 var Categories = []Category{
 	{CatApproval}, {CatRole}, {CatInvite}, {CatDevice}, {CatMember},
-	{CatAccount}, {CatWorkspace}, {CatTokenService}, {CatServer},
+	{CatAccount}, {CatWorkspace}, {CatIssue}, {CatTokenService}, {CatServer},
 	{CatDenied},
 }
 
@@ -328,6 +330,9 @@ var actions = map[string]actionInfo{
 			return l.T("audit.verb.service_owner_change", i18n.D{"Target": e.TargetName, "From": from, "To": str(e, "to")})
 		}
 		return l.T("audit.verb.service_owner", i18n.D{"Target": e.TargetName, "To": str(e, "to")})
+	}},
+	ActIssueCancel: {CatIssue, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.issue_cancel", i18n.D{"ID": targetID(e), "Target": e.TargetName})
 	}},
 	ActServerSettings: {CatServer, func(l i18n.Lang, e store.AdminEvent) string {
 		var fields []string

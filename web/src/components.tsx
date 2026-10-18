@@ -38,6 +38,7 @@ const statusTone: Record<string, string> = {
   READY_FOR_VERIFICATION: "bg-amber-soft text-amber",
   CLOSED: "bg-sunken text-muted",
   DECLINED: "bg-sunken text-danger",
+  CANCELLED: "bg-sunken text-muted line-through",
 };
 
 export function StatusTag({ status, label }: { status: string; label: string }) {

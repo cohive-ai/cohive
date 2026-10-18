@@ -69,7 +69,8 @@
     "close": "关闭",
     "reopen": "重开",
     "comment": "评论",
-    "reassign": "改派"
+    "reassign": "改派",
+    "cancel": "作废"
   },
   "status": {
     "all": "全部状态",
@@ -80,7 +81,8 @@
     "READY_FOR_VERIFICATION": "待验证",
     "REOPENED": "已重开",
     "CLOSED": "已关闭",
-    "DECLINED": "已退回"
+    "DECLINED": "已退回",
+    "CANCELLED": "已作废"
   },
   "severity": {
     "low": "低",

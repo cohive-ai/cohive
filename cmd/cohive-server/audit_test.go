@@ -8,6 +8,7 @@ import (
 
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/i18n"
+	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -55,6 +56,48 @@ var cliCases = []cliCase{
 	{"token issue", nil, []string{"token", "issue", "--member", "ann", "--tool", "codex"}, core.ActTokenIssue, "default"},
 	{"token revoke", [][]string{{"token", "issue", "--member", "ann", "--tool", "codex"}}, []string{"token", "revoke", "--id", "1"}, core.ActTokenRevoke, "default"},
 	{"service add", nil, []string{"service", "add", "--name", "api", "--owner", "bob"}, core.ActServiceOwner, "default"},
+	{"issue cancel", nil, []string{"issue", "cancel", "--id", "1", "--reason", "重复", "--as", "lee"}, core.ActIssueCancel, "default"},
+}
+
+// cliPrep 是命令行造不出来、要直接写库准备的数据（按命令名）。
+var cliPrep = map[string]func(t *testing.T){
+	"issue cancel": func(t *testing.T) { submitIssue(t, "ann", "bob") }, // ann 发给 bob 的 #1，bob 已接单
+}
+
+// submitIssue 让 source 起草并发出一张交给 owner 的单，owner 接单，返回单号。
+func submitIssue(t *testing.T, source, owner string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	pool, err := openDB(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	ws, err := store.DefaultWorkspace(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := func(name string) store.Identity {
+		m, err := store.MemberByName(ctx, pool, ws, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return store.Identity{AccountID: m.AccountID, MemberID: m.ID, WorkspaceID: ws, MemberName: m.Name, Tool: "codex"}
+	}
+	svc := &core.Service{Pool: pool}
+	is, err := svc.Draft(ctx, id(source), core.DraftInput{Title: "下单接口 500", Owner: owner, Actual: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		who string
+		act issue.Action
+	}{{source, issue.ActSubmit}, {owner, issue.ActAccept}} {
+		if is, err = svc.Act(ctx, id(step.who), core.ActInput{IssueID: is.ID, Action: step.act, ExpectedVersion: is.Version}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return is.ID
 }
 
 // notAdminCommands 是不属于管理操作、不留记录的命令，各附理由。
@@ -83,6 +126,9 @@ func TestEveryServerCommandRecords(t *testing.T) {
 			mustRun(t, "member", "add", "--name", "bob")
 			for _, s := range c.setup {
 				mustRun(t, s...)
+			}
+			if prep := cliPrep[c.cmd]; prep != nil {
+				prep(t)
 			}
 			mustRun(t, c.args...)
 			e, _ := lastAdminEvent(t)

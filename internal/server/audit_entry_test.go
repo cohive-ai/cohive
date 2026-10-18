@@ -300,6 +300,22 @@ func webCases() []webCase {
 				"password": "eve-password-1"}, "")
 			return code
 		}, core.ActInviteUse, core.ViaWeb, "default", "eve"},
+		{"POST /api/v1/w/{ws}/issues/{id}/cancel", "管理员作废已接单的单", func(t *testing.T, w *auditWeb) int {
+			d, err := w.f.svc.Draft(ctx, w.f.a, core.DraftInput{Title: "下单接口 500", Owner: "lee-codex", Actual: "x"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			is, err := w.f.svc.Act(ctx, w.f.a, core.ActInput{IssueID: d.ID, Action: issue.ActSubmit, ExpectedVersion: d.Version})
+			if err == nil {
+				is, err = w.f.svc.Act(ctx, w.f.b, core.ActInput{IssueID: d.ID, Action: issue.ActAccept, ExpectedVersion: is.Version})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, _ := w.admin.do("POST", fmt.Sprintf("/api/v1/w/default/issues/%d/cancel", d.ID),
+				map[string]any{"expected_version": is.Version, "reason": "重复提交"}, "")
+			return code
+		}, core.ActIssueCancel, core.ViaWeb, "default", "lee-codex"},
 	}
 }
 
@@ -314,6 +330,7 @@ var notAdminWrites = map[string]string{
 	"POST /api/v1/device/tokens":           "设备密钥为本人已加入的工作空间补签令牌：设备授权与加入时已记录",
 	"POST /api/v1/me/links":                "发起通讯工具连接：Telegram 连接完成时在机器人那边记录，钉钉在网页确认时记录",
 	"POST /api/v1/w/{ws}/admin/chat-binds": "生成钉钉群绑定码：绑定完成时（群里 @机器人）记录",
+	"DELETE /api/v1/w/{ws}/issues/{id}":    "删除本人草稿：草稿只有本人看得见，不是管理操作",
 }
 
 // 网页上每个管理入口都留记录，入口、工作空间、操作人都对。

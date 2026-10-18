@@ -83,7 +83,9 @@ it("状态、动作、严重程度、角色等名称按当前语言取（中文�
   expect(statusLabel("UNKNOWN", "服务端给的")).toBe("服务端给的");
   expect(statusLabel("UNKNOWN")).toBe("UNKNOWN");
   expect(statusOptions()[0]).toEqual({ value: "", label: "全部状态" });
-  expect(statusOptions()).toHaveLength(9);
+  expect(statusOptions()).toHaveLength(10);
+  expect(statusLabel("CANCELLED")).toBe("已作废");
+  expect(actionLabel("cancel")).toBe("作废");
   expect(actionLabel("request_verification")).toBe("请求验证");
   expect(actionLabel("whatever")).toBe("whatever");
   expect(severityLabel("critical")).toBe("紧急");

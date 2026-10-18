@@ -22,6 +22,7 @@ const (
 	AlertStarted     = EventStarted     // 你发的单开始修复了
 	AlertCommented   = EventCommented   // 有新留言
 	AlertReassigned  = EventReassigned  // 管理员改派了你相关的单
+	AlertCancelled   = EventCancelled   // 你相关的单被作废
 )
 
 const (

@@ -268,6 +268,8 @@ func TestNewInfoEventMessages(t *testing.T) {
 			[]string{"#12 new comment from lee-codex, FYI @lee_claude"}, "#12 新留言"},
 		{"reassigned", linked.ID, []int64{claude.ID}, []string{"已由管理员", "现在负责人是 lee-codex，发起人是 lee-claude；告知 @lee_claude"},
 			[]string{"reassigned by admin", "owner is now lee-codex, reporter is lee-claude; FYI @lee_claude"}, "#12 已改派"},
+		{"cancelled", claude.ID, []int64{codex.ID}, []string{"#12 已被 lee-claude 作废，告知 lee-codex"},
+			[]string{"#12 cancelled by lee-claude, FYI lee-codex"}, "#12 已作废"},
 	}
 	for _, c := range cases {
 		n := store.Notification{Event: c.event, ActorMemberID: c.actor, ActorTool: "codex", Recipients: c.to}
