@@ -65,7 +65,7 @@ func TestLinkUsesExternalURLAndPath(t *testing.T) {
 }
 
 func TestNeverLeaksIssueBody(t *testing.T) {
-	for _, event := range []string{"assigned", "declined", "verify", "reopened", "escalated"} {
+	for _, event := range []string{"assigned", "declined", "verify", "reopened", "escalated", "accepted", "closed"} {
 		text := render(t, workspace(true, true, ""), sampleIssue(), event, codex.ID, "codex", claude.ID, codex.ID)
 		if strings.Contains(text, "SECRET") {
 			t.Fatalf("%s 消息泄露了问题单正文：\n%s", event, text)
@@ -97,7 +97,7 @@ func TestMentions(t *testing.T) {
 
 // 连接了 Telegram 的成员按用户编号提到，不用可能为空或已改的用户名；链接文字严格转义。
 func TestMentionByUserID(t *testing.T) {
-	for _, event := range []string{"assigned", "declined", "verify", "reopened", "escalated"} {
+	for _, event := range []string{"assigned", "declined", "verify", "reopened", "escalated", "accepted", "closed"} {
 		text := render(t, workspace(true, true, ""), sampleIssue(), event, codex.ID, "codex", linked.ID, codex.ID)
 		want := `<a href="tg://user?id=777">a&lt;b&gt;&amp;&#34;c</a>`
 		if !strings.Contains(text, want) || strings.Contains(text, "@old_name") {
@@ -127,5 +127,47 @@ func TestHTMLEscaping(t *testing.T) {
 	}
 	if !strings.Contains(text, "&lt;b&gt;x&lt;/b&gt; &amp;") {
 		t.Fatalf("转义结果不符：\n%s", text)
+	}
+}
+
+// 接单告知发起人、验证通过关单告知负责人：写明谁做了什么、@ 对方；指引是“查看”而不是“处理”；
+// 标题、简述照工作空间开关；正文从不发。
+func TestAcceptedAndClosedMessages(t *testing.T) {
+	is := sampleIssue()
+	text := render(t, workspace(true, true, "https://cohive.example.com"), is, "accepted", codex.ID, "codex", claude.ID)
+	for _, want := range []string{"#12 已被 lee-codex 接单", "告知发起人 @lee_claude", "order-api", "用 Codex 接单",
+		"下单接口返回 500", "/cohive 12", "查看", "https://cohive.example.com/w/payments/issues/12"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("接单消息应包含 %q：\n%s", want, text)
+		}
+	}
+	text = render(t, workspace(false, false, ""), is, "closed", claude.ID, "claude-code", codex.ID)
+	for _, want := range []string{"#12 已由 lee-claude 验证通过并关闭", "告知负责人 lee-codex", "用 Claude Code 关闭", "查看"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("关单消息应包含 %q：\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "下单接口返回 500") || strings.Contains(text, "空购物车") || strings.Contains(text, "处理") {
+		t.Fatalf("关掉开关后不显示标题简述；告知型指引不写“处理”：\n%s", text)
+	}
+}
+
+// 钉钉格式：标题（卡片标题与降级 Markdown 的标题）、按钉钉连接 @ 负责人。
+func TestAcceptedAndClosedDingTalk(t *testing.T) {
+	is := sampleIssue()
+	people := map[int64]notify.Person{
+		claude.ID: {Name: claude.Name},
+		codex.ID:  {Name: codex.Name, Chats: []store.ChatIdentity{{Provider: store.ProviderDingTalk, Tenant: "corp", UserID: "u-codex"}}},
+	}
+	ws := store.Workspace{Name: "payments", Notify: store.NotifyConfig{Channel: store.ProviderDingTalk, Target: "cid", ShowTitle: true}}
+	m := notify.RenderFor(notify.DingTalkFormat{}, store.ProviderDingTalk, "", ws, is,
+		store.Notification{Event: "closed", ActorMemberID: claude.ID, ActorTool: "claude-code", Recipients: []int64{codex.ID}}, people)
+	if m.Title != "#12 已关闭" || !strings.Contains(m.Text, "告知负责人 @lee-codex") || len(m.Mentions) != 1 || m.Mentions[0].UserID != "u-codex" {
+		t.Fatalf("钉钉关单消息：%+v", m)
+	}
+	m = notify.RenderFor(notify.DingTalkFormat{}, store.ProviderDingTalk, "", ws, is,
+		store.Notification{Event: "accepted", ActorMemberID: codex.ID, ActorTool: "codex", Recipients: []int64{claude.ID}}, people)
+	if m.Title != "#12 已接单" || !strings.Contains(m.Text, "告知发起人 lee-claude") || len(m.Mentions) != 0 {
+		t.Fatalf("钉钉接单消息（发起人没连钉钉，只写名字）：%+v", m)
 	}
 }

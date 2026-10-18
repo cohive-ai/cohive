@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -208,8 +209,9 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 
 // stale 判断通知是否已过时：问题单的状态或负责人在写入通知之后发生了变化。
 // 例如转交给别人之后，旧的“交给 A”就不应再发出。
+// 接单、关单是告知型通知：说的是已经发生的事，之后单子再往前走（开始修复、请求验证）也照样发，否则群里的信息链会断。
 func stale(n store.Notification, is store.Issue) bool {
-	if n.IssueStatus == "" { // 旧数据没有记录，不判断
+	if n.IssueStatus == "" || core.InfoEvent(n.Event) { // 旧数据没有记录、告知型事件，不判断
 		return false
 	}
 	if string(is.Status) != n.IssueStatus {

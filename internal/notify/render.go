@@ -65,6 +65,12 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 		head = fmt.Sprintf("#%d 验证未通过，已重开给 %s", is.ID, mentions(n.Recipients))
 	case "escalated":
 		head = fmt.Sprintf("#%d 已多次重开，需要人介入：%s", is.ID, mentions(n.Recipients))
+	case "accepted":
+		head = fmt.Sprintf("#%d 已被 %s 接单，告知发起人 %s", is.ID, actor, mentions(n.Recipients))
+		via = fmt.Sprintf("由 %s 用 %s 接单", actor, tool)
+	case "closed":
+		head = fmt.Sprintf("#%d 已由 %s 验证通过并关闭，告知负责人 %s", is.ID, actor, mentions(n.Recipients))
+		via = fmt.Sprintf("由 %s 用 %s 关闭", actor, tool)
 	default:
 		head = fmt.Sprintf("#%d 有新动态：%s", is.ID, mentions(n.Recipients))
 	}
@@ -86,7 +92,11 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 	if ws.Notify.ShowBrief && is.Brief != "" {
 		lines = append(lines, "简述："+esc(is.Brief))
 	}
-	lines = append(lines, fmt.Sprintf("在编程工具里用 /cohive %d（Codex 用 $cohive %d）处理", is.ID, is.ID))
+	verb := "处理"
+	if core.InfoEvent(n.Event) { // 告知型：对方不必动手，只是可以去看
+		verb = "查看"
+	}
+	lines = append(lines, fmt.Sprintf("在编程工具里用 /cohive %d（Codex 用 $cohive %d）%s", is.ID, is.ID, verb))
 	if link := core.IssueLink(base, ws.Name, is.ID); link != "" {
 		lines = append(lines, f.Link(link))
 	}
@@ -106,6 +116,10 @@ func eventTitle(event string) string {
 		return "已重开"
 	case "escalated":
 		return "需要人介入"
+	case "accepted":
+		return "已接单"
+	case "closed":
+		return "已关闭"
 	}
 	return "有新动态"
 }

@@ -14,10 +14,16 @@ const (
 	EventVerify    = "verify"    // 已修复，请发起人验证
 	EventReopened  = "reopened"  // 验证未通过，重开给负责人
 	EventEscalated = "escalated" // 需要人介入
+	EventAccepted  = "accepted"  // 负责人已接单，告知发起人
+	EventClosed    = "closed"    // 发起人验证通过并关闭，告知负责人
 )
 
+// InfoEvent 判断是不是“告知型”事件（接单、关单）：只是把发生过的事告诉对方，之后问题单再往前走也不算过时。
+func InfoEvent(event string) bool { return event == EventAccepted || event == EventClosed }
+
 // queueNotifications 在状态变更的同一事务里写入待发群通知。
-// 只有“轮到某人做事”的动作才通知；工作空间没配置群时什么都不写。
+// “轮到某人做事”的动作通知要动手的人；接单、验证通过关单告知另一方，让群里的信息链完整
+// （验证不通过走重开，不另发关单）。工作空间没配置群时什么都不写。
 func queueNotifications(ctx context.Context, tx store.DBTX, who store.Identity, is store.Issue, act issue.Action, escalated bool) error {
 	type item struct {
 		event      string
@@ -37,6 +43,10 @@ func queueNotifications(ctx context.Context, tx store.DBTX, who store.Identity, 
 		items = append(items, item{EventVerify, []int64{is.SourceMemberID}})
 	case issue.ActReopen:
 		items = append(items, item{EventReopened, []int64{owner}})
+	case issue.ActAccept:
+		items = append(items, item{EventAccepted, []int64{is.SourceMemberID}})
+	case issue.ActClose:
+		items = append(items, item{EventClosed, []int64{owner}})
 	}
 	if escalated {
 		items = append(items, item{EventEscalated, []int64{is.SourceMemberID, owner}})
