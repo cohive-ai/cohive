@@ -24,7 +24,7 @@
 
 需要：
 
-- Go 1.25
+- Go 1.26
 - Node 20 或更高版本，以及 pnpm 9
 - Docker（用于开发用的 Postgres）
 

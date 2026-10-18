@@ -8,7 +8,7 @@
 
 ## 1. 启动服务
 
-需要 Go 1.25、Node 20 以上、pnpm 和 Docker。
+需要 Go 1.26、Node 20 以上、pnpm 和 Docker。
 
 ```bash
 make db-up

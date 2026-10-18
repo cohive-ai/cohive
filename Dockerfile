@@ -10,7 +10,7 @@ RUN pnpm install --frozen-lockfile
 COPY web/ ./
 RUN pnpm build
 
-FROM golang:1.25-alpine AS build
+FROM golang:1.26-alpine AS build
 ARG VERSION=dev
 ARG COMMIT=
 WORKDIR /src

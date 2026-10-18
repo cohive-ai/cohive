@@ -107,7 +107,7 @@ The full plan (Chinese) is in [docs/plan.md](docs/plan.md).
 
 ## Building from source
 
-You need Go 1.25, Node 20+, pnpm and Docker (for the test Postgres).
+You need Go 1.26, Node 20+, pnpm and Docker (for the test Postgres).
 
 ```bash
 make db-up      # local development Postgres on localhost:55432
