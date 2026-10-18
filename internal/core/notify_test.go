@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/cohive-ai/cohive/internal/core"
@@ -74,15 +75,18 @@ func TestNotificationsAlongTheLoop(t *testing.T) {
 	is = e.act(t, e.b, is, issue.ActRequestVerification)
 	e.act(t, e.a, is, issue.ActClose)
 
+	// 接单告知发起人、验证通过关单告知负责人；开始修复、评论不通知；验证不通过只发重开，不发关单
 	want := []sent{
 		{"assigned", []int64{e.b.MemberID}},
+		{"accepted", []int64{e.a.MemberID}},
 		{"verify", []int64{e.a.MemberID}},
 		{"reopened", []int64{e.b.MemberID}},
 		{"verify", []int64{e.a.MemberID}},
+		{"closed", []int64{e.b.MemberID}},
 	}
 	got2 := pending(t, e, is.ID)
 	if len(got2) != len(want) {
-		t.Fatalf("应写入 %d 条待发通知（接单、开始修复、评论、关闭不通知），得到 %v", len(want), got2)
+		t.Fatalf("应写入 %d 条待发通知（开始修复、评论不通知），得到 %v", len(want), got2)
 	}
 	for i := range want {
 		if got2[i].event != want[i].event || !sameIDs(got2[i].recipients, want[i].recipients) {
@@ -148,5 +152,46 @@ func TestEscalationNotifiesBoth(t *testing.T) {
 	}
 	if escalated != 1 {
 		t.Fatalf("升级通知应只发一次，得到 %d", escalated)
+	}
+}
+
+// 验证不通过：只有重开，没有关单通知；关单通知只在验证通过时出现，收件人是负责人。
+func TestReopenIsNotClose(t *testing.T) {
+	e := newEnv(t)
+	enableNotify(t, e)
+	is := e.act(t, e.a, e.draft(t), issue.ActSubmit)
+	is = e.act(t, e.b, is, issue.ActAccept)
+	is = e.act(t, e.b, is, issue.ActRequestVerification)
+	e.act(t, e.a, is, issue.ActReopen)
+	for _, n := range pending(t, e, is.ID) {
+		if n.event == "closed" {
+			t.Fatalf("验证不通过不应产生关单通知：%v", pending(t, e, is.ID))
+		}
+	}
+}
+
+// 发起人与负责人是同一人：接单、关单照常发，收件人是他自己（群通知现在没有“对自己不 @”的做法）。
+func TestAcceptCloseSamePerson(t *testing.T) {
+	e := newEnv(t)
+	enableNotify(t, e)
+	ctx := context.Background()
+	d, err := e.svc.Draft(ctx, e.a, core.DraftInput{Title: "自己的单", Owner: "lee-claude", Actual: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	is := e.act(t, e.a, d, issue.ActSubmit)
+	is = e.act(t, e.a, is, issue.ActAccept)
+	is = e.act(t, e.a, is, issue.ActRequestVerification)
+	e.act(t, e.a, is, issue.ActClose)
+	got := pending(t, e, is.ID)
+	var events []string
+	for _, n := range got {
+		events = append(events, n.event)
+		if !sameIDs(n.recipients, []int64{e.a.MemberID}) {
+			t.Fatalf("收件人都是他本人：%v", got)
+		}
+	}
+	if strings.Join(events, ",") != "assigned,accepted,verify,closed" {
+		t.Fatalf("同一人时照常发：%v", events)
 	}
 }

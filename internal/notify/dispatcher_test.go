@@ -214,6 +214,25 @@ func TestDispatchDingTalkQuotaPauses(t *testing.T) {
 	}
 }
 
+// 接单是告知型通知：投递前单子已经开始修复，“新单交给你”过时不发，“已接单”照样发，群里的信息链不断。
+func TestDispatchAcceptedNotStale(t *testing.T) {
+	e := newDispatchEnv(t)
+	ctx := context.Background()
+	is := e.submitOne(t)
+	for _, act := range []issue.Action{issue.ActAccept, issue.ActStart} {
+		var err error
+		if is, err = e.svc.Act(ctx, e.b, core.ActInput{IssueID: is.ID, Action: act, ExpectedVersion: is.Version}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.d.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.sender.sent) != 1 || !strings.Contains(e.sender.sent[0], "已被 lee-codex 接单") {
+		t.Fatalf("只应发出“已接单”：%v", e.sender.sent)
+	}
+}
+
 func TestDispatchRetriesThenFails(t *testing.T) {
 	e := newDispatchEnv(t)
 	is := e.submitOne(t)
