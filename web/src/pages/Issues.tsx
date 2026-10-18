@@ -41,9 +41,10 @@ export function IssuesPage() {
           onChange={(e) => setStatus(e.target.value)}
           className="rounded border border-line bg-surface px-3 py-2 text-sm"
         >
+          {/* “全部状态”不含已作废，选“已作废”才列出 */}
           {statusOptions().map((o) => (
             <option key={o.value} value={o.value}>
-              {o.label}
+              {o.value === "" ? t("list.allStatuses") : o.label}
             </option>
           ))}
         </select>

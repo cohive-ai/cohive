@@ -20,6 +20,7 @@ const (
 	StatusReopened             Status = "REOPENED"
 	StatusClosed               Status = "CLOSED"
 	StatusDeclined             Status = "DECLINED"
+	StatusCancelled            Status = "CANCELLED" // 已作废：发起人撤回或管理员作废，之后只能留言（#12）
 )
 
 // statusKey 是各状态名称在语言包里的文案键（新增状态时必须补齐，测试会遍历检查）。
@@ -32,6 +33,7 @@ var statusKey = map[Status]string{
 	StatusReopened:             "issue.status.reopened",
 	StatusClosed:               "issue.status.closed",
 	StatusDeclined:             "issue.status.declined",
+	StatusCancelled:            "issue.status.cancelled",
 }
 
 // StatusLabelIn 返回状态按指定语言的名称；未知状态原样返回。
@@ -65,7 +67,7 @@ func (s Status) Category() Category {
 	switch s {
 	case StatusDraft:
 		return CategoryDraft
-	case StatusClosed, StatusDeclined:
+	case StatusClosed, StatusDeclined, StatusCancelled:
 		return CategoryDone
 	default:
 		return CategoryInProgress
@@ -85,6 +87,8 @@ const (
 	ActClose               Action = "close"
 	ActReopen              Action = "reopen"
 	ActComment             Action = "comment"
+	// ActCancel 是作废。状态机里只有发起人能在待接单时作废；管理员作废见 AdminCancellable，由 core 另行判定权限。
+	ActCancel Action = "cancel"
 	// ActReassign 是管理员改派（移出成员时转交），不属于状态机动作，不经编程工具，状态不变。
 	ActReassign Action = "reassign"
 )
@@ -131,12 +135,23 @@ var rules = map[Action]rule{
 	ActRequestVerification: {from: []Status{StatusAccepted, StatusFixing, StatusReopened}, to: StatusReadyForVerification, role: RoleOwner},
 	ActClose:               {from: []Status{StatusReadyForVerification}, to: StatusClosed, role: RoleSource},
 	ActReopen:              {from: []Status{StatusReadyForVerification}, to: StatusReopened, role: RoleSource},
+	ActCancel:              {from: []Status{StatusOpen}, to: StatusCancelled, role: RoleSource},
+}
+
+// AdminCancellable 判断管理员能否作废这个状态的单：进行中的都可以；草稿只有本人看得见，
+// 已关闭、已退回、已作废已经有了结论，不能再作废。
+func AdminCancellable(s Status) bool {
+	switch s {
+	case StatusOpen, StatusAccepted, StatusFixing, StatusReadyForVerification, StatusReopened:
+		return true
+	}
+	return false
 }
 
 // 动作的固定展示顺序，保证错误信息稳定。
 var actionOrder = []Action{
 	ActSubmit, ActAccept, ActDecline, ActTransfer, ActStart,
-	ActRequestVerification, ActClose, ActReopen, ActComment,
+	ActRequestVerification, ActClose, ActReopen, ActCancel, ActComment,
 }
 
 // TransitionError 说明为什么动作不能执行，以及当前允许做什么。

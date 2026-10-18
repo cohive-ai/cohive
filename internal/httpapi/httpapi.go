@@ -45,6 +45,9 @@ type listResult struct {
 type detailResult struct {
 	Issue  view.IssueView   `json:"issue"`
 	Events []view.EventView `json:"events"`
+	// CanCancel、CanDelete 供网页决定是否显示“作废”“删除草稿”按钮；真正操作时业务层重新判定。
+	CanCancel bool `json:"can_cancel"`
+	CanDelete bool `json:"can_delete"`
 }
 
 // Options 是接口层的可选依赖。
@@ -220,7 +223,8 @@ func workspaceRoutes(mux *http.ServeMux, svc *core.Service) {
 		out := listResult{Items: []view.IssueView{}}
 		status := q.Get("status")
 		for _, is := range list {
-			if status == "" || string(is.Status) == status {
+			// 默认（全部状态）不含已作废，筛选“已作废”时才列出（#12）
+			if (status == "" && is.Status != issue.StatusCancelled) || string(is.Status) == status {
 				out.Items = append(out.Items, view.Issue(i18n.FromContext(r.Context()), who, is))
 			}
 		}
@@ -242,8 +246,61 @@ func workspaceRoutes(mux *http.ServeMux, svc *core.Service) {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, detailResult{Issue: view.Issue(i18n.FromContext(r.Context()), who, is), Events: view.Events(evs)})
+		writeJSON(w, http.StatusOK, detailResult{Issue: view.Issue(i18n.FromContext(r.Context()), who, is), Events: view.Events(evs),
+			CanCancel: svc.CanCancel(r.Context(), webAdmin(r), who, is),
+			CanDelete: is.Status == issue.StatusDraft && is.SourceMemberID == who.MemberID})
 	})
+	// 作废（#12）：发起人作废自己还没被接单的单；管理员作废任何进行中的单（只认账号密码登录的会话）。
+	handle(mux, "POST /api/v1/w/{ws}/issues/{id}/cancel", aSession, func(w http.ResponseWriter, r *http.Request) {
+		who, ok := memberScope(w, r, svc)
+		if !ok {
+			return
+		}
+		id, ok := pathID(w, r, "id")
+		if !ok {
+			return
+		}
+		var body struct {
+			ExpectedVersion int    `json:"expected_version"`
+			Reason          string `json:"reason"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		is, err := svc.CancelIssue(r.Context(), core.WebActor(caller(r).Account), who, core.CancelInput{
+			IssueID: id, ExpectedVersion: body.ExpectedVersion, Reason: body.Reason, PartyOnly: webAdmin(r) == nil})
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, view.Issue(i18n.FromContext(r.Context()), who, is))
+	})
+	// 删除自己的草稿：草稿只有本人看得见，删掉不留痕。
+	handle(mux, "DELETE /api/v1/w/{ws}/issues/{id}", aSession, func(w http.ResponseWriter, r *http.Request) {
+		who, ok := memberScope(w, r, svc)
+		if !ok {
+			return
+		}
+		id, ok := pathID(w, r, "id")
+		if !ok {
+			return
+		}
+		if err := svc.DeleteDraft(r.Context(), who, id); err != nil {
+			writeError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+// webAdmin 返回可以做管理操作的网页账号：只有账号密码登录的会话才算，免密会话与令牌返回空。
+func webAdmin(r *http.Request) *store.Account {
+	c := caller(r)
+	if c.Token != nil || c.SessionVia != store.SessionViaPassword {
+		return nil
+	}
+	a := c.Account
+	return &a
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

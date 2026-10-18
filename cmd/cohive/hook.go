@@ -214,6 +214,8 @@ func alertPhrase(it client.AlertItem) string {
 		return i18n.T("cli.hook.alert_commented", d)
 	case "reassigned":
 		return i18n.T("cli.hook.alert_reassigned", d)
+	case "cancelled":
+		return i18n.T("cli.hook.alert_cancelled", d)
 	}
 	return i18n.T("cli.hook.alert_other", d)
 }

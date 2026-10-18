@@ -115,6 +115,8 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 	case "reassigned":
 		src := is.SourceMemberID
 		head = l.T("notify.head.reassigned", d(i18n.D{"Owner": nameOf(is.OwnerID), "Source": nameOf(&src)}))
+	case "cancelled": // 作废理由不进群，和退回理由、留言正文一样
+		head = l.T("notify.head.cancelled", d(nil))
 	default:
 		head = l.T("notify.head.default", d(nil))
 	}
@@ -203,6 +205,8 @@ func eventTitle(l i18n.Lang, event string) string {
 		return l.T("notify.event.commented")
 	case "reassigned":
 		return l.T("notify.event.reassigned")
+	case "cancelled":
+		return l.T("notify.event.cancelled")
 	}
 	return l.T("notify.event.default")
 }

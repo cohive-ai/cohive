@@ -446,6 +446,7 @@ func TestAlertPhraseNewKinds(t *testing.T) {
 		"started":     "#7 lee-codex 已开始修复",
 		"commented":   "#7 lee-codex 留言了",
 		"reassigned":  "#7 已由管理员 lee-codex 改派",
+		"cancelled":   "#7 已被 lee-codex 作废",
 	} {
 		if got := alertPhrase(client.AlertItem{IssueID: 7, Kind: kind, Actor: "lee-codex"}); got != want {
 			t.Errorf("%s：%q，应为 %q", kind, got, want)

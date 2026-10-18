@@ -42,8 +42,11 @@
       "REOPENED": "Verification failed, waiting for the owner to keep fixing",
       "READY_FOR_VERIFICATION": "Fixed, waiting for the reporter to verify",
       "DECLINED": "Declined, waiting for the reporter to decide what's next",
-      "CLOSED": "Closed"
-    }
+      "CLOSED": "Closed",
+      "CANCELLED": "Cancelled"
+    },
+    "showCancelled_one": "Show cancelled ({{count}})",
+    "showCancelled_other": "Show cancelled ({{count}})"
   },
   "list": {
     "searchLabel": "Search title, summary, or actual result",
@@ -61,7 +64,8 @@
     },
     "reportedBy": "{{name}} reported",
     "ownerLine": "Owner: {{name}}",
-    "limit": "Showing the 50 most recently updated issues. Use a keyword or status to narrow down."
+    "limit": "Showing the 50 most recently updated issues. Use a keyword or status to narrow down.",
+    "allStatuses": "All statuses (except cancelled)"
   },
   "detail": {
     "loading": "Loading the issue…",
@@ -88,7 +92,19 @@
     "notStated": "Not stated",
     "noRepro": "The reporter did not provide a repro script, so verification can only be done by hand.",
     "evidence": "Evidence",
-    "activity": "Activity"
+    "activity": "Activity",
+    "cancel": "Cancel issue",
+    "cancelTitle": "Cancel issue #{{id}}",
+    "cancelMessage": "A cancelled issue cannot be restored and only accepts comments; to start over, submit a new one. The reporter and owner are notified; the reason goes into the activity but not to the group chat.",
+    "cancelMessageAdmin": "You are cancelling as a workspace admin. A cancelled issue cannot be restored and only accepts comments. The reporter and owner are notified; the reason goes into the activity but not to the group chat.",
+    "cancelReason": "Reason",
+    "cancelReasonPlaceholder": "For example: duplicate of #12",
+    "cancelConfirm": "Cancel issue",
+    "cancelReasonRequired": "Please give a reason",
+    "deleteDraft": "Delete draft",
+    "deleteDraftTitle": "Delete draft #{{id}}",
+    "deleteDraftMessage": "Only you can see this draft. Deleting it cannot be undone and leaves no record.",
+    "deleteDraftConfirm": "Delete"
   },
   "event": {
     "head": "<actor>{{actor}}</actor> <tool>({{tool}})</tool> {{action}}",
@@ -96,7 +112,8 @@
     "ownerTo": ", owner changed to {{name}}",
     "sourceTo": ", reporter changed to {{name}}",
     "statusTo": ", status changed to {{status}}",
-    "escalated": ", flagged as needing human attention"
+    "escalated": ", flagged as needing human attention",
+    "byAdmin": " (cancelled by an admin)"
   },
   "eventLog": {
     "introServer": "All admin actions on the server: approvals, roles, invites, devices, members, accounts, workspaces, and rejected admin requests. Append-only; records cannot be edited or deleted.",

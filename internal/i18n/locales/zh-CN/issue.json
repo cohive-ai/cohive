@@ -7,6 +7,7 @@
   "issue.status.reopened": "已重开",
   "issue.status.closed": "已关闭",
   "issue.status.declined": "已退回",
+  "issue.status.cancelled": "已作废",
   "issue.role.source": "发起人",
   "issue.role.owner": "负责人",
   "issue.list_sep": "、",

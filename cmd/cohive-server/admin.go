@@ -16,8 +16,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// admin 处理 workspace、account、member、token、service 几组管理命令。
-// member、token、service 组可用 --workspace 指定工作空间，缺省为 default。
+// admin 处理 workspace、account、member、token、service、issue 几组管理命令。
+// member、token、service、issue 组可用 --workspace 指定工作空间，缺省为 default。
 func admin(ctx context.Context, out io.Writer, args []string) error {
 	if len(args) < 2 {
 		fmt.Fprint(out, usage())
@@ -64,6 +64,8 @@ func admin(ctx context.Context, out io.Writer, args []string) error {
 		return serviceAdd(ctx, out, pool, ws, rest)
 	case "service list":
 		return serviceList(ctx, out, pool, ws)
+	case "issue cancel":
+		return issueCancel(ctx, out, pool, ws, rest)
 	}
 	fmt.Fprint(out, usage())
 	return i18n.Errorf("server.unknown_command", i18n.D{"Command": strconv.Quote(group + " " + sub)})
@@ -318,4 +320,42 @@ func serviceList(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int6
 		fmt.Fprintf(tw, "%s\t%s\n", s.Name, s.OwnerName)
 	}
 	return tw.Flush()
+}
+
+// issueCancel 由管理员作废问题单（#12）：--as 指定以哪个管理员的名义写动态，与 member remove 一样。
+func issueCancel(ctx context.Context, out io.Writer, pool *pgxpool.Pool, ws int64, args []string) error {
+	var id int64
+	var reason, as string
+	if err := parse("issue cancel", args, func(fs *flag.FlagSet) {
+		fs.Int64Var(&id, "id", 0, i18n.T("server.flag.issue_id"))
+		fs.StringVar(&reason, "reason", "", i18n.T("server.flag.cancel_reason"))
+		fs.StringVar(&as, "as", "", i18n.T("server.flag.as_admin"))
+	}); err != nil {
+		return err
+	}
+	if err := required("reason", reason, "as", as); err != nil {
+		return err
+	}
+	if id <= 0 {
+		return i18n.Errorf("server.arg_missing", i18n.D{"Name": "id"})
+	}
+	op, err := store.MemberByName(ctx, pool, ws, as)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	if err != nil || !op.IsAdmin() || !op.Active() {
+		return i18n.Errorf("server.issue.as_not_admin", i18n.D{"Name": strconv.Quote(as)})
+	}
+	svc := &core.Service{Pool: pool}
+	who := store.Identity{AccountID: op.AccountID, MemberID: op.ID, WorkspaceID: ws, MemberName: op.Name, Tool: "web"}
+	is, _, err := svc.Get(ctx, who, id)
+	if err != nil {
+		return err
+	}
+	is, err = svc.CancelIssue(ctx, core.ServerCLI(), who, core.CancelInput{IssueID: id, ExpectedVersion: is.Version, Reason: reason})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, i18n.T("server.issue.cancelled", i18n.D{"ID": is.ID, "Title": is.Title}))
+	return nil
 }

@@ -72,7 +72,10 @@ func TestEveryWriteToolRejectsSecretsAndLogsNothing(t *testing.T) {
 		"cohive_update_issue":         {"issue_id": 1, "note": body},
 		"cohive_request_verification": {"issue_id": 1, "expected_version": 1, "note": body},
 		"cohive_close_issue":          {"issue_id": 1, "expected_version": 1, "verdict": "reopen", "note": body},
+		"cohive_cancel_issue":         {"issue_id": 1, "expected_version": 1, "reason": body},
 	}
+	// 不写入任何正文的写工具（删除草稿只带编号），不用密钥扫描
+	noBody := map[string]bool{"cohive_delete_draft": true}
 	s := mustConnect(t, srv.URL+"/mcp", tok)
 	res, err := s.ListTools(ctx, nil)
 	if err != nil {
@@ -80,7 +83,7 @@ func TestEveryWriteToolRejectsSecretsAndLogsNothing(t *testing.T) {
 	}
 	n := 0
 	for _, tool := range res.Tools {
-		if tool.Annotations == nil || tool.Annotations.ReadOnlyHint {
+		if tool.Annotations == nil || tool.Annotations.ReadOnlyHint || noBody[tool.Name] {
 			continue
 		}
 		a, ok := args[tool.Name]

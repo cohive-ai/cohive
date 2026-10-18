@@ -391,6 +391,13 @@ func auditCases() []auditCase {
 			_, err := f.svc.SetServiceOwner(ctx, core.ServerCLI(), f.p.pay, "api", "bob")
 			return err
 		}, wantEvent{core.ActServiceOwner, core.ViaServerCLI, "pay", "service", "api", "", map[string]any{"from": "ann", "to": "bob"}}},
+		{"管理员在网页上作废别人的单", func(t *testing.T, f *afix) error {
+			m := f.payAdminMember
+			who := store.Identity{AccountID: m.AccountID, MemberID: m.ID, WorkspaceID: f.p.pay, MemberName: m.Name, Tool: "web"}
+			_, err := f.svc.CancelIssue(ctx, core.WebActor(f.p.payAdmin), who, core.CancelInput{IssueID: f.asOwner.ID,
+				ExpectedVersion: f.asOwner.Version, Reason: "重复提交"})
+			return err
+		}, wantEvent{core.ActIssueCancel, core.ViaWeb, "pay", "issue", "给 ann 的单", "pay-admin", map[string]any{"from": "OPEN"}}},
 	}
 }
 

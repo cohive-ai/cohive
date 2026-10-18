@@ -14,7 +14,9 @@
     "ask": [
       "mcp__cohive__cohive_submit_issue",
       "mcp__cohive__cohive_accept_issue",
-      "mcp__cohive__cohive_close_issue"
+      "mcp__cohive__cohive_close_issue",
+      "mcp__cohive__cohive_cancel_issue",
+      "mcp__cohive__cohive_delete_draft"
     ]
   }
 }

@@ -20,6 +20,7 @@ const (
 	EventStarted     = "started"     // 负责人开始修复，告知发起人
 	EventCommented   = "commented"   // 有新留言，告知另一方（正文不进群）
 	EventReassigned  = "reassigned"  // 管理员改派，告知被换下的人、另一方与不用动手的新接手人
+	EventCancelled   = "cancelled"   // 作废（发起人撤回或管理员作废），告知另一方（理由不进群）
 )
 
 // SystemEvent 判断是不是服务端自己发起的事件（超时催办）：没有操作者，通知里记的操作人只是占位。
@@ -28,7 +29,7 @@ func SystemEvent(event string) bool { return event == EventOverdue || event == E
 // InfoEvent 判断是不是“告知型”事件：只是把发生过的事告诉对方，之后问题单再往前走也不算过时。
 func InfoEvent(event string) bool {
 	switch event {
-	case EventAccepted, EventClosed, EventTransferred, EventStarted, EventCommented, EventReassigned:
+	case EventAccepted, EventClosed, EventTransferred, EventStarted, EventCommented, EventReassigned, EventCancelled:
 		return true
 	}
 	return false
@@ -116,6 +117,8 @@ func fanout(who store.Identity, is store.Issue, act issue.Action, escalated bool
 		primary(EventClosed, owner)
 	case issue.ActReopen:
 		primary(EventReopened, owner)
+	case issue.ActCancel: // 发起人作废告知负责人，管理员作废告知双方
+		primary(EventCancelled, is.SourceMemberID, owner)
 	case issue.ActComment:
 		if is.Status != issue.StatusDraft { // 草稿只有发起人自己看得见
 			secondary(EventCommented, is.SourceMemberID, owner)

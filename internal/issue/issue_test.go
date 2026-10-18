@@ -111,3 +111,34 @@ func TestParseStatusRejectsUnknown(t *testing.T) {
 		t.Fatalf("OPEN 应解析成功，得到 %v %v", s, err)
 	}
 }
+
+// 作废（#12）：发起人只能在待接单时作废；作废之后只能留言；管理员能作废的只有进行中的状态。
+func TestCancel(t *testing.T) {
+	if got, err := issue.Apply(issue.StatusOpen, issue.ActCancel, source); err != nil || got != issue.StatusCancelled {
+		t.Fatalf("发起人作废待接单的单：%v %v", got, err)
+	}
+	for _, from := range []issue.Status{issue.StatusDraft, issue.StatusAccepted, issue.StatusFixing,
+		issue.StatusReadyForVerification, issue.StatusReopened, issue.StatusClosed, issue.StatusDeclined, issue.StatusCancelled} {
+		if _, err := issue.Apply(from, issue.ActCancel, source); err == nil {
+			t.Errorf("发起人不能在 %s 作废", from)
+		}
+	}
+	if _, err := issue.Apply(issue.StatusOpen, issue.ActCancel, owner); err == nil {
+		t.Error("负责人不能作废")
+	}
+	both := issue.Roles(true, true)
+	if got := issue.Allowed(issue.StatusCancelled, both); len(got) != 1 || got[0] != issue.ActComment {
+		t.Errorf("已作废只能留言：%v", got)
+	}
+	if issue.StatusCancelled.Category() != issue.CategoryDone {
+		t.Error("已作废算已结束")
+	}
+	want := map[issue.Status]bool{issue.StatusOpen: true, issue.StatusAccepted: true, issue.StatusFixing: true,
+		issue.StatusReadyForVerification: true, issue.StatusReopened: true}
+	for _, s := range []issue.Status{issue.StatusDraft, issue.StatusOpen, issue.StatusAccepted, issue.StatusFixing,
+		issue.StatusReadyForVerification, issue.StatusReopened, issue.StatusClosed, issue.StatusDeclined, issue.StatusCancelled} {
+		if issue.AdminCancellable(s) != want[s] {
+			t.Errorf("管理员能否作废 %s：应为 %v", s, want[s])
+		}
+	}
+}

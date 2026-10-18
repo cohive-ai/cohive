@@ -40,8 +40,10 @@
       "REOPENED": "验证未通过，等负责人继续修复",
       "READY_FOR_VERIFICATION": "已修复，等发起人验证",
       "DECLINED": "已被退回，等发起人决定下一步",
-      "CLOSED": "已关闭"
-    }
+      "CLOSED": "已关闭",
+      "CANCELLED": "已作废"
+    },
+    "showCancelled_other": "显示已作废（{{count}}）"
   },
   "list": {
     "searchLabel": "搜索标题、概述或实际结果",
@@ -59,7 +61,8 @@
     },
     "reportedBy": "{{name}} 发起",
     "ownerLine": "负责人 {{name}}",
-    "limit": "只显示最近更新的 50 张，用关键词或状态缩小范围。"
+    "limit": "只显示最近更新的 50 张，用关键词或状态缩小范围。",
+    "allStatuses": "全部状态（不含已作废）"
   },
   "detail": {
     "loading": "正在读取问题单…",
@@ -86,7 +89,19 @@
     "notStated": "未说明",
     "noRepro": "发起人没有提供复现脚本，验证只能靠人工确认。",
     "evidence": "证据",
-    "activity": "动态"
+    "activity": "动态",
+    "cancel": "作废",
+    "cancelTitle": "作废问题单 #{{id}}",
+    "cancelMessage": "作废后不能恢复，只能留言；要重来就新发一张。发起人与负责人会收到通知，理由会写进动态，但不会发到群里。",
+    "cancelMessageAdmin": "你以工作空间管理员身份作废。作废后不能恢复，只能留言；发起人与负责人会收到通知，理由会写进动态，但不会发到群里。",
+    "cancelReason": "作废理由",
+    "cancelReasonPlaceholder": "例如：重复提交，见 #12",
+    "cancelConfirm": "确认作废",
+    "cancelReasonRequired": "请写明作废理由",
+    "deleteDraft": "删除草稿",
+    "deleteDraftTitle": "删除草稿 #{{id}}",
+    "deleteDraftMessage": "草稿只有你自己看得见，删除后不能恢复，也不留记录。",
+    "deleteDraftConfirm": "确认删除"
   },
   "event": {
     "head": "<actor>{{actor}}</actor><tool>（{{tool}}）</tool>{{action}}",
@@ -94,7 +109,8 @@
     "ownerTo": "，负责人改为 {{name}}",
     "sourceTo": "，发起人改为 {{name}}",
     "statusTo": "，状态变为{{status}}",
-    "escalated": "，已标记需要人介入"
+    "escalated": "，已标记需要人介入",
+    "byAdmin": "（管理员作废）"
   },
   "eventLog": {
     "introServer": "服务器上全部管理操作：审批、角色、邀请、设备、成员、账号、工作空间，以及被拒的管理请求。只追加，不能修改或删除。",

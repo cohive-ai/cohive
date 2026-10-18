@@ -144,5 +144,9 @@
   "core.board.needs_reopened": "验证未通过，等负责人继续修复",
   "core.board.needs_ready_for_verification": "已修复，等发起人验证",
   "core.board.needs_declined": "已被退回，等发起人决定下一步",
-  "core.board.needs_closed": "已关闭"
+  "core.board.needs_closed": "已关闭",
+  "core.err.cancel_reason_required": "作废必须写明理由，对方和动态里都会看到",
+  "core.err.cancel_status": "问题单 #{{.ID}} 当前是“{{.Status}}”，已经有了结论，不能作废",
+  "core.err.delete_not_draft": "问题单 #{{.ID}} 不是你的草稿，不能删除；已发出的单只能作废",
+  "core.board.needs_cancelled": "已作废"
 }

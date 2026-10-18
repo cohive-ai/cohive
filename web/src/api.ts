@@ -78,6 +78,14 @@ export interface Repro {
   expected_exit_code?: number;
 }
 
+// 问题单详情：can_cancel、can_delete 说明当前查看者能否作废、删除（服务端按身份算好）
+export interface IssueDetail {
+  issue: Issue;
+  events: IssueEvent[];
+  can_cancel: boolean;
+  can_delete: boolean;
+}
+
 export interface Issue {
   id: number;
   version: number;
@@ -497,7 +505,11 @@ export const api = {
     const s = qs.toString();
     return request<{ items: Issue[] }>(`${w(ws)}/issues${s ? `?${s}` : ""}`);
   },
-  issue: (ws: string, id: number) => request<{ issue: Issue; events: IssueEvent[] }>(`${w(ws)}/issues/${seg(id)}`),
+  issue: (ws: string, id: number) => request<IssueDetail>(`${w(ws)}/issues/${seg(id)}`),
+  // 作废（发起人作废待接单的单，管理员作废进行中的单）；删除自己的草稿
+  cancelIssue: (ws: string, id: number, body: { expected_version: number; reason: string }) =>
+    post<Issue>(`${w(ws)}/issues/${seg(id)}/cancel`, body),
+  deleteDraft: (ws: string, id: number) => del(`${w(ws)}/issues/${seg(id)}`),
 
   // 账号
   me: () => request<Me>("/api/v1/me"),

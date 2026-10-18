@@ -153,5 +153,9 @@
   "core.board.needs_reopened": "Verification failed; waiting for the owner to continue fixing",
   "core.board.needs_ready_for_verification": "Fixed; waiting for the reporter to verify",
   "core.board.needs_declined": "Declined; waiting for the reporter to decide what to do next",
-  "core.board.needs_closed": "Closed"
+  "core.board.needs_closed": "Closed",
+  "core.err.cancel_reason_required": "A reason is required to cancel an issue. The other party will see it in the activity.",
+  "core.err.cancel_status": "Issue #{{.ID}} is {{.Status}} and already has an outcome; it cannot be cancelled",
+  "core.err.delete_not_draft": "Issue #{{.ID}} is not your draft and cannot be deleted; submitted issues can only be cancelled",
+  "core.board.needs_cancelled": "Cancelled"
 }

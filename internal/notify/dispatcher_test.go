@@ -435,3 +435,19 @@ func TestDispatchLinkFromServerSettings(t *testing.T) {
 		t.Fatalf("服务端传入的对外地址优先：%v %v", e.sender.sent, err)
 	}
 }
+
+// 作废（#12）：投递前单子已被作废，“新单交给你”过时不发；“已作废”是告知型，照样发，且不带理由。
+func TestDispatchCancelled(t *testing.T) {
+	e := newDispatchEnv(t)
+	ctx := context.Background()
+	is := e.submitOne(t)
+	if _, err := e.svc.Act(ctx, e.a, core.ActInput{IssueID: is.ID, Action: issue.ActCancel, ExpectedVersion: is.Version, Note: "SECRET-REASON"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.d.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.sender.sent) != 1 || !strings.Contains(e.sender.sent[0], "已被 lee-claude 作废") || strings.Contains(e.sender.sent[0], "SECRET") {
+		t.Fatalf("只发“已作废”一条、不带理由：%v", e.sender.sent)
+	}
+}

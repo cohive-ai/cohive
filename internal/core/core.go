@@ -339,6 +339,9 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 		if (in.Action == issue.ActDecline || in.Action == issue.ActTransfer) && strings.TrimSpace(in.Note) == "" {
 			return inputErr("core.err.note_required")
 		}
+		if in.Action == issue.ActCancel && strings.TrimSpace(in.Note) == "" {
+			return inputErr("core.err.cancel_reason_required")
+		}
 		switch in.Action {
 		case issue.ActSubmit:
 			if in.Assignee != "" {
