@@ -19,7 +19,6 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| MIG-5 备份拷到 pm-dev2 | 无代码分支（服务器专属） | ops-migrate / `local_891cae15-49a6-4a88-8f8f-d75b6a7a3806`（已取消归档） | — | 待用户（权限策略要求 lee 本人在该会话里同意追加 pm-dev2 授权；两台机器尚无改动） | 专用密钥授权带 rrsync 只写 /hdd/backup/cohive、限定来源 pm-dev1、restrict；优先用 Cohive 专用密钥，pm-dev2 上限制只能写 /hdd/backup/cohive/；跨机失败只记日志；不碰 pm 的脚本、crontab、授权与目录 |
 | IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
@@ -45,7 +44,7 @@
 - 本仓库自用 Cohive（2026-10-18 起）：主检出已 `cohive init` 接入测试服工作空间 `cohive-internal`（只配 Claude Code，含会话钩子），生成的 `.mcp.json`、`.claude/settings.json`、`.claude/skills/` 写在本地 `.git/info/exclude`，不提交；服务 `cohive` 负责人 lee。工作树里的实施会话没有这些文件，不受提醒打扰。朋友与同事在该空间报的问题单，由 lee 或主脑在主检出会话里用 /cohive 拉取，再分派。
 - 仓库：公开在 `https://github.com/cohive-ai/cohive`（2026-10-17 起），Apache-2.0。往 main 提交的一切都会公开，台账里不写本机绝对路径、令牌、公司事项。
 - 测试服（2026-10-18 19:30 起在办公室测试机 pm-dev1，与 pm 项目共用、互不干扰）：服务器上的检出 `~/cohive`（main），用仓库编排 `deploy/docker-compose.yml` 加本地覆盖文件（隧道容器用宿主机网络，不入仓），编排项目 `cohive`，容器 cohive-postgres-1、cohive-cohive-1、cohive-tunnel-1，卷 cohive_pgdata、cohive_data，均 unless-stopped；配置 `deploy/.env`（600，含机器人与隧道令牌、缺省语言 zh-CN，不入仓）；库为编排里的 `cohive`，已执行至 0013 迁移；监听 127.0.0.1:8787，经隧道 `cohive-test` 对外。运维目录 `~/cohive-ops`（README.md 中文说明、backup.sh、upgrade.sh、日志）。合入 main 后升级测试服：`ssh pm-dev1 ~/cohive-ops/upgrade.sh`（先备份，只快进拉 main，只重建 cohive，等 healthz，失败打印回滚办法），不再用本机 `scripts/cohive-server.sh`。当前 `b351103`。pm 的容器、pm-cloudflared、/etc/cloudflared 一概不碰。
-- 备份：服务器 crontab 每天 UTC 20:30（即 UTC+7 03:30）跑 `~/cohive-ops/backup.sh`，保留 14 份，在 `~/cohive-ops/backups/`；切换时的导出 `~/cohive-ops/cutover-20261018-193003.dump`。
+- 备份：服务器 crontab 每天 UTC 20:30（即 UTC+7 03:30）跑 `~/cohive-ops/backup.sh`，保留 14 份，在 `~/cohive-ops/backups/`；成功后用 Cohive 专用密钥同步到 pm-dev2 的 `/hdd/backup/cohive/`（授权只能写该目录，取回用 lee 本机的 pm-dev2 别名；每次最多删 3 份；跨机失败只记日志）；切换时的导出 `~/cohive-ops/cutover-20261018-193003.dump`。
 - 本机旧测试服（回滚用，保留）：launchd 的 server、tunnel、backup 三个服务已停用，plist 保留；容器 cohive-dev-postgres（已设 unless-stopped）与库 `cohive_test` 保留，数据停在 10-18 19:30；本机备份在 `~/.local/share/cohive-server/backups/`。lee 定 10-19 晚（迁移满 24 小时、服务器无异常）删除，删除清单：本机容器 cohive-dev-postgres 及其中的库 cohive_test、cohive、cohive_m5（容器删除即全删），~/Library/LaunchAgents 下 com.anormlylee.cohive.server、tunnel、backup 三个 plist；本机备份目录 `~/.local/share/cohive-server/backups/` 与 data 目录（含测试账号密码文件）先保留，删前再问。
 - 测试账号：admin（服务器管理员）、tester-a、tester-b（已停用）等；密码文件仍在本机 `~/.local/share/cohive-server/data/`（权限 600，测试凭据）。工作空间：default、proj-b、proj-c、lee、cohive-internal。
 - 旧库：`cohive`（M4 数据，群编号 `<旧测试群编号>`，停用不删）、`cohive_m5`（旧版第六号，停用）。
