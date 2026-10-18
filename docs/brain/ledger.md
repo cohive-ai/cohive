@@ -19,13 +19,13 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
+| DEP-1b 网页依赖最小升级 | 会话自建（从最新 main，合并 #1 的机器人分支） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245` | — | 已派 | 只做小版本、补丁升级（发布满两周）；vitest 升到 4.x（>= 4.1.11）以清告警，不升 5；typescript、jsdom 不动；依赖机器人分组只收小版本、补丁；#1 保留机器人提交；三个告警包越过受影响范围；交回 `docs/brain/inbox/DEP-1b.md` |
 | IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
-| DEP-1b | 网页依赖升级 cohive-ai/cohive#3 含 3 个大版本跨越：typescript 5→7、vitest 3→5、jsdom 26→30（其余 7 项是小版本）；#1 是 pnpm/action-setup 4→6 | A 整包合 #3（大版本可能要改配置与用例）；B 只做小版本加修告警所需的最小升级，关掉 #3，依赖机器人配置为大版本另开单独请求；C 暂不处理（告警只在测试工具，不进发布程序） | B；#1 一并验收 | 网页侧 7 条告警清零 |
 | I18N-GH | 仓库安全类设置，剩私密漏洞报告未开启（lee 亲手点“高级安全”页的启用按钮）；依赖告警已开、main 规则集 protect-main 已生效（禁止删除、禁止强推，无豁免） | 做 | 做（SECURITY.md 指向私密漏洞报告） | 安全报告入口可用 |
 | I18N-D13 | README 默认语言 | A README.md 改英文、中文移到 README.zh-CN.md；B 维持中文为默认 | A（GitHub 首页默认展示 README.md，面向外部用户） | I18N 第一段的 README 部分 |
 | I18N-D15 | 贡献者是否签 CLA 或 DCO | A 都不要；B DCO；C CLA | A；若将来可能改许可证或做商业双授权，应现在选 C | 不阻塞（先按 A 写） |
