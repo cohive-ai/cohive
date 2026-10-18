@@ -1,7 +1,7 @@
 # N-2 交回：超时催办
 
-- 分支：`feature/overdue-reminder`（基于 origin/main `a0f2bbd`）
-- 代码提交：`832dd9c`；本交回单独一个提交，在它之后
+- 分支：`feature/overdue-reminder`（已变基到 origin/main `42dc545`）
+- 提交：N-2 代码 `a9ea6d7`、N-2 交回 `401c6b9`、N-3 代码 `56a8597`；本交回的更新单独一个提交，在它们之后
 - 未合入 main，未推送到 main，测试服没有动
 
 ## 怎么做的
@@ -117,3 +117,36 @@
 2. **没配群时也计时、也写会话内提醒，档位照走**：这样以后再配群，不会把积压的单子一下子全催一遍。
 3. **待验证时管理员改派了发起人，已经写入但还没发出的那条催办仍会发给原发起人**：现有的过时判断只核对状态和负责人，不核对发起人。概率很低（要在写入到发出之间的几秒内改派），没有为此给待发通知表加列。如需要，可以加一列发起人快照。
 4. **时长单位是整数小时**，最长 720 小时（30 天）。如果需要半小时这类粒度，要改成分钟存储。
+
+## N-3：群通知不 @ 操作者本人（2026-10-18 lee 定选 B，随 N-2 交回）
+
+**规则**：所有群通知里，操作者本人只写名字、不 @。去掉本人后一个都 @ 不到时照常发消息，只写名字。
+
+**做法**（`internal/notify/render.go`）：渲染时拿通知记录里的操作者编号比对收件人，是操作者就只写名字，也不放进钉钉卡片的 atUserIds。Telegram 和钉钉都覆盖。具体效果：
+- 自己发单给自己（发出时 @ 的负责人就是自己）、自己接自己的单、自己验证关闭：只写名字。
+- 发起人和负责人是同一人：上一条的各种情况都只写名字。
+- 多次重开升级为“需要人介入”：重开的发起人是操作者，不 @；负责人照常 @。
+- **超时催办没有操作者**：通知记录里的操作人只是占位，写的是当事人，所以照常 @ 当事人。第 2 档 @ 管理员时，当事人本身是管理员只列一次（N-2 已去重），也就是只 @ 一次。
+- **加入通知**原来只有一种，接口里不带操作者，所以拆成两种（`Announcer` 新增 `AnnounceSelfJoined`）：
+  - 管理员让人加入（直接加入、批准申请）：照常 @ 新成员；
+  - 本人凭个人邀请注册、已有账号接受邀请：操作者是他自己，只写名字。
+
+**改了哪些文件**
+- `internal/core/notify.go`：`SystemEvent`，判断是不是没有操作者的催办
+- `internal/notify/render.go`
+- `internal/notify/hub.go`、`internal/notify/bot.go`：两种加入通知
+- `internal/httpapi/public.go`、`internal/httpapi/account.go`：注册、接受邀请这两处改调 `AnnounceSelfJoined`，各一行，外加接口里一个方法
+- 用例：`internal/notify/render_test.go`、`internal/notify/hub_test.go`、`internal/server/account_test.go`（假通知器加方法与计数）
+- 文档：`docs/guides/group-notify.md`（“怎么 @ 到人”）、`docs/plan.md` 5.3
+
+**用例**
+- `TestNoSelfMention`：自己发单、接单、关单、请验证都不 @；需要人介入只 @ 另一方；钉钉 atUserIds 不含操作者；催办照常 @（Telegram、钉钉各一）。
+- `TestSelfJoinedNoMention`：管理员让人加入 @，本人加入不 @。
+- 网页走查用例（`internal/server`）断言个人邀请注册走的是“本人加入”。
+- 原 `TestMentions` 里有一条断言写的正是“@ 操作者本人”，按新规则把操作者换成另一个人。
+
+**变异 4 项全部变红**：照样 @ 操作者、催办也不 @ 当事人、本人加入也 @、注册仍走管理员加入。
+
+**测试**：变基后再跑全量，`go vet`、`go test`（真实 Postgres）、`make build`、网页 54 条都通过。这次没有另建走查库，改动只在渲染层，由用例覆盖。
+
+**与 i18n-community 可能冲突**：`internal/httpapi/public.go`、`internal/httpapi/account.go` 各改了一行，并在 `public.go` 的 `Announcer` 接口里加了一个方法。
