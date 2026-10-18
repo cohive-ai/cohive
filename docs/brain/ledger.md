@@ -33,7 +33,7 @@
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
-- P2 DEP-1 依赖更新机器人开的 3 个合并请求（cohive-ai/cohive #1 pnpm/action-setup 4→6、#2 Go 依赖 3 项、#3 网页依赖 10 项），CI 均通过；等 I18N 第二段合入后逐个验收再合，避免与第二段的网页改动冲突；#3 若含 i18next 大版本，按“发布满两周”原则核对 —— 来源 社区规范合入后自动产生
+- P1 DEP-1 依赖漏洞告警 22 条（11 严重）与依赖更新机器人的 3 个合并请求：Go 侧 15 条都在 golang.org/x/crypto 0.42.0（ssh、agent 等子包），程序实际只编译进 bcrypt、blowfish，漏洞不可达；网页侧 7 条在 vitest、tinypool，只用于测试。修法：cohive-ai/cohive#2（x/crypto 升到 0.58.0 等）可先合，不与 I18N 第二段冲突；#3（网页 10 项）与 #1（pnpm/action-setup 4→6）等第二段合入后再合。合并前主脑在本地跑全量 —— 来源 开启依赖告警后
 - P2 T-5 cmd/cohive 用例从当前目录往上找 `.mcp.json`，在执行过 cohive init 的克隆里会读到本机配置，3 条用例失败（TestRevokedDeviceHintsForce、TestLoginOpensBrowserAndSaves、TestLegacyCredentials）；开源贡献者照着做也会碰到，测试应隔离仓库目录 —— 来源 N-2 合入时主脑发现
 - P2 OS-4 打标签时用 GitHub Actions 构建多架构镜像推到 ghcr，compose 缺省用预构建镜像（公开后第一个小任务）；另：机器人入群后 /bind 绑群、未配对时 init 自动走 login、安装脚本经同意写 PATH、Caddy 自动 HTTPS 示例、发布物附第三方许可证清单 —— 来源 OSS-1 建议
 - P3 T-3 转交或发单给正在被移出的成员时，assignable 不锁成员行，可能留下负责人是已移出成员的单（推测未验证）；在问题单锁之后对接收人成员行加 FOR SHARE 并复查状态 —— 来源 稳定性修复遗留
