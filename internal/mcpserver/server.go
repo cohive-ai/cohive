@@ -256,7 +256,11 @@ func register[In, Out any](s *mcp.Server, l i18n.Lang, sp spec, inDescs, outDesc
 	if sp.writes {
 		desc += "\n\n" + l.T("mcp.note.secret")
 	}
-	mcp.AddTool(s, &mcp.Tool{Name: sp.name, Annotations: sp.ann, Description: desc, InputSchema: in, OutputSchema: out}, h)
+	// 业务层按上下文里的语言出文字（状态名、提示等），这里放进本服务的语言
+	withLang := func(ctx context.Context, req *mcp.CallToolRequest, args In) (*mcp.CallToolResult, Out, error) {
+		return h(i18n.WithLang(ctx, l), req, args)
+	}
+	mcp.AddTool(s, &mcp.Tool{Name: sp.name, Annotations: sp.ann, Description: desc, InputSchema: in, OutputSchema: out}, withLang)
 }
 
 // NewServer 创建注册了全部 Cohive 工具的 MCP 服务，语言为服务器缺省语言。
