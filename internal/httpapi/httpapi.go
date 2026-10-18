@@ -257,6 +257,7 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 // error 只给人看，会随语言变化，调用方（网页、命令行）不要按文字判断；要判断请用 code。code 是接口约定，取值：
 //
 //	invalid_input、invalid_id、invalid_request、invalid_param  请求内容不合法（400）
+//	member_nickname、member_ambiguous  指派用的名字不是确定的登录名（只是昵称，或登录名与别人的昵称相同），附候选（400）
 //	secret_detected      内容里含疑似密钥（400，只含字段、行号与规则，不含密钥）
 //	no_device            这个操作需要设备配对过的凭据（400）
 //	unauthorized、token_format、token_invalid、device_key_invalid、device_key_not_allowed、device_key_only、
@@ -284,6 +285,7 @@ func writeError(w http.ResponseWriter, err error) {
 	var he *core.HandoverError
 	var sec *core.SecretError
 	var te *issue.TransitionError
+	var mce *core.MemberChoiceError
 	switch {
 	case errors.As(err, &sec):
 		// 只含字段、行号与规则，不含密钥
@@ -316,6 +318,8 @@ func writeError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, errBody(w, "no_device", err))
 	case errors.Is(err, store.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, errBody(w, "not_found", err))
+	case errors.As(err, &mce):
+		writeJSON(w, http.StatusBadRequest, errBody(w, mce.ErrorCode(), err))
 	case errors.As(err, &ie):
 		writeJSON(w, http.StatusBadRequest, errBody(w, "invalid_input", err))
 	default:

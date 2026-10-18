@@ -56,6 +56,56 @@ func MemberByName(ctx context.Context, q DBTX, wsID int64, name string) (Member,
 		WHERE m.workspace_id = $1 AND a.name = $2 AND m.status = 'active'`, wsID, name))
 }
 
+// MemberMatch 是按名字检索到的一个成员。
+type MemberMatch struct {
+	Member
+	Exact    bool     // 登录名或昵称与检索词完全相同（不区分大小写）
+	Services []string // 登记为负责人的服务名
+}
+
+// FindMembers 在工作空间的在册、账号未停用的成员里按登录名、昵称检索（不区分大小写）：
+// 完全相同的排在前面，其次是包含检索词的；检索词为空时列出全部。最多返回 limit 条，
+// 第二个返回值表示是否还有更多没返回。
+func FindMembers(ctx context.Context, q DBTX, wsID int64, query string, limit int) ([]MemberMatch, bool, error) {
+	// 用 strpos 而不是 LIKE：检索词里的 % 和 _ 按原样匹配
+	rows, err := q.Query(ctx, `SELECT `+memberColumns+`,
+		($2 <> '' AND (lower(a.name) = lower($2) OR lower(a.display_name) = lower($2))) AS exact,
+		coalesce(array(SELECT s.name FROM services s WHERE s.owner_id = m.id ORDER BY s.name), '{}')`+memberFrom+`
+		WHERE m.workspace_id = $1 AND m.status = 'active' AND a.disabled_at IS NULL
+		  AND ($2 = '' OR strpos(lower(a.name), lower($2)) > 0 OR strpos(lower(a.display_name), lower($2)) > 0)
+		ORDER BY exact DESC, a.name LIMIT $3`, wsID, query, limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	var out []MemberMatch
+	for rows.Next() {
+		var mm MemberMatch
+		m := &mm.Member
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.Name, &m.DisplayName, &m.TelegramUsername, &m.TelegramUserID, &m.Role,
+			&m.AccountID, &m.Status, &m.AccountDisabled, &mm.Exact, &mm.Services); err != nil {
+			return nil, false, err
+		}
+		out = append(out, mm)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	if len(out) > limit {
+		return out[:limit], true, nil
+	}
+	return out, false, nil
+}
+
+// MembersNamedLike 返回工作空间里登录名或昵称与 name 相同（不区分大小写）的在册、账号未停用的成员，
+// 指派前用来发现“传的是昵称”或“登录名与别人的昵称撞了”。
+func MembersNamedLike(ctx context.Context, q DBTX, wsID int64, name string) ([]Member, error) {
+	return collectMembers(ctx, q, `SELECT `+memberColumns+memberFrom+`
+		WHERE m.workspace_id = $1 AND m.status = 'active' AND a.disabled_at IS NULL
+		  AND (lower(a.name) = lower($2) OR lower(a.display_name) = lower($2))
+		ORDER BY a.name`, wsID, name)
+}
+
 // MemberOf 返回账号在工作空间里的成员资格（任何状态）。
 func MemberOf(ctx context.Context, q DBTX, accountID, wsID int64) (Member, error) {
 	return scanMember(q.QueryRow(ctx, `SELECT `+memberColumns+memberFrom+`

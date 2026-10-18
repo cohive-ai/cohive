@@ -28,7 +28,7 @@ var knownTools = []string{"claude-code", "codex"}
 // 影响他人工作的工具每次都要用户确认；其余直接放行。
 var (
 	confirmTools = []string{"cohive_submit_issue", "cohive_accept_issue", "cohive_close_issue"}
-	allowTools   = []string{"cohive_inbox", "cohive_get_issue", "cohive_search", "cohive_who_owns",
+	allowTools   = []string{"cohive_inbox", "cohive_get_issue", "cohive_search", "cohive_who_owns", "cohive_find_member",
 		"cohive_draft_issue", "cohive_update_issue", "cohive_request_verification"}
 )
 

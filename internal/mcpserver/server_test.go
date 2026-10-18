@@ -14,6 +14,7 @@ import (
 	"github.com/cohive-ai/cohive/internal/mcpserver"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/cohive-ai/cohive/internal/testutil"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -34,6 +35,8 @@ type fixture struct {
 	tokenAID       int64
 	revoke         func(id int64)
 	setLang        func(member, lang string) // 设账号语言（按成员名找账号）
+	pool           *pgxpool.Pool
+	ws             int64
 }
 
 func newFixture(t *testing.T) fixture {
@@ -62,7 +65,7 @@ func newFixture(t *testing.T) fixture {
 	}
 	srv := httptest.NewServer(mcpserver.Handler(&core.Service{Pool: pool}))
 	t.Cleanup(srv.Close)
-	return fixture{url: srv.URL + "/mcp", tokenA: ta, tokenB: tb, tokenAID: taID,
+	return fixture{url: srv.URL + "/mcp", tokenA: ta, tokenB: tb, tokenAID: taID, pool: pool, ws: ws,
 		revoke: func(id int64) {
 			if err := store.RevokeToken(ctx, pool, id); err != nil {
 				t.Fatal(err)
@@ -238,7 +241,7 @@ func TestToolAnnotations(t *testing.T) {
 		t.Fatal(err)
 	}
 	readOnly := map[string]bool{
-		"cohive_get_issue": true, "cohive_inbox": true, "cohive_search": true, "cohive_who_owns": true,
+		"cohive_get_issue": true, "cohive_inbox": true, "cohive_search": true, "cohive_who_owns": true, "cohive_find_member": true,
 		"cohive_draft_issue": false, "cohive_submit_issue": false, "cohive_accept_issue": false,
 		"cohive_update_issue": false, "cohive_request_verification": false, "cohive_close_issue": false,
 	}

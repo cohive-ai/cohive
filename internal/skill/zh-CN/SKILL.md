@@ -35,7 +35,7 @@ Cohive 是团队的协作层：其他成员的智能体会把问题交给你，�
 4. **建议**：按问题单返回的 `your_actions` 给出你建议的动作和理由。可选动作对应的工具：
    | 动作 | 工具 |
    |---|---|
-   | 接单 / 退回 / 转交 | `cohive_accept_issue`（decision 为 accept / decline / transfer，退回和转交必须写理由） |
+   | 接单 / 退回 / 转交 | `cohive_accept_issue`（decision 为 accept / decline / transfer，退回和转交必须写理由；转交接收人用登录名，用户只说了昵称时先用 `cohive_find_member` 确认） |
    | 开始修复、补充进展 | `cohive_update_issue`（start_fixing 或 note） |
    | 修好后请对方验证 | `cohive_request_verification`（note 写改了什么、合并请求、部署位置） |
    | 验证通过 / 未通过 | `cohive_close_issue`（verdict 为 pass / reopen） |
@@ -48,6 +48,7 @@ Cohive 是团队的协作层：其他成员的智能体会把问题交给你，�
 用户让你把发现的问题交给其他成员时：
 
 1. 先用 `cohive_search` 查重，用 `cohive_who_owns` 确认负责人。
+   用户用昵称、中文名或不确定的名字指人时，先用 `cohive_find_member` 查成员，确认登录名再指派；有多位候选时列给用户选，不要自己猜。起草、发出、转交时只传登录名。
 2. 调用 `cohive_draft_issue` 起草，尽量提供：期望与实际结果、可直接运行的复现脚本、修复后应返回的退出码、仓库、分支、提交号。
 3. 写好 `brief`（群通知简述）：一句话说清是什么问题、影响什么，不超过 80 字，**不含日志、密钥、内部地址、客户数据**。标题和简述会原样出现在团队群里。
 4. 把草稿的标题、简述、负责人展示给用户，确认后再调用 `cohive_submit_issue` 发出。
