@@ -19,7 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待用户（DT-2 选 B：朋友把凭据私下交给 lee，由 lee 配到测试服；朋友做指南第 1–6 步） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈报到 lee 新群对应的工作空间，问题交回 im-research 修 |
+| IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
