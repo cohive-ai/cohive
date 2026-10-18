@@ -114,7 +114,7 @@ Cohive 不做的事：不替人认领、不替人改代码、不在后台无人�
 
 ## 从源码构建
 
-需要 Go 1.25、Node 20 以上、pnpm 和 Docker（测试用的 Postgres）。
+需要 Go 1.26、Node 20 以上、pnpm 和 Docker（测试用的 Postgres）。
 
 ```bash
 make db-up      # 本机开发用的 Postgres（localhost:55432）

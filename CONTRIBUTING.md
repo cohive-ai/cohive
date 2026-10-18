@@ -24,7 +24,7 @@ For larger changes (a new feature, a new chat platform, a change to the issue wo
 
 You need:
 
-- Go 1.25
+- Go 1.26
 - Node 20 or later and pnpm 9
 - Docker (for the development Postgres)
 

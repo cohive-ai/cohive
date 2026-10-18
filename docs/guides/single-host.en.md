@@ -32,7 +32,7 @@ It is not placed in macOS's `~/Library/Application Support` because that path co
 
 ## 2. First-time setup
 
-1. Build in the repository root: `make build` (web UI, CLI installers for five platforms and the server, all with the same version). You need Go 1.25, Node 20 or later, and pnpm.
+1. Build in the repository root: `make build` (web UI, CLI installers for five platforms and the server, all with the same version). You need Go 1.26, Node 20 or later, and pnpm.
 2. Write the config:
 
    ```bash
