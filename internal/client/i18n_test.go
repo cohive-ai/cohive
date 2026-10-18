@@ -37,8 +37,10 @@ func hasHan(s string) bool {
 	return false
 }
 
-// 发给协作服务 REST 接口的每个请求都带 Accept-Language（命令行的语言），让服务器用同一种语言回报错。
+// 语言头：还不知道是谁的请求（配对、查版本）带命令行当前的语言；带凭据的请求不带，由服务器按账号语言回报错；
+// 用户设了 COHIVE_LANG 时所有请求都带。
 func TestRequestsCarryAcceptLanguage(t *testing.T) {
+	t.Setenv("COHIVE_CONFIG_DIR", t.TempDir())
 	var mu sync.Mutex
 	got := map[string]string{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,28 +58,79 @@ func TestRequestsCarryAcceptLanguage(t *testing.T) {
 	}))
 	defer srv.Close()
 	ctx := context.Background()
-	for _, l := range []i18n.Lang{i18n.EN, i18n.ZhCN} {
-		withLang(t, l)
-		clear(got)
-		_, _ = Whoami(ctx, srv.URL, "cohive_x")
-		_, _ = StartDevice(ctx, srv.URL, []string{"codex"}, "mac")
-		_, _ = PollDevice(ctx, srv.URL, 1, "s")
-		_, _ = IssueTokens(ctx, srv.URL, "secret", "default", []string{"codex"})
-		_, _ = DeviceWorkspaces(ctx, srv.URL, "secret")
-		_, _, _ = FetchAlerts(ctx, srv.URL, "default", "cohive_x", nil)
-		_, _ = WebLogin(ctx, srv.URL, "secret")
-		_ = RevokeOwnDevice(ctx, srv.URL, "secret", 3)
-		old := buildinfo.Version
-		buildinfo.Version = "v1.0.0"
-		_ = VersionWarning(ctx, srv.URL)
-		buildinfo.Version = old
-		for _, p := range []string{"/api/v1/me", "/api/v1/device/start", "/api/v1/device/poll", "/api/v1/device/tokens",
-			"/api/v1/device/workspaces", "/api/v1/w/default/alerts", "/api/v1/auth/web-login", "/api/v1/me/devices/3/revoke", "/api/v1/version"} {
-			if got[p] != string(l) {
-				t.Errorf("语言 %s：%s 的 Accept-Language = %q", l, p, got[p])
+	anonymous := []string{"/api/v1/device/start", "/api/v1/device/poll", "/api/v1/version"}
+	authed := []string{"/api/v1/me", "/api/v1/device/tokens", "/api/v1/device/workspaces", "/api/v1/w/default/alerts",
+		"/api/v1/auth/web-login", "/api/v1/me/devices/3/revoke"}
+	for _, explicit := range []bool{false, true} {
+		for _, l := range []i18n.Lang{i18n.EN, i18n.ZhCN} {
+			withLang(t, l)
+			explicitLang = explicit
+			clear(got)
+			_, _ = Whoami(ctx, srv.URL, "cohive_x")
+			_, _ = StartDevice(ctx, srv.URL, []string{"codex"}, "mac")
+			_, _ = PollDevice(ctx, srv.URL, 1, "s")
+			_, _ = IssueTokens(ctx, srv.URL, "secret", "default", []string{"codex"})
+			_, _ = DeviceWorkspaces(ctx, srv.URL, "secret")
+			_, _, _ = FetchAlerts(ctx, srv.URL, "default", "cohive_x", nil)
+			_, _ = WebLogin(ctx, srv.URL, "secret")
+			_ = RevokeOwnDevice(ctx, srv.URL, "secret", 3)
+			old := buildinfo.Version
+			buildinfo.Version = "v1.0.0"
+			_ = VersionWarning(ctx, srv.URL)
+			buildinfo.Version = old
+			for _, p := range anonymous {
+				if got[p] != string(l) {
+					t.Errorf("语言 %s：未鉴权的 %s 应带 Accept-Language，得到 %q", l, p, got[p])
+				}
+			}
+			for _, p := range authed {
+				want := ""
+				if explicit {
+					want = string(l)
+				}
+				if got[p] != want {
+					t.Errorf("语言 %s、指定 %v：%s 的 Accept-Language = %q，应为 %q", l, explicit, p, got[p], want)
+				}
 			}
 		}
 	}
+	explicitLang = false
+}
+
+// 服务器回告的账号语言缓存在配置目录的 language 文件里，下次启动用它；COHIVE_LANG 优先；设了 COHIVE_LANG 时不缓存。
+func TestAccountLanguageCached(t *testing.T) {
+	t.Setenv("COHIVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COHIVE_LANG", "")
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LC_MESSAGES", "")
+	t.Setenv("LANG", "zh_CN.UTF-8")
+	lang := "en"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Language", lang)
+		_, _ = w.Write([]byte(`{"items":[],"cursor":0}`))
+	}))
+	defer srv.Close()
+	if got := ResolveLanguage(); got != i18n.ZhCN {
+		t.Fatalf("没有缓存时按系统语言：%s", got)
+	}
+	_, _, _ = FetchAlerts(context.Background(), srv.URL, "default", "cohive_x", nil)
+	if got := ResolveLanguage(); got != i18n.EN {
+		t.Fatalf("应缓存服务器回告的账号语言 en：%s", got)
+	}
+	if got := cachedLanguage(); got != "en" {
+		t.Fatalf("缓存文件里的语言：%q", got)
+	}
+	t.Setenv("COHIVE_LANG", "zh-CN")
+	if got := ResolveLanguage(); got != i18n.ZhCN || !explicitLang {
+		t.Fatalf("COHIVE_LANG 优先：%s %v", got, explicitLang)
+	}
+	lang = "zh-CN"
+	withLang(t, i18n.ZhCN)
+	_, _, _ = FetchAlerts(context.Background(), srv.URL, "default", "cohive_x", nil)
+	if got := cachedLanguage(); got != "en" {
+		t.Fatalf("设了 COHIVE_LANG 时不改缓存：%q", got)
+	}
+	explicitLang = false
 }
 
 // 转发 MCP 的请求不带 Accept-Language：MCP 的语言由服务器决定。

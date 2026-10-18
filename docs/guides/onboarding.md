@@ -73,20 +73,20 @@ Windows 在 PowerShell 里执行 `$env:COHIVE_LOGIN=1; irm https://cohive.exampl
 - 仓库里已有 `cohive init` 生成的配置时，服务地址和要登录的工具从配置读取（在子目录里执行也行）。第一次登录某个地址时，终端会先显示地址请你按回车确认。
 - 设备密钥与令牌保存在 `~/.config/cohive/credentials.json`，只有你本人可读；`cohive status` 查看（不显示密钥与令牌）。
 
-**3. 在项目目录执行 `cohive init`**（团队里有人做过并提交了配置就不用再做），之后在 Claude Code 里用 `/cohive`、在 Codex 里用 `$cohive`。你在多个工作空间时要指定这个项目属于哪一个：
+**3. 在项目目录执行 `cohive init`，并在第一次打开项目时信任钩子**（`cohive init` 团队里有人做过并提交了配置就不用再做），之后在 Claude Code 里用 `/cohive`、在 Codex 里用 `$cohive`。你在多个工作空间时要指定这个项目属于哪一个：
 
 ```bash
 cohive init --workspace pay
 ```
 
-**4. 第一次打开项目时信任钩子**（会话内提醒要用）：
+第一次在编程工具里打开这个项目时，要信任 cohive 的钩子（会话内提醒要用）：
 
 - **Claude Code**：在这个文件夹第一次打开时选“信任此文件夹”（与启用 MCP 服务是同一步）。
 - **Codex**：在项目目录执行一次命令行版 `codex`，同意信任项目；启动时提示“Hooks need review”，选“Trust all and continue”，信任 cohive 的两条钩子（`SessionStart`、`UserPromptSubmit`）。**只用桌面版的人也要先这样做一次**：桌面版里没有信任钩子的入口，命令行版信任之后桌面版随之生效。**每台电脑、每个克隆目录各要信任一次**；换了服务地址或工作空间（重新执行 `cohive init` 改了这两项）要重新信任，只是重复执行 `cohive init` 不用。
 
 ## 会话内提醒
 
-两家的命令行版与桌面版都支持（2026-10-17 实测）：Claude Code 需信任文件夹；Codex 需在项目目录执行一次命令行版 `codex` 选全部信任。
+两家的命令行版与桌面版都支持（Claude Code 与 Codex 的命令行版、桌面版均已验证；不同版本的信任入口可能略有出入）：Claude Code 需信任文件夹；Codex 需在项目目录执行一次命令行版 `codex` 选全部信任。
 
 有与你有关的新动态时（单子交给你、被退回、请你验证、被重开、需要人介入、你发的单被接单、你修的单被关闭），**在你发出下一句话时，由智能体在这一轮最终答复的末尾（正文之后另起一行）告诉你**，例如“Cohive 提醒：#12 tester-a 交给你处理，可用 /cohive 12 查看”；新开会话时，第一次回复的末尾会告诉你还有几张待处理的单。放在末尾是因为回复常常很长，放开头容易被略过。提醒只有单号、动作、谁，不含标题与正文，要看内容用 `/cohive 12`（Codex 为 `$cohive 12`）。同一条在一个会话里只说一次。
 
@@ -146,7 +146,7 @@ cohive init --workspace pay
 
 - 只改动自己管理的部分，原有配置保留；重复执行结果相同。
 - 这些文件**不含令牌**：编程工具通过本机命令 `cohive mcp-proxy --server … --workspace … --tool …` 连接协作服务，令牌由它从本机凭据文件读取。可以放心提交进仓库，团队共用。
-- 第一次在编程工具里打开项目时，会询问是否信任项目、是否启用 `cohive` 这个 MCP 服务，都选同意；Codex 还要在项目目录执行一次命令行版 `codex` 信任 cohive 的两条钩子（见上文第 4 步）。
+- 第一次在编程工具里打开项目时，会询问是否信任项目、是否启用 `cohive` 这个 MCP 服务，都选同意；Codex 还要在项目目录执行一次命令行版 `codex` 信任 cohive 的两条钩子（见上文第 3 步）。
 - `.claude/settings.json` 里的 `enabledMcpjsonServers` 会随仓库共享，审查合并请求时留意 `.mcp.json` 与它的改动。
 - `.mcp.json` 和 `.codex/config.toml` 里有协作服务地址与工作空间名，公开仓库要注意。
 
@@ -163,7 +163,7 @@ pbpaste | cohive login --server https://cohive.example.com --token-stdin
 - **终端提示授权被拒绝**：你在浏览器里点了拒绝，或管理员没有批准。重新执行 `cohive login`。
 - **编程工具里提示“你还不是工作空间 X 的成员”**：请那个工作空间的管理员把你加进去，加入后重新打开编程工具即可。
 - **编程工具里提示“Cohive 令牌无效或已吊销”**：如果你被移出了这个工作空间，请联系管理员；否则执行 `cohive login --force` 重新配对。重新配对算新增一台设备，需要管理员批准；成功后会自动吊销这台电脑之前的设备。
-- **提示“这台电脑是旧版配对”**：M5 时配对的电脑没有设备密钥，旧令牌照常能用，但新工作空间的自动签发和 `cohive web` 需要先执行 `cohive login --force` 重新配对（需要管理员批准）。
+- **提示“这台电脑是旧版配对”**：较早版本（引入设备密钥之前）配对的电脑没有设备密钥，旧令牌照常能用，但新工作空间的自动签发和 `cohive web` 需要先执行 `cohive login --force` 重新配对（需要管理员批准）。
 - **电脑丢失**：在网页“个人中心 → 我的设备”吊销它（或请管理员在“管理 → 设备”里吊销）。
 - **会话里没有 Cohive 提醒**：执行 `cohive hook --check --server … --workspace … --tool …`（`cohive init` 结尾有完整命令）；Codex 先确认在项目目录执行过命令行版 `codex` 并选了“Trust all and continue”。
 - **连接 Telegram 时提示没有启用机器人**：服务没有设置 `COHIVE_TELEGRAM_BOT_TOKEN`。

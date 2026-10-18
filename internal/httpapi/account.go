@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/core"
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
@@ -38,8 +39,17 @@ func deviceJSON(d store.Device) map[string]any {
 // accountJSON 是接口约定里的 Account 结构。
 func accountJSON(a store.Account, hasPassword bool) map[string]any {
 	return map[string]any{"id": a.ID, "name": a.Name, "display_name": a.DisplayName, "server_admin": a.ServerAdmin,
-		"disabled": a.Disabled(), "has_password": hasPassword,
+		"disabled": a.Disabled(), "has_password": hasPassword, "language": a.Language,
 		"telegram": map[string]any{"username": a.TelegramUsername, "linked": a.TelegramUserID != nil}}
+}
+
+// languagesJSON 列出服务器有语言包的语言，名称用该语言自己的文字。
+func languagesJSON() []map[string]string {
+	out := []map[string]string{}
+	for _, l := range i18n.Supported() {
+		out = append(out, map[string]string{"code": string(l), "name": l.Name()})
+	}
+	return out
 }
 
 // chatJSON 是账号在各通讯工具上的连接（linked 表示有用户编号，能识别他在群里点的按钮）。
@@ -88,7 +98,8 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		out := map[string]any{"account": accountJSON(c.Account, pw.Hash != ""), "must_change_password": pw.MustChange,
 			"login_method": loginMethod(c), "tool": "web", "workspaces": workspaceRefs(ms),
-			"chat": chatJSON(chats[c.Account.ID]), "channels": enabledProviders(opts)}
+			"chat": chatJSON(chats[c.Account.ID]), "channels": enabledProviders(opts),
+			"default_language": i18n.Default(), "languages": languagesJSON()}
 		if c.Token != nil {
 			out["tool"] = c.Token.Tool
 			for _, m := range ms {
@@ -98,6 +109,22 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			}
 		}
 		writeJSON(w, http.StatusOK, out)
+	})
+
+	// 账号语言：网页个人中心与命令行都可以改；空串表示跟随服务器缺省语言
+	handle(mux, "POST /api/v1/me/language", aSession|aToken, func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Language string `json:"language"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		lang, err := svc.SetMyLanguage(r.Context(), caller(r).Account, in.Language)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"language": lang, "effective": i18n.Pick(lang)})
 	})
 
 	handle(mux, "POST /api/v1/auth/password", aSession, func(w http.ResponseWriter, r *http.Request) {

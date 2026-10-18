@@ -566,10 +566,34 @@ func TestSetDingTalkCredentials(t *testing.T) {
 }
 
 // shellLang 在给定环境下 source 语言库，返回脚本判断出的语言（zh 或 en）。
+// 用假的 uname（报告 Darwin）与读不到界面语言的假 defaults 排除本机真实系统语言的影响。
 func shellLang(t *testing.T, env ...string) string {
 	t.Helper()
+	return shellLangWithDefaults(t, "", false, env...)
+}
+
+// shellLangWithDefaults 同 shellLang，但假 defaults 输出 out；fail 为真时假 defaults 直接失败。
+func shellLangWithDefaults(t *testing.T, out string, fail bool, env ...string) string {
+	t.Helper()
+	bin := t.TempDir()
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("uname", "echo Darwin\n")
+	if fail {
+		write("defaults", "exit 1\n")
+	} else {
+		if err := os.WriteFile(filepath.Join(bin, "defaults.out"), []byte(out), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		write("defaults", `[ "$*" = "read -g AppleLanguages" ] || exit 2
+cat "$(dirname "$0")/defaults.out"
+`)
+	}
 	cmd := exec.Command("bash", "-c", `. lib/cohive-i18n.sh; printf '%s' "$COHIVE_SCRIPT_LANG"; cohive_t 中 en`)
-	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH")}, env...)
+	cmd.Env = append([]string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}, env...)
 	b, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%v\n%s", err, b)
@@ -602,6 +626,55 @@ func TestScriptLanguageDetection(t *testing.T) {
 		if got != want {
 			t.Errorf("%v：得到 %q，期望 %q", c.env, got, want)
 		}
+	}
+}
+
+// 环境变量都没给出语言时，macOS 上看系统界面语言（defaults read -g AppleLanguages 的第一项）；
+// 环境变量给出了非中文的语言时不看界面语言，与 Go 端一致。
+func TestScriptLanguageFromMacOS(t *testing.T) {
+	needBash(t)
+	zhOut := "(\n    \"zh-Hans-CN\",\n    \"en-CN\"\n)\n"
+	enOut := "(\n    \"en-CN\",\n    \"zh-Hans-CN\"\n)\n"
+	for _, c := range []struct {
+		name string
+		out  string
+		fail bool
+		env  []string
+		want string
+	}{
+		{"界面语言中文", zhOut, false, nil, "zh"},
+		{"界面语言繁体", "(\n    \"zh-Hant-TW\"\n)\n", false, nil, "zh"},
+		{"界面语言英文（中文排第二）", enOut, false, nil, "en"},
+		{"界面语言不带引号", "(\n    en,\n    fr\n)\n", false, nil, "en"},
+		{"defaults 失败", "", true, nil, "en"},
+		{"defaults 输出为空", "", false, nil, "en"},
+		{"LANG 为 C 时仍看界面语言", zhOut, false, []string{"LANG=C", "LC_ALL=POSIX"}, "zh"},
+		{"COHIVE_LANG 为空时看界面语言", zhOut, false, []string{"COHIVE_LANG="}, "zh"},
+		{"LANG 为英文时不看界面语言", zhOut, false, []string{"LANG=en_US.UTF-8"}, "en"},
+		{"LANG 为日文时不看界面语言", zhOut, false, []string{"LANG=ja_JP.UTF-8"}, "en"},
+		{"COHIVE_LANG=en 优先于界面语言", zhOut, false, []string{"COHIVE_LANG=en"}, "en"},
+		{"LANG 为中文时界面语言为英文也用中文", enOut, false, []string{"LANG=zh_CN.UTF-8"}, "zh"},
+	} {
+		got := shellLangWithDefaults(t, c.out, c.fail, c.env...)
+		want := c.want + map[string]string{"zh": "中", "en": "en"}[c.want]
+		if got != want {
+			t.Errorf("%s：得到 %q，期望 %q", c.name, got, want)
+		}
+	}
+	// 不是 macOS 时不调用 defaults：假 uname 报 Linux，哪怕假 defaults 说中文也用英文
+	bin := t.TempDir()
+	for name, body := range map[string]string{
+		"uname":    "echo Linux\n",
+		"defaults": "echo '(\"zh-Hans-CN\")'\n",
+	} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("bash", "-c", `. lib/cohive-i18n.sh; printf '%s' "$COHIVE_SCRIPT_LANG"`)
+	cmd.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
+	if b, err := cmd.CombinedOutput(); err != nil || string(b) != "en" {
+		t.Fatalf("非 macOS 应为英文：%v %q", err, b)
 	}
 }
 

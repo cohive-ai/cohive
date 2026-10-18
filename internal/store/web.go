@@ -28,7 +28,7 @@ func SessionAccount(ctx context.Context, q DBTX, idHash []byte) (Account, string
 	err := q.QueryRow(ctx, `SELECT `+accountColumns+`, s.via FROM web_sessions s
 		JOIN accounts a ON a.id = s.account_id
 		WHERE s.id_hash = $1 AND s.expires_at > now() AND a.disabled_at IS NULL`, idHash).
-		Scan(&a.ID, &a.Name, &a.DisplayName, &a.TelegramUsername, &a.TelegramUserID, &a.ServerAdmin, &a.DisabledAt, &a.CreatedAt, &via)
+		Scan(&a.ID, &a.Name, &a.DisplayName, &a.TelegramUsername, &a.TelegramUserID, &a.ServerAdmin, &a.Language, &a.DisabledAt, &a.CreatedAt, &via)
 	if errors.Is(notFound(err), ErrNotFound) {
 		return Account{}, "", ErrUnauthorized
 	}

@@ -65,6 +65,7 @@ type Identity struct {
 	MemberName  string
 	Tool        string
 	DeviceID    *int64 // 令牌所属设备；管理员手工签发的令牌为空
+	Language    string // 账号语言代码；空表示跟随服务器缺省语言（MCP 按它选工具说明的语言）
 }
 
 type Issue struct {
@@ -154,7 +155,7 @@ func IssueToken(ctx context.Context, q DBTX, memberID int64, tool string) (plain
 func LookupToken(ctx context.Context, q DBTX, plain string) (Identity, error) {
 	var id Identity
 	err := q.QueryRow(ctx, `
-		SELECT t.id, a.id, m.id, m.workspace_id, a.name, t.tool, t.device_id
+		SELECT t.id, a.id, m.id, m.workspace_id, a.name, t.tool, t.device_id, coalesce(a.language, '')
 		FROM tokens t JOIN members m ON m.id = t.member_id
 		JOIN accounts a ON a.id = m.account_id
 		LEFT JOIN devices d ON d.id = t.device_id
@@ -162,7 +163,7 @@ func LookupToken(ctx context.Context, q DBTX, plain string) (Identity, error) {
 		AND (t.device_id IS NULL OR d.revoked_at IS NULL)
 		-- 第二道防线：移出、停用时令牌已吊销，这里再查一次
 		AND m.status = 'active' AND a.disabled_at IS NULL`,
-		hashToken(plain)).Scan(&id.TokenID, &id.AccountID, &id.MemberID, &id.WorkspaceID, &id.MemberName, &id.Tool, &id.DeviceID)
+		hashToken(plain)).Scan(&id.TokenID, &id.AccountID, &id.MemberID, &id.WorkspaceID, &id.MemberName, &id.Tool, &id.DeviceID, &id.Language)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Identity{}, ErrUnauthorized
 	}

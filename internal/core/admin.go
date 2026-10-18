@@ -74,6 +74,8 @@ type WorkspaceSettings struct {
 	// 超时催办时长（小时），为空时不改；0 表示关闭
 	RemindOpenHours   *int
 	RemindVerifyHours *int
+	// 群消息语言代码，为空时不改；指向空串表示跟随服务器缺省语言
+	Language *string
 }
 
 // checkRemindHours 校验催办时长：0 到 720 小时的整数。
@@ -105,6 +107,13 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 	}
 	if err := checkRemindHours("待验证", in.RemindVerifyHours); err != nil {
 		return err
+	}
+	var lang string
+	if in.Language != nil {
+		var err error
+		if lang, err = normLanguage(*in.Language); err != nil {
+			return err
+		}
 	}
 	cfg := store.NotifyConfig{Target: chat, ShowTitle: in.ShowTitle, ShowBrief: in.ShowBrief}
 	if chat != "" {
@@ -164,6 +173,12 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 			}
 			diff("remind_open_hours", old.Remind.OpenHours, remind.OpenHours)
 			diff("remind_verify_hours", old.Remind.VerifyHours, remind.VerifyHours)
+		}
+		if in.Language != nil && lang != old.Language {
+			if err := store.SetWorkspaceLanguage(ctx, tx, wsID, lang); err != nil {
+				return err
+			}
+			diff("language", old.Language, lang)
 		}
 		if len(changes) > 0 {
 			if err := record(ctx, tx, act, store.AdminEvent{WorkspaceID: idp(wsID), Action: ActWorkspaceSettings,

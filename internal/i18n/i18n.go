@@ -116,7 +116,14 @@ func Match(prefs string) (Lang, bool) {
 	if conf == language.No {
 		return "", false
 	}
-	return supported[i], true
+	// 匹配器对毫不相干的语言有时也给低置信度（如 tlh 配到 en）：要求主语言与偏好里的某一项一致
+	want, _ := language.MustParse(string(supported[i])).Base()
+	for _, t := range tags {
+		if b, _ := t.Base(); b == want {
+			return supported[i], true
+		}
+	}
+	return "", false
 }
 
 // normalize 把 POSIX 区域设置（zh_CN.UTF-8、en_US@euro）转成语言代码；C 与 POSIX 视为没有设置。
@@ -144,6 +151,16 @@ func Parse(s string) (Lang, error) {
 		codes[i] = string(l)
 	}
 	return "", fmt.Errorf("unsupported language %q (available: %s)", s, strings.Join(codes, ", "))
+}
+
+// Pick 取账号、工作空间上保存的语言代码；为空或已没有这种语言包时用本进程的缺省语言（服务器缺省语言）。
+func Pick(code string) Lang {
+	if code != "" {
+		if l, ok := Match(code); ok {
+			return l
+		}
+	}
+	return Default()
 }
 
 // SetDefault 设置本进程的缺省语言：服务端是服务器缺省语言，命令行是本机判断出的语言。

@@ -340,7 +340,8 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			"telegram_chat": telegramChat(ws), "show_title": ws.Notify.ShowTitle, "show_brief": ws.Notify.ShowBrief,
 			"bot_enabled": botName(opts) != "", "external_url_set": ext.URL != "", "issue_link_example": example,
 			"chat": workspaceChatJSON(r.Context(), svc, ws), "channels": enabledProviders(opts),
-			"remind_open_hours": ws.Remind.OpenHours, "remind_verify_hours": ws.Remind.VerifyHours})
+			"remind_open_hours": ws.Remind.OpenHours, "remind_verify_hours": ws.Remind.VerifyHours,
+			"language": ws.Language, "default_language": i18n.Default(), "languages": languagesJSON()})
 	})
 	adm("POST "+p+"/workspace", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
 		// 旧页面还会带 public_url：对外地址已改为服务器级，忽略它
@@ -352,13 +353,15 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			// 超时催办时长（小时）；旧页面不带时不改
 			RemindOpenHours   *int `json:"remind_open_hours"`
 			RemindVerifyHours *int `json:"remind_verify_hours"`
+			// 群消息语言；空串表示跟随服务器缺省语言，旧页面不带时不改
+			Language *string `json:"language"`
 		}
 		if !decode(w, r, &in) {
 			return
 		}
 		if err := svc.UpdateWorkspace(r.Context(), core.WebActor(*actor), ws.ID, core.WorkspaceSettings{
 			TelegramChat: in.TelegramChat, ShowTitle: in.ShowTitle, ShowBrief: in.ShowBrief, DisplayName: in.DisplayName,
-			RemindOpenHours: in.RemindOpenHours, RemindVerifyHours: in.RemindVerifyHours}); err != nil {
+			RemindOpenHours: in.RemindOpenHours, RemindVerifyHours: in.RemindVerifyHours, Language: in.Language}); err != nil {
 			writeError(w, err)
 			return
 		}

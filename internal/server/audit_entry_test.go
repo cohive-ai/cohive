@@ -306,6 +306,7 @@ func webCases() []webCase {
 var notAdminWrites = map[string]string{
 	"POST /api/v1/auth/login":              "登录：不改变权限，量大",
 	"POST /api/v1/auth/logout":             "登出：同上",
+	"POST /api/v1/me/language":             "改本人账号语言：个人偏好，不改变权限",
 	"POST /api/v1/auth/web-login":          "cohive web 换一次性登录码：本人已配对的电脑免密打开网页，不改变权限",
 	"POST /api/v1/device/start":            "终端发起设备授权：还没有身份，授权与审批另有记录",
 	"POST /api/v1/device/poll":             "终端轮询领取：领取的是已批准（已记录）的授权",

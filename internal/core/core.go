@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/issue"
 	"github.com/cohive-ai/cohive/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -39,10 +40,31 @@ type Service struct {
 	external atomic.Pointer[externalCache] // 进程内缓存的对外地址，见 settings.go
 }
 
-// InputError 表示调用参数不完整或不合法。
-type InputError struct{ Msg string }
+// InputError 表示调用参数不完整或不合法。Key 非空时按语言渲染（Data 是模板参数），否则用 Msg。
+type InputError struct {
+	Msg  string
+	Key  string
+	Data i18n.D
+}
 
-func (e *InputError) Error() string { return e.Msg }
+func (e *InputError) Error() string { return e.Localize(i18n.Default()) }
+
+// Localize 按语言渲染，供接口、MCP 按请求方的语言回报错。
+func (e *InputError) Localize(l i18n.Lang) string {
+	if e.Key != "" {
+		return l.T(e.Key, e.Data)
+	}
+	return e.Msg
+}
+
+// inputErrT 返回可按语言渲染的参数错误。
+func inputErrT(key string, data ...i18n.D) error {
+	e := &InputError{Key: key}
+	if len(data) > 0 {
+		e.Data = data[0]
+	}
+	return e
+}
 
 func inputErr(format string, args ...any) error {
 	return &InputError{Msg: fmt.Sprintf(format, args...)}

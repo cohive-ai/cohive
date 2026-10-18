@@ -263,6 +263,7 @@ type RegisterInput struct {
 	Name        string
 	DisplayName string
 	Password    string
+	Language    string // 注册时的界面语言，写到新账号上；不认识的语言忽略
 }
 
 // RegisterResult 是注册结果：个人邀请直接得到账号与成员资格；团队邀请得到待审申请。
@@ -340,9 +341,10 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 			return err
 		}
 		display := cleanDisplayName(in.DisplayName)
+		lang, _ := normLanguage(in.Language)
 		if inv.Kind == store.InviteTeam {
 			sg, err := store.CreateSignup(ctx, tx, store.Signup{InviteID: inv.ID, WorkspaceID: inv.WorkspaceID,
-				Name: name, DisplayName: display, PasswordHash: hash})
+				Name: name, DisplayName: display, PasswordHash: hash, Language: lang})
 			if isUniqueViolation(err) {
 				// 用不同邀请同时申请同一个名字时，由唯一约束兜底
 				return inputErr("登录名 %s 已有人申请，请换一个", name)
@@ -350,7 +352,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 			res.Signup = &sg
 			return err
 		}
-		acc, m, err := createAccount(ctx, tx, inv.WorkspaceID, name, display, hash, inv.Role, nil)
+		acc, m, err := createAccount(ctx, tx, inv.WorkspaceID, name, display, hash, lang, inv.Role, nil)
 		if err != nil {
 			return err
 		}
@@ -371,7 +373,7 @@ func recordInviteUse(ctx context.Context, tx pgx.Tx, acc store.Account, m store.
 }
 
 // createAccount 新建有密码的账号并加入工作空间。
-func createAccount(ctx context.Context, tx pgx.Tx, wsID int64, name, display, passwordHash, role string, addedBy *int64) (store.Account, store.Member, error) {
+func createAccount(ctx context.Context, tx pgx.Tx, wsID int64, name, display, passwordHash, lang, role string, addedBy *int64) (store.Account, store.Member, error) {
 	acc, err := store.CreateAccount(ctx, tx, name, display)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -381,6 +383,12 @@ func createAccount(ctx context.Context, tx pgx.Tx, wsID int64, name, display, pa
 	}
 	if err := store.SetAccountPassword(ctx, tx, acc.ID, passwordHash, false); err != nil {
 		return store.Account{}, store.Member{}, err
+	}
+	if lang != "" {
+		if err := store.SetAccountLanguage(ctx, tx, acc.ID, lang); err != nil {
+			return store.Account{}, store.Member{}, err
+		}
+		acc.Language = lang
 	}
 	m, err := store.AddMembership(ctx, tx, acc.ID, wsID, role, addedBy)
 	return acc, m, err
@@ -492,7 +500,7 @@ func (s *Service) DecideSignup(ctx context.Context, act Actor, wsID, id int64, a
 				if m, err = store.AddMembership(ctx, tx, acc.ID, sg.WorkspaceID, store.RoleMember, actorID(actor)); err != nil {
 					return err
 				}
-			} else if acc, m, err = createAccount(ctx, tx, sg.WorkspaceID, sg.Name, sg.DisplayName, sg.PasswordHash,
+			} else if acc, m, err = createAccount(ctx, tx, sg.WorkspaceID, sg.Name, sg.DisplayName, sg.PasswordHash, sg.Language,
 				store.RoleMember, actorID(actor)); err != nil {
 				return err
 			}

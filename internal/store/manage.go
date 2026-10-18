@@ -160,7 +160,7 @@ func ListWorkspaceSummaries(ctx context.Context, q DBTX) ([]WorkspaceSummary, er
 	for rows.Next() {
 		var s WorkspaceSummary
 		if err := rows.Scan(&s.ID, &s.Name, &s.DisplayName, &s.Notify.Channel, &s.Notify.Target, &s.Notify.ShowTitle,
-			&s.Notify.ShowBrief, &s.Remind.OpenHours, &s.Remind.VerifyHours, &s.CreatedAt, &s.Members, &s.Admins, &s.OpenIssues); err != nil {
+			&s.Notify.ShowBrief, &s.Remind.OpenHours, &s.Remind.VerifyHours, &s.Language, &s.CreatedAt, &s.Members, &s.Admins, &s.OpenIssues); err != nil {
 			return nil, err
 		}
 		s.TelegramBound = s.Notify.Target != "" // 绑了群（任一种通讯工具）；接口字段名沿用 telegram_bound

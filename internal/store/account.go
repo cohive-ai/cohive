@@ -17,6 +17,7 @@ type Account struct {
 	TelegramUsername string
 	TelegramUserID   *int64
 	ServerAdmin      bool
+	Language         string // 账号语言代码；空表示跟随服务器缺省语言
 	DisabledAt       *time.Time
 	CreatedAt        time.Time
 }
@@ -27,11 +28,11 @@ func (a Account) Disabled() bool { return a.DisabledAt != nil }
 // Telegram 用户名与编号取自通讯账号表（第十一号迁移前在账号表上）。
 const accountColumns = `a.id, a.name, a.display_name, coalesce((SELECT ci.handle FROM chat_identities ci WHERE ci.account_id = a.id AND ci.provider = 'telegram'), ''),
 	(SELECT nullif(ci.user_id, '')::bigint FROM chat_identities ci WHERE ci.account_id = a.id AND ci.provider = 'telegram'),
-	a.is_server_admin, a.disabled_at, a.created_at`
+	a.is_server_admin, coalesce(a.language, ''), a.disabled_at, a.created_at`
 
 func scanAccount(row interface{ Scan(...any) error }) (Account, error) {
 	var a Account
-	err := row.Scan(&a.ID, &a.Name, &a.DisplayName, &a.TelegramUsername, &a.TelegramUserID, &a.ServerAdmin, &a.DisabledAt, &a.CreatedAt)
+	err := row.Scan(&a.ID, &a.Name, &a.DisplayName, &a.TelegramUsername, &a.TelegramUserID, &a.ServerAdmin, &a.Language, &a.DisabledAt, &a.CreatedAt)
 	return a, notFound(err)
 }
 
@@ -55,6 +56,11 @@ func collectAccounts(rows pgx.Rows, err error) ([]Account, error) {
 func CreateAccount(ctx context.Context, q DBTX, name, display string) (Account, error) {
 	return scanAccount(q.QueryRow(ctx, `INSERT INTO accounts AS a (name, display_name) VALUES ($1, $2) RETURNING `+accountColumns,
 		name, display))
+}
+
+// SetAccountLanguage 保存账号语言；空字符串清除（跟随服务器缺省语言）。
+func SetAccountLanguage(ctx context.Context, q DBTX, id int64, lang string) error {
+	return execOne(ctx, q, `UPDATE accounts SET language = nullif($2, '') WHERE id = $1`, id, lang)
 }
 
 // AccountByID 返回账号。

@@ -12,6 +12,7 @@ type Workspace struct {
 	DisplayName string // 显示名：给人看，可随时改；空表示与路径相同
 	Notify      NotifyConfig
 	Remind      RemindConfig
+	Language    string // 群通知与群里机器人回复的语言代码；空表示跟随服务器缺省语言
 }
 
 // RemindConfig 是超时催办的时长（小时），0 表示关闭。
@@ -47,12 +48,12 @@ type NotifyConfig struct {
 const workspaceColumns = `w.id, w.name, w.display_name,
 	coalesce((SELECT wc.provider FROM workspace_chats wc WHERE wc.workspace_id = w.id ORDER BY wc.id LIMIT 1), ''),
 	coalesce((SELECT wc.chat_id FROM workspace_chats wc WHERE wc.workspace_id = w.id ORDER BY wc.id LIMIT 1), ''),
-	w.notify_show_title, w.notify_show_brief, w.remind_open_hours, w.remind_verify_hours`
+	w.notify_show_title, w.notify_show_brief, w.remind_open_hours, w.remind_verify_hours, coalesce(w.language, '')`
 
 func scanWorkspace(row interface{ Scan(...any) error }) (Workspace, error) {
 	var w Workspace
 	err := row.Scan(&w.ID, &w.Name, &w.DisplayName, &w.Notify.Channel, &w.Notify.Target, &w.Notify.ShowTitle, &w.Notify.ShowBrief,
-		&w.Remind.OpenHours, &w.Remind.VerifyHours)
+		&w.Remind.OpenHours, &w.Remind.VerifyHours, &w.Language)
 	return w, notFound(err)
 }
 
@@ -112,6 +113,11 @@ func SetWorkspaceNotify(ctx context.Context, q DBTX, wsID int64, cfg NotifyConfi
 func SetWorkspaceRemind(ctx context.Context, q DBTX, wsID int64, r RemindConfig) error {
 	return execOne(ctx, q, `UPDATE workspaces SET remind_open_hours = $2, remind_verify_hours = $3 WHERE id = $1`,
 		wsID, r.OpenHours, r.VerifyHours)
+}
+
+// SetWorkspaceLanguage 保存工作空间语言；空字符串清除（跟随服务器缺省语言）。
+func SetWorkspaceLanguage(ctx context.Context, q DBTX, wsID int64, lang string) error {
+	return execOne(ctx, q, `UPDATE workspaces SET language = nullif($2, '') WHERE id = $1`, wsID, lang)
 }
 
 // SetWorkspaceNotifyTarget 只更新 Telegram 群编号（例如群升级为超级群后编号变化）。

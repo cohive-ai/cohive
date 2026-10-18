@@ -20,7 +20,7 @@ func Middleware(q store.DBTX) func(http.Handler) http.Handler {
 	verifier := func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 		id, err := store.LookupToken(ctx, q, token)
 		if errors.Is(err, store.ErrUnauthorized) {
-			// 鉴权发生在确定账号之前：用服务器缺省语言（第二段改为按令牌所属账号的语言）
+			// 令牌无效时不知道是谁：用服务器缺省语言
 			return nil, i18n.Wrap(auth.ErrInvalidToken, "api.authn.token_invalid")
 		}
 		if err != nil {

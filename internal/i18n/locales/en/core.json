@@ -1,0 +1,3 @@
+{
+  "core.language.unsupported": "Unsupported language {{.Code}}"
+}

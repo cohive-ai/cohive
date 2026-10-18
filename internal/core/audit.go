@@ -276,7 +276,7 @@ var actions = map[string]actionInfo{
 	ActWorkspaceDelete: {"删除工作空间", CatWorkspace, func(e store.AdminEvent) string { return "删除了工作空间 " + e.TargetName }},
 	ActWorkspaceSettings: {"修改工作空间设置", CatWorkspace, func(e store.AdminEvent) string {
 		var fields []string
-		for _, k := range []string{"public_url", "telegram_chat", "show_title", "show_brief", "remind_open_hours", "remind_verify_hours"} {
+		for _, k := range []string{"public_url", "telegram_chat", "show_title", "show_brief", "remind_open_hours", "remind_verify_hours", "language"} {
 			if _, ok := e.Detail[k]; ok {
 				fields = append(fields, detailLabels[k])
 			}
@@ -501,7 +501,7 @@ var detailLabels = map[string]string{
 	"admin": "首位管理员", "public_url": "公网地址", "telegram_chat": "Telegram 群", "show_title": "群消息显示标题", "remind_open_hours": "待接单催办时长", "remind_verify_hours": "待验证催办时长",
 	"show_brief": "群消息显示简述", "member": "成员", "tool": "工具", "as": "命令行记作", "invite_id": "邀请编号",
 	"initial_admin": "初始管理员", "backfilled": "上线前补记", "time_approx": "时间为近似值",
-	"credential": "凭据", "external_url": "对外地址",
+	"credential": "凭据", "external_url": "对外地址", "language": "群消息语言",
 }
 
 // EventDetail 把附加信息转成中文名与文本值，按键名排序。

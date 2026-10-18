@@ -21,16 +21,16 @@ import (
 
 // Protected 返回带令牌鉴权的 MCP 处理器。allowedHosts 是除 localhost 外允许的 Host（经隧道转发的公网域名）。
 //
-// 工具说明、参数说明和报错都按语言渲染，所以每种语言各建一份 *mcp.Server。
-// 第一段（现在）：每个请求用服务器缺省语言那一份，忽略编程工具发来的 Accept-Language（各家客户端不可控）。
-// 第二段：改为按鉴权后的账号语言选，账号没有设语言时回退服务器缺省语言。
+// 工具说明、参数说明和报错都按语言渲染，所以每种语言各建一份 *mcp.Server，按鉴权后的账号语言选；
+// 账号没有设语言时用服务器缺省语言。忽略编程工具发来的 Accept-Language（各家客户端不可控）。
 func Protected(svc *core.Service, allowedHosts ...string) http.Handler {
 	servers := map[i18n.Lang]*mcp.Server{}
 	for _, l := range i18n.Supported() {
 		servers[l] = NewServerFor(svc, l)
 	}
-	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
-		if s, ok := servers[i18n.Default()]; ok {
+	h := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		id, _ := authn.FromContext(r.Context())
+		if s, ok := servers[i18n.Pick(id.Language)]; ok {
 			return s
 		}
 		return servers[i18n.EN]
