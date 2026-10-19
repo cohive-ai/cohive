@@ -50,7 +50,7 @@ func runHook(ctx context.Context, in io.Reader, out io.Writer, args []string) {
 	workspace := fs.String("workspace", "", "")
 	tool := fs.String("tool", "", "")
 	check := fs.Bool("check", false, "")
-	if fs.Parse(args) != nil || *server == "" || *workspace == "" || (*tool != "claude-code" && *tool != "codex") {
+	if fs.Parse(args) != nil || *server == "" || *workspace == "" || !isHookTool(*tool) {
 		if *check {
 			fmt.Fprintln(out, i18n.T("cli.hook.check_usage"))
 		}
@@ -163,6 +163,9 @@ func hookOnce(ctx context.Context, in io.Reader, server, workspace, tool string)
 	return renderAlerts(hi.Event, workspace, tool, fresh, res.More)
 }
 
+// isHookTool：cohive init 配置的工具之外，还接受 dsh（DeepSeek Harness 用户按手工接入说明自己配钩子）。
+func isHookTool(t string) bool { return isKnownTool(t) || t == "dsh" }
+
 var loginName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
 
 // safeActor 只放行登录名的字符集；服务端给的不像登录名时不原样输出。
@@ -220,6 +223,7 @@ func alertPhrase(it client.AlertItem) string {
 	return i18n.T("cli.hook.alert_other", d)
 }
 
+// slashCommand 是提醒里给的调用写法：Codex 的技能用 $cohive，其余（Claude Code、opencode、dsh）用 /cohive。
 func slashCommand(tool string, issueID int64) string {
 	if tool == "codex" {
 		return fmt.Sprintf("$cohive %d", issueID)

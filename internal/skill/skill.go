@@ -15,7 +15,7 @@ import (
 //go:embed */SKILL.md
 var files embed.FS
 
-// For 返回某种语言的 /cohive（Claude Code）与 $cohive（Codex）共用的技能内容；没有该语言的版本时用英文。
+// For 返回某种语言的 /cohive（Claude Code、OpenCode）与 $cohive（Codex）共用的技能内容；没有该语言的版本时用英文。
 func For(l i18n.Lang) []byte {
 	if b, err := files.ReadFile(string(l) + "/SKILL.md"); err == nil {
 		return b

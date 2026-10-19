@@ -453,3 +453,27 @@ func TestAlertPhraseNewKinds(t *testing.T) {
 		}
 	}
 }
+
+// OpenCode 与 dsh（DeepSeek Harness 手工接入）也走 cohive hook：提醒里给 /cohive 指引，不给 Codex 的 $cohive。
+func TestHookOpencodeAndDsh(t *testing.T) {
+	for _, tool := range []string{"opencode", "dsh"} {
+		t.Run(tool, func(t *testing.T) {
+			f := newHookFixture(t, tool)
+			clock := useClock(t)
+			callHook(t, f.s.url, tool, "SessionStart", "ses_"+tool)
+			is := f.send(t)
+			clock.pass()
+			out, err, _ := callHook(t, f.s.url, tool, "UserPromptSubmit", "ses_"+tool)
+			o := parseHook(t, out, "UserPromptSubmit")
+			if err != nil || !strings.Contains(o.Specific.Context, fmt.Sprintf("/cohive %d", is.ID)) || strings.Contains(o.Specific.Context, "$cohive") {
+				t.Fatalf("%s 应给 /cohive 指引：%+v %v", tool, o, err)
+			}
+			noBody(t, out)
+			// 新会话：待办摘要
+			out, _, _ = callHook(t, f.s.url, tool, "SessionStart", "ses_new_"+tool)
+			if o := parseHook(t, out, "SessionStart"); !strings.Contains(o.Specific.Context, fmt.Sprintf("/cohive %d", is.ID)) {
+				t.Fatalf("%s 新会话应给待办摘要：%+v", tool, o)
+			}
+		})
+	}
+}

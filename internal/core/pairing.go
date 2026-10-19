@@ -27,6 +27,8 @@ const (
 	inviteCodeBytes    = 24
 	minPasswordLength  = 10
 	maxDisplayNameRune = 64
+	// maxTools 是一次配对、补签令牌最多的编程工具数：Claude Code、Codex、opencode 之外留足余量
+	maxTools = 8
 )
 
 var (
@@ -87,7 +89,7 @@ func cleanTools(tools []string) ([]string, error) {
 			out = append(out, t)
 		}
 	}
-	if len(out) == 0 || len(out) > 4 {
+	if len(out) == 0 || len(out) > maxTools {
 		return nil, inputErr("core.err.tool_count_invalid")
 	}
 	return out, nil

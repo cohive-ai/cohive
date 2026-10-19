@@ -1,0 +1,27 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "cohive": {
+      "type": "remote",
+      "url": "http://localhost:8787/mcp",
+      "headers": {
+        "Authorization": "Bearer {env:COHIVE_TOKEN}"
+      }
+    }
+  },
+  "permission": {
+    "cohive_cohive_inbox": "allow",
+    "cohive_cohive_get_issue": "allow",
+    "cohive_cohive_search": "allow",
+    "cohive_cohive_who_owns": "allow",
+    "cohive_cohive_find_member": "allow",
+    "cohive_cohive_draft_issue": "allow",
+    "cohive_cohive_update_issue": "allow",
+    "cohive_cohive_request_verification": "allow",
+    "cohive_cohive_submit_issue": "ask",
+    "cohive_cohive_accept_issue": "ask",
+    "cohive_cohive_close_issue": "ask",
+    "cohive_cohive_cancel_issue": "ask",
+    "cohive_cohive_delete_draft": "ask"
+  }
+}

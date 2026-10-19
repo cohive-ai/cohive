@@ -77,7 +77,7 @@
   "core.err.no_device": "这个令牌不属于任何设备，请执行 cohive login 重新配对这台电脑",
   "core.err.join_pending": "你已提交过加入申请，正在等管理员批准",
   "core.err.tool_name_invalid": "工具名 {{.Name}} 不合法，例如 claude-code、codex",
-  "core.err.tool_count_invalid": "工具数量应为 1 到 4 个",
+  "core.err.tool_count_invalid": "工具数量应为 1 到 8 个",
   "core.err.username_invalid": "登录名 {{.Name}} 不合法：小写字母、数字、下划线、横线，1 到 32 个字符",
   "core.decider.server_admin": "服务器管理员",
   "core.err.invite_team_not_admin": "团队邀请不能设为管理员；需要管理员请用个人邀请",

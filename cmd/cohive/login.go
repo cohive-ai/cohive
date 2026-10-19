@@ -60,7 +60,7 @@ func argValue(args []string, name string) string {
 	return ""
 }
 
-// readRepoTarget 从 .mcp.json 与 .codex/config.toml 里的 cohive 转发器参数读出服务地址与工作空间。
+// readRepoTarget 从 .mcp.json、.codex/config.toml 与 opencode.json 里的 cohive 转发器参数读出服务地址与工作空间。
 // 文件不存在或无法解析时当作没有配置；两份配置指向不同服务时报错。
 func readRepoTarget(dir string) (repoTarget, error) {
 	var t repoTarget
@@ -100,6 +100,20 @@ func readRepoTarget(dir string) (repoTarget, error) {
 		if _, err := toml.Decode(string(b), &cfg); err == nil {
 			if s, ok := cfg.Servers["cohive"]; ok {
 				if err := add("codex", s.Args); err != nil {
+					return t, err
+				}
+			}
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, opencodeConfig)); err == nil {
+		var cfg struct {
+			MCP map[string]struct {
+				Command []string `json:"command"`
+			} `json:"mcp"`
+		}
+		if json.Unmarshal(b, &cfg) == nil {
+			if s, ok := cfg.MCP["cohive"]; ok && len(s.Command) > 1 {
+				if err := add("opencode", s.Command[1:]); err != nil {
 					return t, err
 				}
 			}
@@ -486,7 +500,7 @@ func saveDeviceLogins(out io.Writer, srv string, p client.DevicePoll, repoReady 
 	return nil
 }
 
-// knownToolsFirst 按 claude-code、codex 在前的固定顺序列出令牌对应的工具。
+// knownToolsFirst 按 knownTools 的固定顺序列出令牌对应的工具，其余的按名字排在后面。
 func knownToolsFirst(tokens map[string]string) []string {
 	var out []string
 	for _, t := range knownTools {
@@ -496,7 +510,7 @@ func knownToolsFirst(tokens map[string]string) []string {
 	}
 	var rest []string
 	for t, tok := range tokens {
-		if tok != "" && t != "claude-code" && t != "codex" {
+		if tok != "" && !isKnownTool(t) {
 			rest = append(rest, t)
 		}
 	}

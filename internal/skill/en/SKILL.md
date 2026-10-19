@@ -24,7 +24,7 @@ The session hook inserts two lines of reminder that start with Cohive (`Cohive r
 
 ## Handle an issue assigned to me
 
-The user may call this with an issue number, for example `/cohive 12` (Claude Code) or `$cohive 12` (Codex).
+The user may call this with an issue number, for example `/cohive 12` (Claude Code, OpenCode) or `$cohive 12` (Codex).
 
 1. **Read**: with a number, call `cohive_get_issue`; without one, call `cohive_inbox` to list all to-dos, group them by `needs_me`, and deal first with the one the user named or the most urgent one.
 2. **Summarize**: tell the user in a few sentences who sent it, which service it is about, the symptom (expected versus actual), and what the user needs to do now.

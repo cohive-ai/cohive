@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,7 +24,10 @@ import (
 	"github.com/cohive-ai/cohive/internal/skill"
 )
 
-var knownTools = []string{"claude-code", "codex"}
+// knownTools 是 cohive init 能配置的编程工具，也是 cohive login 默认申请令牌的工具，顺序即显示顺序。
+var knownTools = []string{"claude-code", "codex", "opencode"}
+
+func isKnownTool(t string) bool { return slices.Contains(knownTools, t) }
 
 // 影响他人工作、不可撤销的工具每次都要用户确认；其余直接放行。
 var (
@@ -81,8 +85,8 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 	} else {
 		for _, t := range strings.Split(*toolsFlag, ",") {
 			t = strings.TrimSpace(t)
-			if t != "claude-code" && t != "codex" {
-				return i18n.Errorf("cli.init.tools_unsupported", i18n.D{"Tool": strconv.Quote(t)})
+			if !isKnownTool(t) {
+				return i18n.Errorf("cli.init.tools_unsupported", i18n.D{"Tool": strconv.Quote(t), "Known": strings.Join(knownTools, ", ")})
 			}
 			tools = append(tools, t)
 		}
@@ -91,12 +95,18 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 	proxyArgs := func(tool string) []string {
 		return []string{"mcp-proxy", "--server", srv, "--workspace", ws, "--tool", tool}
 	}
-	// 会话钩子的命令；为空表示不写（并移除以前写的）
+	// 会话钩子的命令（参数列表）；为空表示不写（并移除以前写的）
+	hookArgv := func(tool string) []string {
+		if *noHooks {
+			return nil
+		}
+		return append([]string{*command, "hook"}, proxyArgs(tool)[1:]...)
+	}
 	hookCmd := func(tool string) string {
 		if *noHooks {
 			return ""
 		}
-		return shellCommand(append([]string{*command, "hook"}, proxyArgs(tool)[1:]...))
+		return shellCommand(hookArgv(tool))
 	}
 	var written []string
 	for _, t := range tools {
@@ -111,6 +121,15 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 				return err
 			}
 			written = append(written, i18n.T("cli.init.written_codex"))
+		case "opencode":
+			if err := initOpencode(*dir, *command, proxyArgs(t), hookArgv(t)); err != nil {
+				return err
+			}
+			if *noHooks {
+				written = append(written, i18n.T("cli.init.written_opencode"))
+			} else {
+				written = append(written, i18n.T("cli.init.written_opencode_plugin"))
+			}
 		}
 	}
 
@@ -127,6 +146,8 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 				fmt.Fprintln(out, i18n.T("cli.init.hook_claude"))
 			case "codex":
 				fmt.Fprintln(out, i18n.T("cli.init.hook_codex"))
+			case "opencode":
+				fmt.Fprintln(out, i18n.T("cli.init.hook_opencode"))
 			}
 		}
 		fmt.Fprint(out, i18n.T("cli.init.hook_check", i18n.D{
