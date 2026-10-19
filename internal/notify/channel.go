@@ -10,7 +10,7 @@ import (
 
 // Channel 是一种通讯工具（Telegram、钉钉）。服务器为每种启用的通讯工具建一个实例，可以同时启用多种；
 // 工作空间绑定哪种通讯工具的群，通知和审批消息就经哪个实例发出。收件循环（长轮询、长连接）由各实现自己跑，
-// 收到按钮点击时交给 Hub.Click。
+// 收到文字消息时交给 Inbox.Handle（见 inbox.go），收到按钮点击时交给 Hub.Click。
 type Channel interface {
 	Provider() string  // store.ProviderTelegram、store.ProviderDingTalk
 	Format() Formatter // 本通讯工具的文本格式与 @ 写法
@@ -21,6 +21,18 @@ type Channel interface {
 	// FinishApproval 把审批消息改成结果、去掉按钮。
 	FinishApproval(ctx context.Context, chat, msgRef string, m Rendered) error
 }
+
+// StatusReporter 是通道可选的能力：收件循环（长轮询、长连接）是否在线，不在线时给出原因，供服务器管理页显示。
+type StatusReporter interface {
+	Status() (online bool, detail string)
+}
+
+var (
+	_ Channel        = (*Bot)(nil)
+	_ Channel        = (*DingTalkChannel)(nil)
+	_ StatusReporter = (*Bot)(nil)
+	_ StatusReporter = (*DingTalkChannel)(nil)
+)
 
 // Formatter 是一种通讯工具的消息格式。
 type Formatter interface {

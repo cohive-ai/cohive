@@ -345,13 +345,17 @@ func TestDingTalkBotEnglish(t *testing.T) {
 	say("m4", "cid-dm", "1", "u-lee", "hello")
 	say("m5", "cid-dm", "1", "u-zh", "hello") // 账号没设语言：服务器缺省语言（中文）
 	say("m6", "cid-ops", "2", "u-lee", "@Cohive bindgroup GOODCODE")
-	replies := strings.Split(waitReplies(t, g, 6), "\n")
+	say("m7", "cid-dm", "1", "u-lee", "chatid") // 私聊里问群编号：回私聊的用法
+	replies := strings.Split(waitReplies(t, g, 7), "\n")
 	joined := strings.Join(replies, "\n")
 	for _, want := range []string{"The chat ID of this group (Ops) is `cid-ops`", "`bindgroup CODE`", "To connect your DingTalk account to Cohive, open Profile",
 		"This group is now bound to workspace", "我是 Cohive 机器人。要把你的钉钉账号连接到 Cohive"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("回复应包含 %q：\n%s", want, joined)
 		}
+	}
+	if strings.Count(joined, "To connect your DingTalk account to Cohive, open Profile") != 2 {
+		t.Errorf("私聊里的 hello 与 chatid 都应回私聊的用法：\n%s", joined)
 	}
 	if strings.Count(joined, "The chat ID of this group (Ops) is") != 2 {
 		t.Errorf("中文指令“群编号”应同样得到英文回复：\n%s", joined)
