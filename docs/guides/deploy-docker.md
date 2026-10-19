@@ -125,6 +125,7 @@ docker compose exec cohive cohive-server audit list
 | `COHIVE_TELEGRAM_BOT_TOKEN` | Telegram 机器人令牌 |
 | `COHIVE_DINGTALK_CLIENT_ID`、`COHIVE_DINGTALK_CLIENT_SECRET` | 钉钉企业内部应用凭据，一起设置即启用钉钉（见 [钉钉接入](dingtalk.md)） |
 | `COHIVE_DINGTALK_NOTICE_TEMPLATE`、`COHIVE_DINGTALK_APPROVAL_TEMPLATE` | 钉钉通知卡片、审批卡片模板编号；不设时降级 |
+| `COHIVE_SLACK_BOT_TOKEN`、`COHIVE_SLACK_APP_TOKEN` | Slack 机器人令牌（`xoxb-` 开头）与应用级令牌（`xapp-` 开头），一起设置即启用 Slack（见 [Slack 接入](slack.md)） |
 | `CLOUDFLARE_TUNNEL_TOKEN` | 配合 `--profile tunnel` 使用的隧道令牌 |
 | `COHIVE_BIND`、`COHIVE_PORT` | 宿主机上的监听地址与端口，缺省 `127.0.0.1`、`8787` |
 | `COHIVE_ALLOWED_HOSTS` | 除对外地址外，还允许访问 MCP 的域名（逗号分隔） |

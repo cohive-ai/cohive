@@ -74,6 +74,7 @@
   "notify.role.none": "不是成员",
   "notify.provider.telegram": " Telegram ",
   "notify.provider.dingtalk": "钉钉",
+  "notify.provider.slack": " Slack ",
   "notify.toast.mismatch": "这条审批消息的内容不符，请在网页上处理",
   "notify.toast.expired": "这条审批消息已失效，请在网页上处理",
   "notify.toast.failed": "处理失败，请稍后再试",
@@ -109,5 +110,16 @@
   "notify.dingtalk.link_received": "已收到。请回到 Cohive 网页确认：把这个钉钉账号连接到 Cohive 账号 {{.Account}}。",
   "notify.dingtalk.chatid": "这个群（{{.Title}}）的编号是 {{.ID}}  \n工作空间管理员也可以在网页“管理 → 工作空间”生成绑定码，在群里 @我 发 `绑定群 绑定码` 一步绑定。",
   "notify.dingtalk.bound": "已把本群绑定到工作空间 {{.Workspace}}。之后的问题单通知与审批消息会发到这里。",
-  "notify.dingtalk.try_later": "暂时无法完成，请稍后再试。"
+  "notify.dingtalk.try_later": "暂时无法完成，请稍后再试。",
+  "notify.slack.no_buttons": "（频道里暂时不能直接点按钮审批，请到 Cohive 网页“管理 → 待审”里处理）",
+  "notify.slack.group_help": "我是 Cohive 机器人。在频道里 @我 可以发：\n• `绑定群 绑定码`：把本频道绑定到工作空间（绑定码在网页“管理 → 工作空间”里生成）\n• `群编号`：查看本频道的编号\n• `我是谁`：查看你连接的 Cohive 账号\n连接 Slack 账号的码请*私聊*发给我（在 Slack 里打开 Cohive 应用，进“消息”标签）。",
+  "notify.slack.private_help": "我是 Cohive 机器人。要把你的 Slack 账号连接到 Cohive，请在网页“个人中心”点“连接 Slack”，把网页上的绑定码发给我。",
+  "notify.slack.whoami_unlinked": "你的 Slack 账号还没有连接 Cohive。请在网页“个人中心”点“连接 Slack”，把绑定码私聊发给我。",
+  "notify.slack.whoami_linked": "你的 Slack 账号已连接 Cohive 账号 {{.Account}}。",
+  "notify.slack.whoami_role": "在本频道对应的工作空间 {{.Workspace}} 里：{{.Role}}",
+  "notify.slack.link_received": "已收到。请回到 Cohive 网页确认：把这个 Slack 账号连接到 Cohive 账号 {{.Account}}。",
+  "notify.slack.chatid": "这个频道（{{.Title}}）的编号是 {{.ID}}\n工作空间管理员也可以在网页“管理 → 工作空间”生成绑定码，在频道里 @我 发 `绑定群 绑定码` 一步绑定。",
+  "notify.slack.bound": "已把本频道绑定到工作空间 {{.Workspace}}。之后的问题单通知与审批消息会发到这里。",
+  "notify.slack.try_later": "暂时无法完成，请稍后再试。",
+  "notify.slack.external_user": "你不在这个 Slack 工作区里（跨组织共享频道的外部成员），不能操作 Cohive。"
 }

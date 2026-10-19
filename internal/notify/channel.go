@@ -8,11 +8,11 @@ import (
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
-// Channel 是一种通讯工具（Telegram、钉钉）。服务器为每种启用的通讯工具建一个实例，可以同时启用多种；
+// Channel 是一种通讯工具（Telegram、钉钉、Slack）。服务器为每种启用的通讯工具建一个实例，可以同时启用多种；
 // 工作空间绑定哪种通讯工具的群，通知和审批消息就经哪个实例发出。收件循环（长轮询、长连接）由各实现自己跑，
 // 收到文字消息时交给 Inbox.Handle（见 inbox.go），收到按钮点击时交给 Hub.Click。
 type Channel interface {
-	Provider() string  // store.ProviderTelegram、store.ProviderDingTalk
+	Provider() string  // store.ProviderTelegram、store.ProviderDingTalk、store.ProviderSlack
 	Format() Formatter // 本通讯工具的文本格式与 @ 写法
 	// Send 往群里发一条通知（问题单通知、加入通知）。
 	Send(ctx context.Context, chat string, m Rendered) error
@@ -30,8 +30,10 @@ type StatusReporter interface {
 var (
 	_ Channel        = (*Bot)(nil)
 	_ Channel        = (*DingTalkChannel)(nil)
+	_ Channel        = (*SlackChannel)(nil)
 	_ StatusReporter = (*Bot)(nil)
 	_ StatusReporter = (*DingTalkChannel)(nil)
+	_ StatusReporter = (*SlackChannel)(nil)
 )
 
 // Formatter 是一种通讯工具的消息格式。

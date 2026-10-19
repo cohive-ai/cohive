@@ -12,6 +12,7 @@ import {
   type Invite,
   type PendingDevice,
   type WorkspaceSettings,
+  codeProviders,
 } from "../api";
 import { DeviceTokens, NeedPasswordLogin, Notice } from "../components";
 import i18n from "../i18n";
@@ -54,7 +55,7 @@ import {
 import { canAdminWorkspace } from "../workspace";
 import { useWs } from "./WorkspaceShell";
 import { EventLog } from "./EventLog";
-import { DingTalkBind } from "./DingTalk";
+import { CodeBind } from "./ChatCode";
 
 export const adminTabs = [
   { id: "pending" },
@@ -1128,7 +1129,9 @@ function WorkspaceTab({ ws, serverAdmin }: { ws: string; serverAdmin: boolean })
         <Callout>
           {q.data.channels?.some((c) => c.provider === "dingtalk")
             ? t("workspace.nextStepDingtalk")
-            : t("workspace.nextStepTelegram")}
+            : q.data.channels?.some((c) => c.provider === "slack")
+              ? t("workspace.nextStepSlack")
+              : t("workspace.nextStepTelegram")}
         </Callout>
       )}
       <WorkspaceForm key={ws} ws={ws} initial={q.data} serverAdmin={serverAdmin} />
@@ -1162,10 +1165,11 @@ export function WorkspaceForm({
   const [busy, setBusy] = useState(false);
   const displayOk = [...display.trim()].length <= 40;
   const providers = initial.channels?.map((c) => c.provider);
-  const dtEnabled = !!providers?.includes("dingtalk") || initial.chat?.provider === "dingtalk";
-  // 旧版服务端不返回 channels；只启用了钉钉时不显示 Telegram 群编号（已绑 Telegram 群的照样显示）
-  const tgShown = !providers || providers.includes("telegram") || !!initial.telegram_chat || !dtEnabled;
-  const dtBound = initial.chat?.provider === "dingtalk";
+  // 用码绑定的通讯工具：服务器启用了，或本工作空间已绑了它的群（停用后仍可解绑）
+  const codeShown = codeProviders.filter((p) => !!providers?.includes(p) || initial.chat?.provider === p);
+  // 旧版服务端不返回 channels；只启用了用码绑定的通讯工具时不显示 Telegram 群编号（已绑 Telegram 群的照样显示）
+  const tgShown = !providers || providers.includes("telegram") || !!initial.telegram_chat || codeShown.length === 0;
+  const codeBound = codeProviders.find((p) => initial.chat?.provider === p);
   const languages = initial.languages ?? [];
   const defaultLanguageName =
     languages.find((l) => l.code === initial.default_language)?.name ?? initial.default_language ?? "";
@@ -1264,20 +1268,28 @@ export function WorkspaceForm({
           )}
           <p className="mt-1 text-xs text-muted">{t("workspace.externalUrlNote")}</p>
         </div>
-        {!initial.bot_enabled && !dtEnabled && <Callout>{t("workspace.botDisabled")}</Callout>}
-        {dtEnabled && <DingTalkBind ws={ws} chat={initial.chat} onChange={refresh} />}
+        {!initial.bot_enabled && codeShown.length === 0 && <Callout>{t("workspace.botDisabled")}</Callout>}
+        {codeShown.map((p) => (
+          <CodeBind key={p} ws={ws} chat={initial.chat} provider={p} onChange={refresh} />
+        ))}
         {tgShown && (
           <Field
             label={t("workspace.telegramChat")}
             htmlFor="telegram-chat"
-            hint={dtBound ? t("workspace.telegramChatBoundDingtalk") : t("workspace.telegramChatHint")}
+            hint={
+              codeBound === "dingtalk"
+                ? t("workspace.telegramChatBoundDingtalk")
+                : codeBound === "slack"
+                  ? t("workspace.telegramChatBoundSlack")
+                  : t("workspace.telegramChatHint")
+            }
           >
             <input
               id="telegram-chat"
               inputMode="numeric"
               spellCheck={false}
               value={chat}
-              disabled={dtBound}
+              disabled={codeBound != null}
               onChange={(e) => setChat(e.target.value)}
               className={`${inputClass} font-mono`}
             />

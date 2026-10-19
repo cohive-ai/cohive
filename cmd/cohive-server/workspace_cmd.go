@@ -160,12 +160,16 @@ func onOff(b bool) string {
 }
 
 func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, args []string) error {
-	var name, chat, dtChat, publicURL string
+	var name, chat, publicURL string
 	var showTitle, showBrief, off bool
+	codeChats := map[string]*string{} // 用码绑定的通讯工具的群编号：--dingtalk-chat、--slack-chat……
 	if err := parse("workspace notify", args, func(fs *flag.FlagSet) {
 		fs.StringVar(&name, "workspace", "default", i18n.T("server.flag.ws_name"))
 		fs.StringVar(&chat, "telegram-chat", "", i18n.T("server.flag.telegram_chat"))
-		fs.StringVar(&dtChat, "dingtalk-chat", "", i18n.T("server.flag.dingtalk_chat"))
+		for _, p := range core.CodeProviders() {
+			codeChats[p] = new(string)
+			fs.StringVar(codeChats[p], p+"-chat", "", i18n.T("server.flag."+p+"_chat")) // TestProviderKeysComplete 确认键齐全
+		}
 		fs.BoolVar(&showTitle, "show-title", true, i18n.T("server.flag.show_title"))
 		fs.BoolVar(&showBrief, "show-brief", true, i18n.T("server.flag.show_brief"))
 		fs.StringVar(&publicURL, "public-url", "", i18n.T("server.flag.public_url"))
@@ -178,14 +182,21 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 		return err
 	}
 	svc := &core.Service{Pool: pool}
-	if dtChat != "" {
-		if chat != "" || off {
-			return i18n.Errorf("server.workspace.dingtalk_conflict")
+	var picked []string
+	for _, p := range core.CodeProviders() {
+		if *codeChats[p] != "" {
+			picked = append(picked, p)
 		}
-		if err := svc.BindChat(ctx, core.ServerCLI(), wsID, core.ProviderDingTalk, dtChat); err != nil {
+	}
+	if len(picked) > 0 {
+		if len(picked) > 1 || chat != "" || off {
+			return i18n.Errorf("server.workspace.chat_conflict")
+		}
+		p := picked[0]
+		if err := svc.BindChat(ctx, core.ServerCLI(), wsID, p, *codeChats[p]); err != nil {
 			return err
 		}
-		fmt.Fprintln(out, i18n.T("server.workspace.notify_dingtalk", i18n.D{"Name": name, "Chat": dtChat}))
+		fmt.Fprintln(out, i18n.T("server.workspace.notify_"+p, i18n.D{"Name": name, "Chat": *codeChats[p]}))
 		return nil
 	}
 	if !off {
@@ -202,9 +213,11 @@ func workspaceNotify(ctx context.Context, out io.Writer, pool *pgxpool.Pool, arg
 		return i18n.Errorf("server.workspace.public_url_removed", i18n.D{"URL": publicURL})
 	}
 	// 经业务层写入：一个群只能绑一个工作空间
-	if off { // 关闭群通知：钉钉群也一并解绑
-		if err := svc.UnbindChat(ctx, core.ServerCLI(), wsID, core.ProviderDingTalk); err != nil {
-			return err
+	if off { // 关闭群通知：用码绑定的通讯工具的群也一并解绑
+		for _, p := range core.CodeProviders() {
+			if err := svc.UnbindChat(ctx, core.ServerCLI(), wsID, p); err != nil {
+				return err
+			}
 		}
 	}
 	if err := svc.UpdateWorkspace(ctx, core.ServerCLI(), wsID, core.WorkspaceSettings{

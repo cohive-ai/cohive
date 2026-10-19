@@ -74,6 +74,7 @@
   "notify.role.none": "not a member",
   "notify.provider.telegram": "Telegram",
   "notify.provider.dingtalk": "DingTalk",
+  "notify.provider.slack": "Slack",
   "notify.toast.mismatch": "This approval message doesn't match the request. Please handle it in the web app.",
   "notify.toast.expired": "This approval message has expired. Please handle it in the web app.",
   "notify.toast.failed": "Something went wrong. Please try again later.",
@@ -109,5 +110,16 @@
   "notify.dingtalk.link_received": "Received. Go back to the Cohive web app to confirm connecting this DingTalk account to Cohive account {{.Account}}.",
   "notify.dingtalk.chatid": "The chat ID of this group ({{.Title}}) is {{.ID}}  \nA workspace admin can also generate a bind code in the web app under Admin → Workspace and @-mention me in the group with `bindgroup CODE` to bind it in one step.",
   "notify.dingtalk.bound": "This group is now bound to workspace {{.Workspace}}. Issue notifications and approval messages will be sent here.",
-  "notify.dingtalk.try_later": "Couldn't complete that right now. Please try again later."
+  "notify.dingtalk.try_later": "Couldn't complete that right now. Please try again later.",
+  "notify.slack.no_buttons": "(Approval buttons aren't available in the channel right now. Please handle this in the Cohive web app under Admin → Pending.)",
+  "notify.slack.group_help": "I'm the Cohive bot. @-mention me in a channel and send:\n• `bindgroup CODE`: bind this channel to a workspace (generate the code in the web app under Admin → Workspace)\n• `chatid`: show this channel's ID\n• `whoami`: show the Cohive account you've connected\nTo connect your Slack account, send me the code in a *direct message* (open the Cohive app in Slack and go to its Messages tab).",
+  "notify.slack.private_help": "I'm the Cohive bot. To connect your Slack account to Cohive, open Profile in the web app, click Connect Slack, and send me the code shown there.",
+  "notify.slack.whoami_unlinked": "Your Slack account isn't connected to Cohive yet. In the web app, open Profile and click Connect Slack, then send me the code in a direct message.",
+  "notify.slack.whoami_linked": "Your Slack account is connected to Cohive account {{.Account}}.",
+  "notify.slack.whoami_role": "In this channel's workspace {{.Workspace}}: {{.Role}}",
+  "notify.slack.link_received": "Received. Go back to the Cohive web app to confirm connecting this Slack account to Cohive account {{.Account}}.",
+  "notify.slack.chatid": "The ID of this channel ({{.Title}}) is {{.ID}}\nA workspace admin can also generate a binding code in the web app under Admin → Workspace and @-mention me in the channel with `bindgroup CODE` to bind it in one step.",
+  "notify.slack.bound": "This channel is now bound to workspace {{.Workspace}}. Issue notifications and approval messages will be sent here.",
+  "notify.slack.try_later": "Couldn't complete that right now. Please try again later.",
+  "notify.slack.external_user": "You're not a member of this Slack workspace (you're an external member of a shared channel), so you can't use Cohive here."
 }

@@ -228,7 +228,8 @@ func main() {
 		set = "yes"
 	}
 	fmt.Println("TOKEN_SET=" + set, "DATA_DIR_SET=" + fmt.Sprint(os.Getenv("COHIVE_DATA_DIR") != ""),
-		"DT_SET=" + fmt.Sprint(os.Getenv("COHIVE_DINGTALK_CLIENT_SECRET") != ""))
+		"DT_SET=" + fmt.Sprint(os.Getenv("COHIVE_DINGTALK_CLIENT_SECRET") != ""),
+		"SL_SET=" + fmt.Sprint(os.Getenv("COHIVE_SLACK_BOT_TOKEN") != "" && os.Getenv("COHIVE_SLACK_APP_TOKEN") != ""))
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprintln(w, "ok") })
 	fmt.Println(http.ListenAndServe(os.Args[3], nil))
 }
@@ -273,8 +274,13 @@ func TestServerScriptLifecycle(t *testing.T) {
 	if err := os.WriteFile(dt, []byte("export COHIVE_DINGTALK_CLIENT_ID=dingabc123\nexport COHIVE_DINGTALK_CLIENT_SECRET="+dtSecret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	slBot, slApp := "xoxb-"+strings.Repeat("b", 30), "xapp-"+strings.Repeat("a", 30)
+	sl := filepath.Join(tmp, "slack.env")
+	if err := os.WriteFile(sl, []byte("export COHIVE_SLACK_BOT_TOKEN="+slBot+"\nexport COHIVE_SLACK_APP_TOKEN="+slApp+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	env := map[string]string{"HOME": tmp, "COHIVE_HOME": home, "COHIVE_BIN": fakeServer(t, tmp), "COHIVE_TELEGRAM_ENV": tg,
-		"COHIVE_DINGTALK_ENV": dt}
+		"COHIVE_DINGTALK_ENV": dt, "COHIVE_SLACK_ENV": sl}
 
 	out, err := script(t, "cohive-server.sh", env, "start")
 	if err != nil {
@@ -293,10 +299,11 @@ func TestServerScriptLifecycle(t *testing.T) {
 	}
 	logB, _ := os.ReadFile(filepath.Join(home, "logs", "server.log"))
 	all := out + string(logB)
-	if !strings.Contains(string(logB), "TOKEN_SET=yes DATA_DIR_SET=true DT_SET=true") {
-		t.Fatalf("机器人令牌与钉钉凭据应传给服务进程：%s", logB)
+	if !strings.Contains(string(logB), "TOKEN_SET=yes DATA_DIR_SET=true DT_SET=true SL_SET=true") {
+		t.Fatalf("机器人令牌、钉钉凭据与 Slack 令牌应传给服务进程：%s", logB)
 	}
-	if strings.Contains(all, token[:20]) || strings.Contains(all, "pw-in-url") || strings.Contains(all, dtSecret) {
+	if strings.Contains(all, token[:20]) || strings.Contains(all, "pw-in-url") || strings.Contains(all, dtSecret) ||
+		strings.Contains(all, slBot) || strings.Contains(all, slApp) {
 		t.Fatalf("输出与日志里不应有令牌或数据库密码：%s", all)
 	}
 	if fi, _ := os.Stat(filepath.Join(home, "data")); fi == nil || !fi.IsDir() {
@@ -562,6 +569,38 @@ func TestSetDingTalkCredentials(t *testing.T) {
 	}
 	if out, err := run("dingabc123\nshort\n\n\n"); err == nil || !strings.Contains(out, "Client Secret 格式不对") {
 		t.Fatalf("密钥格式不对应拒绝：%v %s", err, out)
+	}
+}
+
+// 保存 Slack 令牌：文件仅本人可读，内容能被启动脚本加载；令牌不出现在输出里；填反、格式不对时拒绝。
+func TestSetSlackTokens(t *testing.T) {
+	tmp := t.TempDir()
+	bot, app := "xoxb-1234-5678-"+strings.Repeat("q", 20), "xapp-1-A123-"+strings.Repeat("r", 20)
+	run := func(input string) (string, error) {
+		cmd := exec.Command("bash", "set-slack-tokens.sh")
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + tmp, "COHIVE_LANG=zh-CN"}
+		cmd.Stdin = strings.NewReader(input)
+		b, err := cmd.CombinedOutput()
+		return string(b), err
+	}
+	out, err := run(" " + bot + " \n" + app + "\n")
+	if err != nil || strings.Contains(out, bot) || strings.Contains(out, app) {
+		t.Fatalf("保存应成功、输出不含令牌：%v\n%s", err, out)
+	}
+	file := filepath.Join(tmp, ".config", "cohive", "slack.env")
+	fi, err := os.Stat(file)
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("文件应仅本人可读：%v %v", fi, err)
+	}
+	b, _ := os.ReadFile(file)
+	if string(b) != "export COHIVE_SLACK_BOT_TOKEN="+bot+"\nexport COHIVE_SLACK_APP_TOKEN="+app+"\n" {
+		t.Fatalf("文件内容：%s", b)
+	}
+	if out, err := run(app + "\n" + bot + "\n"); err == nil || !strings.Contains(out, "填反") || strings.Contains(out, bot) {
+		t.Fatalf("填反应拒绝：%v %s", err, out)
+	}
+	if out, err := run("xoxb-short\n" + app + "\n"); err == nil || !strings.Contains(out, "机器人令牌格式不对") {
+		t.Fatalf("格式不对应拒绝：%v %s", err, out)
 	}
 }
 

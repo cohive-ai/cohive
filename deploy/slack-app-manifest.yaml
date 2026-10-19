@@ -1,0 +1,39 @@
+# Cohive 的 Slack 应用清单。用法见 docs/guides/slack.md：在 https://api.slack.com/apps 选
+# “Create New App → From a manifest”，选好工作区，把本文件整段粘贴进 YAML 页即可建好应用。
+# Cohive app manifest for Slack. See docs/guides/slack.en.md: at https://api.slack.com/apps choose
+# "Create New App > From a manifest", pick your workspace and paste this whole file into the YAML tab.
+#
+# 只装在你自己的工作区，不上架应用市场、不需要 Slack 审核。用 Socket 模式：Cohive 主动连出去，不需要公网地址。
+# Installed only in your own workspace: not listed in the Slack Marketplace, no Slack review. Uses Socket Mode:
+# Cohive connects out to Slack, so no public URL is needed.
+display_information:
+  name: Cohive
+  description: Issue notifications and approvals for your team / 团队问题单通知与审批
+  background_color: "#17171a"
+features:
+  app_home:
+    home_tab_enabled: false
+    messages_tab_enabled: true # 成员在这里把连接码私聊发给机器人 / members DM their link code here
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: Cohive
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - chat:write # 发通知、审批消息，改成结果 / post notifications and approvals, update them
+      - app_mentions:read # 频道里 @Cohive 的指令（绑定群、群编号、我是谁） / commands sent as @Cohive in a channel
+      - im:history # 私聊里收连接码 / receive link codes in direct messages
+      - channels:read # 绑定时记下公开频道名 / record the public channel name when binding
+      - groups:read # 绑定时记下私有频道名 / record the private channel name when binding
+      - users:read # 网页确认连接时显示是谁发来的码 / show who sent the code when you confirm in the web UI
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.im
+  interactivity:
+    is_enabled: true # 审批按钮 / approval buttons
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false # 打开后不能再关；机器人令牌不过期 / can't be turned off once on; the bot token never expires

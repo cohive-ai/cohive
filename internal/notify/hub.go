@@ -401,8 +401,9 @@ func providerLabel(l i18n.Lang, provider string) string {
 	switch provider {
 	case store.ProviderTelegram:
 		return l.T("notify.provider.telegram")
-	case store.ProviderDingTalk:
-		return l.T("notify.provider.dingtalk")
+	}
+	if core.UsesCode(provider) {
+		return l.T("notify.provider." + provider) // TestProviderKeysComplete 确认齐全
 	}
 	return provider
 }

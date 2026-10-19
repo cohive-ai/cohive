@@ -23,7 +23,7 @@ import (
 const (
 	ViaWeb       = "web"
 	ViaTelegram  = "telegram"
-	ViaDingTalk  = "dingtalk"
+	ViaDingTalk  = "dingtalk" // 用码绑定的通讯工具（见 UsesCode）的入口就是通讯工具名：dingtalk、slack……
 	ViaServerCLI = "server_cli"
 	ViaMemberCLI = "member_cli"
 	ViaAgent     = "agent" // 编程工具令牌：只会出现在被拒的管理请求里
@@ -32,7 +32,7 @@ const (
 )
 
 // ViaIDs 按显示顺序列出全部入口。
-var ViaIDs = []string{ViaWeb, ViaTelegram, ViaDingTalk, ViaServerCLI, ViaMemberCLI, ViaAgent, ViaSystem, ViaUnknown}
+var ViaIDs = append(append([]string{ViaWeb, ViaTelegram}, CodeProviders()...), ViaServerCLI, ViaMemberCLI, ViaAgent, ViaSystem, ViaUnknown)
 
 // ViaLabel 是入口按语言的名字；不认识的入口原样返回。
 func ViaLabel(l i18n.Lang, via string) string {
@@ -63,10 +63,10 @@ func WebActor(a store.Account) Actor { return Actor{Account: &a, Via: ViaWeb} }
 // BotActor 是在 Telegram 群里点审批按钮的人。
 func BotActor(a store.Account) Actor { return Actor{Account: &a, Via: ViaTelegram} }
 
-// ChatActor 是在某种通讯工具的群里操作（点审批按钮、绑定群）的人。
+// ChatActor 是在某种通讯工具的群里操作（点审批按钮、绑定群）的人；用码绑定的通讯工具入口就是通讯工具名。
 func ChatActor(a store.Account, provider string) Actor {
-	if provider == store.ProviderDingTalk {
-		return Actor{Account: &a, Via: ViaDingTalk}
+	if UsesCode(provider) {
+		return Actor{Account: &a, Via: provider}
 	}
 	return BotActor(a)
 }
@@ -107,8 +107,8 @@ const (
 	ActAccountUpdate       = "account.update"
 	ActTelegramUnlink      = "account.telegram_unlink"
 	ActTelegramLink        = "account.telegram_link"
-	ActDingTalkLink        = "account.dingtalk_link"
-	ActDingTalkUnlink      = "account.dingtalk_unlink"
+	ActDingTalkLink        = "account.dingtalk_link"   // 即 ActLinkOf(ProviderDingTalk)
+	ActDingTalkUnlink      = "account.dingtalk_unlink" // 即 ActUnlinkOf(ProviderDingTalk)
 	ActWorkspaceChatBind   = "workspace.chat_bind"
 	ActWorkspaceChatUnbind = "workspace.chat_unbind"
 	ActPasswordChange      = "account.password_change"
@@ -276,15 +276,6 @@ var actions = map[string]actionInfo{
 	ActTelegramLink: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
 		return l.T("audit.verb.account_telegram_link")
 	}},
-	ActDingTalkLink: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
-		return l.T("audit.verb.account_dingtalk_link", i18n.D{"Name": anyText(e.Detail["dingtalk_name"])})
-	}},
-	ActDingTalkUnlink: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
-		if b(e, "self") {
-			return l.T("audit.verb.account_dingtalk_unlink_self")
-		}
-		return l.T("audit.verb.account_dingtalk_unlink", i18n.D{"Target": e.TargetName})
-	}},
 	ActWorkspaceChatBind: {CatWorkspace, func(l i18n.Lang, e store.AdminEvent) string {
 		return l.T("audit.verb.workspace_chat_bind", i18n.D{"Target": e.TargetName, "Provider": providerLabel(l, str(e, "provider")), "Title": anyText(e.Detail["chat_title"])})
 	}},
@@ -354,7 +345,7 @@ var actions = map[string]actionInfo{
 	}},
 	ActAccessDenied: {CatDenied, func(l i18n.Lang, e store.AdminEvent) string {
 		key := "audit.verb.access_denied_api"
-		if e.Via == ViaTelegram || e.Via == ViaDingTalk {
+		if e.Via == ViaTelegram || UsesCode(e.Via) {
 			key = "audit.verb.access_denied_button"
 		}
 		return l.T(key, i18n.D{"Target": e.TargetName, "Reason": deniedReason(l, str(e, "reason"))})
@@ -385,13 +376,13 @@ const (
 	CredToken     = "token"      // 编程工具令牌
 	CredDevice    = "device"     // 设备密钥
 	CredTelegram  = "telegram"   // 群按钮
-	CredDingTalk  = "dingtalk"   // 钉钉群按钮
+	CredDingTalk  = "dingtalk"   // 钉钉群按钮；用码绑定的通讯工具的群按钮凭据就是通讯工具名
 )
 
 // ChatCredential 是在某种通讯工具的群里点按钮时用的凭据。
 func ChatCredential(provider string) string {
-	if provider == store.ProviderDingTalk {
-		return CredDingTalk
+	if UsesCode(provider) {
+		return provider
 	}
 	return CredTelegram
 }
@@ -409,8 +400,9 @@ func credentialName(l i18n.Lang, c string) string {
 		return l.T("audit.credential.device")
 	case CredTelegram:
 		return l.T("audit.credential.telegram")
-	case CredDingTalk:
-		return l.T("audit.credential.dingtalk")
+	}
+	if UsesCode(c) {
+		return l.T("audit.credential." + c) // TestProviderKeysComplete 确认齐全
 	}
 	return ""
 }
@@ -441,6 +433,22 @@ func (s *Service) RecordDenied(ctx context.Context, act Actor, d DeniedAttempt) 
 		}
 		return record(ctx, tx, act, ev)
 	})
+}
+
+// 用码绑定的通讯工具各有一对“连接、断开账号”的动作；文案键按通讯工具命名（audit.verb.account_<通讯工具>_link 等）。
+// 连接时附加信息里的 <通讯工具>_name 是平台上的昵称。
+func init() {
+	for _, p := range CodeProviders() {
+		actions[ActLinkOf(p)] = actionInfo{CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
+			return l.T("audit.verb.account_"+p+"_link", i18n.D{"Name": anyText(e.Detail[p+"_name"])})
+		}}
+		actions[ActUnlinkOf(p)] = actionInfo{CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
+			if b(e, "self") {
+				return l.T("audit.verb.account_" + p + "_unlink_self")
+			}
+			return l.T("audit.verb.account_"+p+"_unlink", i18n.D{"Target": e.TargetName})
+		}}
+	}
 }
 
 // Actions 按名字列出全部动作。
@@ -478,13 +486,15 @@ func CategoryActions(cat string) []string {
 // record 写一条管理操作记录。只接受事务；入口或动作不在取值表里时报错，让整个操作回滚。
 func record(ctx context.Context, tx pgx.Tx, act Actor, e store.AdminEvent) error {
 	switch act.Via {
-	case ViaWeb, ViaTelegram, ViaDingTalk, ViaServerCLI, ViaMemberCLI, ViaSystem:
+	case ViaWeb, ViaTelegram, ViaServerCLI, ViaMemberCLI, ViaSystem:
 	case ViaAgent:
 		if e.Action != ActAccessDenied {
 			return i18n.Errorf("audit.err.agent_forbidden", i18n.D{"Action": e.Action})
 		}
 	default:
-		return i18n.Errorf("audit.err.via_missing", i18n.D{"Via": strconv.Quote(act.Via)})
+		if !UsesCode(act.Via) {
+			return i18n.Errorf("audit.err.via_missing", i18n.D{"Via": strconv.Quote(act.Via)})
+		}
 	}
 	if _, ok := actions[e.Action]; !ok {
 		return i18n.Errorf("audit.err.action_unregistered", i18n.D{"Action": strconv.Quote(e.Action)})
@@ -530,8 +540,6 @@ func EventText(l i18n.Lang, e store.AdminEvent) string {
 		return l.T("audit.text.web", data)
 	case ViaTelegram:
 		return l.T("audit.text.telegram", data)
-	case ViaDingTalk:
-		return l.T("audit.text.dingtalk", data)
 	case ViaMemberCLI:
 		return l.T("audit.text.member_cli", data)
 	case ViaAgent:
@@ -544,6 +552,9 @@ func EventText(l i18n.Lang, e store.AdminEvent) string {
 	case ViaSystem:
 		return l.T("audit.text.system", data)
 	default:
+		if UsesCode(e.Via) {
+			return l.T("audit.text."+e.Via, data) // 在某种通讯工具的群里；TestProviderKeysComplete 确认齐全
+		}
 		if who == "" {
 			data["Who"] = l.T("audit.text.unknown_actor")
 		}
@@ -748,8 +759,9 @@ func providerLabel(l i18n.Lang, provider string) string {
 	switch provider {
 	case store.ProviderTelegram:
 		return l.T("audit.provider.telegram")
-	case store.ProviderDingTalk:
-		return l.T("audit.provider.dingtalk")
+	}
+	if UsesCode(provider) {
+		return l.T("audit.provider." + provider) // TestProviderKeysComplete 确认齐全
 	}
 	return provider
 }

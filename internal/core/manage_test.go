@@ -456,7 +456,7 @@ func TestUnlinkProvider(t *testing.T) {
 	p := newPeople(t)
 	svc := p.e.svc
 	var ie *core.InputError
-	if err := svc.Unlink(ctx, core.WebActor(p.ann), p.ann.ID, "slack"); !errors.As(err, &ie) {
+	if err := svc.Unlink(ctx, core.WebActor(p.ann), p.ann.ID, "wechat"); !errors.As(err, &ie) {
 		t.Fatalf("不支持的通讯工具：%v", err)
 	}
 	id := int64(4242)

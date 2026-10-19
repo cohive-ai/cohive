@@ -91,16 +91,19 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		}
 		items := make([]map[string]any, 0, len(list))
 		for _, a := range list {
-			dtLinked := false
+			// 用码绑定的通讯工具里已连接的（Telegram 另见 telegram_linked）
+			linked := []string{}
 			for _, c := range chats[a.ID] {
-				dtLinked = dtLinked || (c.Provider == store.ProviderDingTalk && c.UserID != "")
+				if core.UsesCode(c.Provider) && c.UserID != "" {
+					linked = append(linked, c.Provider)
+				}
 			}
 			wss := make([]map[string]string, 0, len(a.Memberships))
 			for _, m := range a.Memberships {
 				wss = append(wss, map[string]string{"name": m.Workspace, "role": m.Role, "status": m.Status})
 			}
 			items = append(items, map[string]any{"name": a.Name, "display_name": a.DisplayName, "server_admin": a.ServerAdmin,
-				"disabled": a.Disabled(), "telegram_linked": a.TelegramUserID != nil, "dingtalk_linked": dtLinked,
+				"disabled": a.Disabled(), "telegram_linked": a.TelegramUserID != nil, "chat_linked": linked,
 				"devices": a.Devices, "workspaces": wss})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})

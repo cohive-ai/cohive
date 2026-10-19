@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Trans, useTranslation } from "react-i18next";
 import { safeTrans } from "../i18n/safeTrans";
-import { api, ApiError, type LinkStatus, type Me } from "../api";
+import { api, ApiError, type CodeProvider, type LinkStatus, type Me } from "../api";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg } from "../ui";
 import { shouldRetryPoll } from "../rules";
 
@@ -41,7 +41,7 @@ export function usePollStatus(
           if (!(err instanceof ApiError && err.status === 401)) setError(t("dingtalk.pollFailed", { message: errMsg(err) }));
           return;
         }
-        setError(t("dingtalk.pollRetry", { message: errMsg(err) }));
+        setError(t("dingtalk.pollRetry", { message: errMsg(err) })); // 两种通讯工具的这两句文案相同
       }
       timer = setTimeout(tick, POLL_MS);
     };
@@ -56,11 +56,12 @@ export function usePollStatus(
 
 const linkStatus = (id: number) => api.linkStatus(id);
 
-// DingTalkLink 是个人中心里的“连接钉钉”：网页给出绑定码，私聊发给机器人，再回网页确认才生效。
-export function DingTalkLink({ me }: { me: Me }) {
+// CodeLink 是个人中心里的“连接钉钉 / 连接 Slack”（用码绑定的通讯工具）：网页给出绑定码，私聊发给机器人，再回网页确认才生效。
+// 文案在 me 语言包里按通讯工具分组（dingtalk.*、slack.*），两组的键相同。
+export function CodeLink({ me, provider: p }: { me: Me; provider: CodeProvider }) {
   const { t } = useTranslation("me");
   const qc = useQueryClient();
-  const linked = me.chat?.find((c) => c.provider === "dingtalk" && c.linked);
+  const linked = me.chat?.find((c) => c.provider === p && c.linked);
   const [attempt, setAttempt] = useState<{ id: number; code: string; startedAt: number } | null>(null);
   const { state, setState, error: pollError } = usePollStatus(attempt, linkStatus, ["pending", "awaiting_confirm"]);
   const [error, setError] = useState("");
@@ -71,14 +72,14 @@ export function DingTalkLink({ me }: { me: Me }) {
     setBusy(true);
     setError("");
     try {
-      const res = await api.startDingTalkLink();
+      const res = await api.startCodeLink(p);
       setAttempt({ id: res.id, code: res.code, startedAt: Date.now() });
       setState({ status: "pending" });
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 503
-          ? t("dingtalk.notEnabled")
-          : t("dingtalk.startFailed", { message: errMsg(err) }),
+          ? t(`${p}.notEnabled`)
+          : t(`${p}.startFailed`, { message: errMsg(err) }),
       );
     } finally {
       setBusy(false);
@@ -90,10 +91,10 @@ export function DingTalkLink({ me }: { me: Me }) {
     setError("");
     try {
       await api.confirmLink(attempt.id, accept);
-      setState({ status: accept ? "linked" : "failed", detail: accept ? "" : t("dingtalk.cancelled") });
+      setState({ status: accept ? "linked" : "failed", detail: accept ? "" : t(`${p}.cancelled`) });
       if (accept) await qc.invalidateQueries({ queryKey: ["me"] });
     } catch (err) {
-      setError(t("dingtalk.confirmFailed", { message: errMsg(err) }));
+      setError(t(`${p}.confirmFailed`, { message: errMsg(err) }));
     } finally {
       setBusy(false);
     }
@@ -102,30 +103,30 @@ export function DingTalkLink({ me }: { me: Me }) {
   return (
     <div className="border-t border-line pt-3 text-sm first:border-t-0 first:pt-0">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="font-medium">{t("dingtalk.name")}</span>
+        <span className="font-medium">{t(`${p}.name`)}</span>
         {linked ? (
           <span className="rounded bg-teal-soft px-1.5 py-px text-xs text-teal">
-            {linked.display_name ? t("dingtalk.connectedAs", { name: linked.display_name }) : t("dingtalk.connected")}
+            {linked.display_name ? t(`${p}.connectedAs`, { name: linked.display_name }) : t(`${p}.connected`)}
           </span>
         ) : (
-          <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">{t("dingtalk.notConnected")}</span>
+          <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">{t(`${p}.notConnected`)}</span>
         )}
         <span className="ml-auto">
           {linked ? (
             <ConfirmButton
-              label={t("dingtalk.unlink")}
-              title={t("dingtalk.unlinkTitle")}
-              message={t("dingtalk.unlinkMessage")}
-              confirmLabel={t("dingtalk.unlinkConfirm")}
+              label={t(`${p}.unlink`)}
+              title={t(`${p}.unlinkTitle`)}
+              message={t(`${p}.unlinkMessage`)}
+              confirmLabel={t(`${p}.unlinkConfirm`)}
               action={async () => {
-                await api.unlink("dingtalk");
+                await api.unlink(p);
                 setAttempt(null);
                 await qc.invalidateQueries({ queryKey: ["me"] });
               }}
             />
           ) : (
             <button type="button" onClick={start} disabled={busy || status === "pending"} className={btn.primary}>
-              {status === "pending" ? t("dingtalk.waiting") : t("dingtalk.connect")}
+              {status === "pending" ? t(`${p}.waiting`) : t(`${p}.connect`)}
             </button>
           )}
         </span>
@@ -134,10 +135,10 @@ export function DingTalkLink({ me }: { me: Me }) {
       {attempt && status === "pending" && !linked && (
         <div className="mt-3 space-y-2 rounded border border-line bg-bg px-3 py-2">
           <p>
-            <Trans t={t} i18nKey="dingtalk.instructions" components={{ b: <span className="font-medium" />, s: <strong /> }} />
+            <Trans t={t} i18nKey={`${p}.instructions`} components={{ b: <span className="font-medium" />, s: <strong /> }} />
           </p>
-          <CopyField value={attempt.code} label={t("dingtalk.codeLabel")} />
-          <p className="text-muted">{t("dingtalk.codeWarn")}</p>
+          <CopyField value={attempt.code} label={t(`${p}.codeLabel`)} />
+          <p className="text-muted">{t(`${p}.codeWarn`)}</p>
         </div>
       )}
       {status === "awaiting_confirm" && (
@@ -145,27 +146,27 @@ export function DingTalkLink({ me }: { me: Me }) {
           <p>
             <Trans {...safeTrans}
               t={t}
-              i18nKey="dingtalk.confirmPrompt"
-              values={{ name: state?.candidate_name || t("dingtalk.noNickname") }}
+              i18nKey={`${p}.confirmPrompt`}
+              values={{ name: state?.candidate_name || t(`${p}.noNickname`) }}
               components={{ b: <span className="font-medium" /> }}
             />
           </p>
           <div className="flex gap-2">
             <button type="button" className={btn.primary} disabled={busy} onClick={() => confirm(true)}>
-              {t("dingtalk.confirmYes")}
+              {t(`${p}.confirmYes`)}
             </button>
             <button type="button" className={btn.secondary} disabled={busy} onClick={() => confirm(false)}>
-              {t("dingtalk.confirmNo")}
+              {t(`${p}.confirmNo`)}
             </button>
           </div>
         </div>
       )}
-      {status === "linked" && <p className="mt-3 text-teal">{t("dingtalk.linked", { detail: state?.detail ?? "" })}</p>}
+      {status === "linked" && <p className="mt-3 text-teal">{t(`${p}.linked`, { detail: state?.detail ?? "" })}</p>}
       {(status === "failed" || status === "expired") && (
         <p className="mt-3 text-danger">
           {status === "failed"
-            ? t("dingtalk.failed", { detail: state?.detail ?? "" })
-            : t("dingtalk.expired", { detail: state?.detail ?? "" })}
+            ? t(`${p}.failed`, { detail: state?.detail ?? "" })
+            : t(`${p}.expired`, { detail: state?.detail ?? "" })}
         </p>
       )}
       <ErrorText>{error || pollError}</ErrorText>
@@ -173,14 +174,16 @@ export function DingTalkLink({ me }: { me: Me }) {
   );
 }
 
-// DingTalkBind 是工作空间设置里的“绑定钉钉群”：生成群绑定码，在群里 @机器人 发出后完成。
-export function DingTalkBind({
+// CodeBind 是工作空间设置里的“绑定钉钉群 / Slack 频道”：生成群绑定码，在群里 @机器人 发出后完成。
+export function CodeBind({
   ws,
   chat,
+  provider: p,
   onChange,
 }: {
   ws: string;
   chat?: { provider: string; chat_id: string; title?: string } | null;
+  provider: CodeProvider;
   onChange: () => void;
 }) {
   const { t } = useTranslation("me");
@@ -190,9 +193,9 @@ export function DingTalkBind({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const status = attempt ? (state?.status ?? "pending") : "";
-  const bound = chat?.provider === "dingtalk" ? chat : null;
+  const bound = chat?.provider === p ? chat : null;
   // 机器人同时认中文“绑定群”与英文 bindgroup，按界面语言显示
-  const sendText = attempt ? `${t("dingtalk.group.command")} ${attempt.code}` : "";
+  const sendText = attempt ? `${t(`${p}.group.command`)} ${attempt.code}` : "";
 
   useEffect(() => {
     if (status === "bound") onChange();
@@ -202,10 +205,10 @@ export function DingTalkBind({
     setBusy(true);
     setError("");
     try {
-      const res = await api.startChatBind(ws, "dingtalk");
+      const res = await api.startChatBind(ws, p);
       setAttempt({ id: res.id, code: res.code, startedAt: Date.now() });
     } catch (err) {
-      setError(t("dingtalk.group.startFailed", { message: errMsg(err) }));
+      setError(t(`${p}.group.startFailed`, { message: errMsg(err) }));
     } finally {
       setBusy(false);
     }
@@ -214,44 +217,44 @@ export function DingTalkBind({
   return (
     <div className="space-y-2 text-sm">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="font-medium">{t("dingtalk.group.name")}</span>
+        <span className="font-medium">{t(`${p}.group.name`)}</span>
         {bound ? (
-          <span className="rounded bg-teal-soft px-1.5 py-px text-xs text-teal">{bound.title ? t("dingtalk.group.boundTitle", { title: bound.title }) : t("dingtalk.group.bound")}</span>
+          <span className="rounded bg-teal-soft px-1.5 py-px text-xs text-teal">{bound.title ? t(`${p}.group.boundTitle`, { title: bound.title }) : t(`${p}.group.bound`)}</span>
         ) : (
-          <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">{t("dingtalk.group.notBound")}</span>
+          <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">{t(`${p}.group.notBound`)}</span>
         )}
         <span className="ml-auto">
           {bound ? (
             <ConfirmButton
-              label={t("dingtalk.group.unbind")}
-              title={t("dingtalk.group.unbindTitle")}
-              message={t("dingtalk.group.unbindMessage")}
-              confirmLabel={t("dingtalk.group.unbindConfirm")}
+              label={t(`${p}.group.unbind`)}
+              title={t(`${p}.group.unbindTitle`)}
+              message={t(`${p}.group.unbindMessage`)}
+              confirmLabel={t(`${p}.group.unbindConfirm`)}
               action={async () => {
-                await api.unbindChat(ws, "dingtalk");
+                await api.unbindChat(ws, p);
                 setAttempt(null);
                 onChange();
               }}
             />
           ) : (
             <button type="button" className={btn.secondary} disabled={busy || chat != null} onClick={start}>
-              {t("dingtalk.group.generate")}
+              {t(`${p}.group.generate`)}
             </button>
           )}
         </span>
       </div>
-      {chat != null && !bound && <p className="text-muted">{t("dingtalk.group.otherBound")}</p>}
+      {chat != null && !bound && <p className="text-muted">{t(`${p}.group.otherBound`)}</p>}
       {attempt && status === "pending" && !bound && (
         <div className="space-y-2 rounded border border-line bg-bg px-3 py-2">
           <p>
-            <Trans t={t} i18nKey="dingtalk.group.instructions" components={{ b: <strong /> }} />
+            <Trans t={t} i18nKey={`${p}.group.instructions`} components={{ b: <strong /> }} />
           </p>
-          <CopyField value={sendText} label={t("dingtalk.group.sendLabel")} />
-          <p className="text-muted">{t("dingtalk.group.expiry")}</p>
+          <CopyField value={sendText} label={t(`${p}.group.sendLabel`)} />
+          <p className="text-muted">{t(`${p}.group.expiry`)}</p>
         </div>
       )}
-      {status === "failed" && <p className="text-danger">{t("dingtalk.group.failed", { detail: state?.detail ?? "" })}</p>}
-      {status === "expired" && <p className="text-danger">{t("dingtalk.group.expired")}</p>}
+      {status === "failed" && <p className="text-danger">{t(`${p}.group.failed`, { detail: state?.detail ?? "" })}</p>}
+      {status === "expired" && <p className="text-danger">{t(`${p}.group.expired`)}</p>}
       <ErrorText>{error || pollError}</ErrorText>
     </div>
   );

@@ -3,14 +3,14 @@ import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trans, useTranslation } from "react-i18next";
 import { safeTrans } from "../i18n/safeTrans";
-import { api, ApiError, type Me } from "../api";
+import { api, ApiError, codeProviders, type Me } from "../api";
 import { DeviceTokens, Notice } from "../components";
 import { absoluteTime, roleLabel, workspaceLabel } from "../format";
 import i18n, { followBrowserLanguage, languages, setLanguage } from "../i18n";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
 import { initCommands, installCommands, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
-import { DingTalkLink } from "./DingTalk";
+import { CodeLink } from "./ChatCode";
 
 export function MePage() {
   const { t } = useTranslation(["me", "auth"]);
@@ -397,15 +397,17 @@ function Telegram({ me }: { me: Me }) {
 function ChatTools({ me }: { me: Me }) {
   const { t } = useTranslation("me");
   const providers = me.channels?.map((c) => c.provider);
-  const dtLinked = !!me.chat?.some((c) => c.provider === "dingtalk");
-  const showDT = !!providers?.includes("dingtalk") || dtLinked;
+  // 用码绑定的通讯工具：服务器启用了，或本人已连接（停用后仍可解除）
+  const shown = codeProviders.filter((p) => !!providers?.includes(p) || !!me.chat?.some((c) => c.provider === p));
   // 旧版服务端不返回 channels；都没启用时照旧显示 Telegram（点了会提示没有启用）
-  const showTG = !providers || providers.includes("telegram") || !!me.account.telegram?.linked || !showDT;
+  const showTG = !providers || providers.includes("telegram") || !!me.account.telegram?.linked || shown.length === 0;
   return (
     <Section title={t("chat.title")} description={t("chat.description")}>
       <div className="space-y-3">
         {showTG && <Telegram me={me} />}
-        {showDT && <DingTalkLink me={me} />}
+        {shown.map((p) => (
+          <CodeLink key={p} me={me} provider={p} />
+        ))}
       </div>
     </Section>
   );

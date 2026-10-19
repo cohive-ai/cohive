@@ -119,6 +119,10 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	if err != nil {
 		return logErr(err)
 	}
+	sl, err := slackFromEnv()
+	if err != nil {
+		return logErr(err)
+	}
 	hub := &notify.Hub{Core: svc, Channels: map[string]notify.Channel{}}
 	senders := map[string]notify.Sender{}
 	var infos []func() httpapi.ChannelInfo
@@ -144,6 +148,16 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		})
 		fmt.Fprintf(out, "  Group notifications: DingTalk enabled (client ID ending ...%s), Stream connecting; one DingTalk app can serve only one Cohive server\n", tail(dt.API.ClientID, 4))
 	}
+	if sl != nil {
+		sl.Core, sl.Hub = svc, hub
+		hub.Channels[store.ProviderSlack], senders[store.ProviderSlack] = sl, sl
+		go sl.Run(ctx)
+		infos = append(infos, func() httpapi.ChannelInfo {
+			online, detail := sl.Status()
+			return httpapi.ChannelInfo{Provider: store.ProviderSlack, Online: online, Detail: detail}
+		})
+		fmt.Fprintln(out, "  Group notifications: Slack enabled, Socket Mode connecting; one Slack app can serve only one Cohive server")
+	}
 	if len(hub.Channels) > 0 {
 		d := &notify.Dispatcher{Pool: pool, Senders: senders, Reminders: svc.QueueReminders,
 			BaseURL: func(ctx context.Context) string { ext, _ := svc.ExternalURL(ctx); return ext.URL }}
@@ -157,7 +171,7 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 			return out
 		}
 	} else {
-		fmt.Fprintln(out, "  Group notifications: COHIVE_TELEGRAM_BOT_TOKEN or DingTalk app credentials not set, not sending (pending records are kept)")
+		fmt.Fprintln(out, "  Group notifications: no Telegram bot token, DingTalk app credentials or Slack tokens set, not sending (pending records are kept)")
 		// 没有群也照样催办：会话内提醒照发，群催办写进待发记录，设置机器人后补发
 		go func() {
 			t := time.NewTicker(notify.RemindEvery)

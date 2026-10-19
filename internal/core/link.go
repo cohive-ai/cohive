@@ -27,14 +27,14 @@ var ErrLinkGone = i18n.Errorf("core.err.link_gone")
 func (s *Service) StartLink(ctx context.Context, accountID int64, provider string) (store.LinkRequest, error) {
 	var nonce string
 	var err error
-	switch provider {
-	case ProviderTelegram:
+	switch {
+	case provider == ProviderTelegram:
 		nonce, err = randomString(18)
 		nonce = LinkStartPrefix + nonce
-	case ProviderDingTalk: // 发给机器人的绑定码，人要照着输入
+	case UsesCode(provider): // 发给机器人的绑定码，人要照着输入
 		nonce, err = newCode()
 	default:
-		return store.LinkRequest{}, inputErr("core.err.link_provider_unsupported")
+		return store.LinkRequest{}, inputErr("core.err.provider_unsupported", i18n.D{"Name": strconv.Quote(provider)})
 	}
 	if err != nil {
 		return store.LinkRequest{}, err
@@ -123,13 +123,15 @@ func (s *Service) UnlinkTelegram(ctx context.Context, act Actor, accountID int64
 	return s.Unlink(ctx, act, accountID, ProviderTelegram)
 }
 
-// unlinkActions 是各通讯工具“断开连接”的管理操作。
-var unlinkActions = map[string]string{ProviderTelegram: ActTelegramUnlink, ProviderDingTalk: ActDingTalkUnlink}
-
 // Unlink 断开账号在某种通讯工具上的连接：本人或服务器管理员可操作；没有连接时什么也不做。
 func (s *Service) Unlink(ctx context.Context, act Actor, accountID int64, provider string) error {
-	action, ok := unlinkActions[provider]
-	if !ok {
+	var action string
+	switch {
+	case provider == ProviderTelegram:
+		action = ActTelegramUnlink
+	case UsesCode(provider):
+		action = ActUnlinkOf(provider)
+	default:
 		return inputErr("core.err.provider_unsupported", i18n.D{"Name": strconv.Quote(provider)})
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {

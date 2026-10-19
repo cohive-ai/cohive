@@ -15,6 +15,7 @@
   "api.authn.unavailable": "服务暂不可用",
   "api.device_not_found": "设备不存在",
   "api.dingtalk_disabled": "协作服务没有启用钉钉",
+  "api.slack_disabled": "协作服务没有启用 Slack",
   "api.id_invalid": "编号不合法",
   "api.internal": "内部错误，请稍后重试",
   "api.invalid_request": "请求格式不对",
