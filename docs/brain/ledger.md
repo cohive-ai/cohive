@@ -20,13 +20,19 @@
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
 | IM-2 调研飞书、Slack、Discord 接入 | 会话自建（从最新 main，只提交报告） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a` | — | 已派 | 在旧飞书调研基础上补全；逐平台核对应用形态、长连接或回调、@ 与消息更新、审批按钮回调与身份、群绑定与账号连接、私聊、限流、网络地区、SDK；不注册不建应用；报告 `docs/research/2026-10-19-im-feishu-slack-discord.md` 含顺序建议与待 lee 决定项 |
-| TOOLS 调研 opencode 与 DeepSeek 编程工具适配 | 会话自建（从最新 main，只提交报告） | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08` | — | 已派 | 先查清“DeepSeek harness”指什么；逐项核对 MCP、工具确认、斜杠命令或技能、钩子、指令文件、各形态差别、许可证与网络；能装的实测（自建实例，不连测试服、不用真实令牌、不注册不填密钥）；报告 `docs/research/2026-10-19-coding-tools-opencode-deepseek.md` 含适配方案与待 lee 决定项 |
+| TOOLS 编程工具适配 | 报告已合入 main `c27c34d` | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08`（保留，待做实现） | `4d5a6e6` | 待用户（TOOLS-1 至 TOOLS-6） | 报告 `docs/research/2026-10-19-coding-tools-opencode-deepseek.md` |
 | BRAND-1 落地页与标志入库 | 会话自建（从最新 main） | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | — | 已派 | 接手 Open Design 交接（以第二版黑金为准）：标志进 docs/brand/，落地页进 site/，字体自托管附 OFL，README 顶部换深浅自适应标志，内容与 README 核对，贡献者区接口失败降级；不部署、不配域名；交回 `docs/brain/inbox/BRAND-1.md` 含部署选项 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
+| TOOLS-1 | “DeepSeek harness”指什么 | A 官方 DeepSeek Harness（dsh）；B 用 DeepSeek 模型驱动 Claude Code 或 opencode；C 社区工具 | A | TOOLS-3 |
+| TOOLS-2 | opencode 做不做 | A 现在做第三种工具；B 等有人用再做 | A（四项能力实测齐全，现有技能文件可直接读） | 实现 |
+| TOOLS-3 | DeepSeek Harness 怎么处理 | A 暂缓，只写手工接入说明；B 实验性 --tools dsh 写家目录；C 原生插件正式支持 | A（配置只在用户级、钩子靠实验插件、开发者预览） | 同上 |
+| TOOLS-4 | opencode 提醒插件放哪 | A 随仓库 .opencode/plugins；B 每人家目录 | A | 同上 |
+| TOOLS-5 | 每台设备最多 4 种工具的上限是否放宽 | 放到 8 / 不变 | 放宽到 8，随 opencode 一起做 | 同上 |
+| TOOLS-6 | dsh 会话日志默认上传 DeepSeek，说明里怎么写 | 写明默认行为并建议关闭 / 不提 | 写明并建议关闭 | 同上 |
 | I18N-GH | 私密漏洞报告仍未开启（lee 亲手点：仓库设置 → 左侧“安全与质量”分组 → 高级安全 → 私密漏洞报告一栏的启用按钮） | 做 | 做 | 安全报告入口可用 |
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
