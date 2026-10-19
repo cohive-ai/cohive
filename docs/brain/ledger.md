@@ -19,7 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| UI-1 第三版品牌与产品配色 | `feature/ui-brand-colors` | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | `c634041` | 实施中（lee 定正文色用设计稿 #0B0B0C；看板卡片上标签调小、恢复间距，出三版对比截图） | 换标志与图标；强调色品牌金（浅色加深、对比度达 AA）；深色黑金；浅色微调；状态色语义不变且与金区分；顺带品牌页色名改英文普通名、加两份 SVG 一致性测试；浅深两主题各三屏截图；交回 `docs/brain/inbox/UI-1.md` |
+| UI-1 第三版品牌与产品配色 | `feature/ui-brand-colors` | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | `47ac678` | 待用户（卡片已收紧：标签约 10.5px、高 19→15px 留出缝隙；三版对比图已发 lee，等确认后验收合入） | 换标志与图标；强调色品牌金（浅色加深、对比度达 AA）；深色黑金；浅色微调；状态色语义不变且与金区分；顺带品牌页色名改英文普通名、加两份 SVG 一致性测试；浅深两主题各三屏截图；交回 `docs/brain/inbox/UI-1.md` |
 | IM2-1 Slack 接入 | 已合入 main `129bce2`（已验收 = `0ef06c8`） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，处理实测反馈，之后做飞书与 Lark） | `0ef06c8` | 待用户（lee 建免费 Slack 工作区、按 deploy/slack-app-manifest.yaml 建应用，两个令牌亲手写进 pm-dev1 的 deploy/.env 后跑 upgrade.sh，再绑频道、连账号，按 docs/guides/slack.md 第 7 节验收） | 真环境确认：Socket 确认时限、只在消息块里的 @ 是否提醒、免费版改旧消息 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
