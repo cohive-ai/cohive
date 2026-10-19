@@ -19,7 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| UI-1 产品配色对齐品牌 | 会话自建（从最新 main） | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | — | 已派 | 换标志与图标；强调色品牌金（浅色加深、对比度达 AA）；深色黑金；浅色微调；状态色语义不变且与金区分；顺带品牌页色名改英文普通名、加两份 SVG 一致性测试；浅深两主题各三屏截图；交回 `docs/brain/inbox/UI-1.md` |
+| UI-1 产品配色对齐品牌 | `feature/ui-brand-colors` | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | `4b56d60` | 待用户（验收已过，等 lee 看截图定浅色主按钮：亮金底深色字或加深金底白字） | 换标志与图标；强调色品牌金（浅色加深、对比度达 AA）；深色黑金；浅色微调；状态色语义不变且与金区分；顺带品牌页色名改英文普通名、加两份 SVG 一致性测试；浅深两主题各三屏截图；交回 `docs/brain/inbox/UI-1.md` |
 | IM-2 飞书、Slack、Discord 接入 | 报告已合入 main | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，待做实现） | `18d152e` | 待用户（IM2-D1 至 D8） | 报告 `docs/research/2026-10-19-im-feishu-slack-discord.md` 第 6 节 |
 | TOOLS 编程工具适配 | 报告已合入 main `c27c34d` | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08`（保留，待做实现） | `4d5a6e6` | 待用户（TOOLS-1 至 TOOLS-6） | 报告 `docs/research/2026-10-19-coding-tools-opencode-deepseek.md` |
 
