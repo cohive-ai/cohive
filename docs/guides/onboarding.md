@@ -73,7 +73,7 @@ Windows 在 PowerShell 里执行 `$env:COHIVE_LOGIN=1; irm https://cohive.exampl
 - 仓库里已有 `cohive init` 生成的配置时，服务地址和要登录的工具从配置读取（在子目录里执行也行）。第一次登录某个地址时，终端会先显示地址请你按回车确认。
 - 设备密钥与令牌保存在 `~/.config/cohive/credentials.json`，只有你本人可读；`cohive status` 查看（不显示密钥与令牌）。
 
-**3. 在项目目录执行 `cohive init`，并在第一次打开项目时信任钩子**（`cohive init` 团队里有人做过并提交了配置就不用再做），之后在 Claude Code 里用 `/cohive`、在 Codex 里用 `$cohive`。你在多个工作空间时要指定这个项目属于哪一个：
+**3. 在项目目录执行 `cohive init`，并在第一次打开项目时信任钩子**（`cohive init` 团队里有人做过并提交了配置就不用再做），之后在 Claude Code、OpenCode 里用 `/cohive`、在 Codex 里用 `$cohive`。你在多个工作空间时要指定这个项目属于哪一个：
 
 ```bash
 cohive init --workspace pay
@@ -83,19 +83,20 @@ cohive init --workspace pay
 
 - **Claude Code**：在这个文件夹第一次打开时选“信任此文件夹”（与启用 MCP 服务是同一步）。
 - **Codex**：在项目目录执行一次命令行版 `codex`，同意信任项目；启动时提示“Hooks need review”，选“Trust all and continue”，信任 cohive 的两条钩子（`SessionStart`、`UserPromptSubmit`）。**只用桌面版的人也要先这样做一次**：桌面版里没有信任钩子的入口，命令行版信任之后桌面版随之生效。**每台电脑、每个克隆目录各要信任一次**；换了服务地址或工作空间（重新执行 `cohive init` 改了这两项）要重新信任，只是重复执行 `cohive init` 不用。
+- **OpenCode**：不用信任。`cohive init` 写的 `.opencode/plugins/cohive.ts` 插件在 OpenCode 启动时自动加载。第一次启动时 OpenCode 会在 `.opencode/` 下用 npm 安装插件依赖（要能访问 npm，内网请配好 npm 镜像），并自己写一个 `.gitignore` 忽略这些依赖。
 
 ## 会话内提醒
 
-两家的命令行版与桌面版都支持（Claude Code 与 Codex 的命令行版、桌面版均已验证；不同版本的信任入口可能略有出入）：Claude Code 需信任文件夹；Codex 需在项目目录执行一次命令行版 `codex` 选全部信任。
+两家的命令行版与桌面版都支持（Claude Code 与 Codex 的命令行版、桌面版均已验证；不同版本的信任入口可能略有出入）：Claude Code 需信任文件夹；Codex 需在项目目录执行一次命令行版 `codex` 选全部信任。OpenCode 由 `cohive init` 写的插件实现，终端版已验证；桌面版、经 ACP 接入的编辑器里，界面上那一行提示能否显示还没验证，智能体在回复末尾的提醒不受影响。
 
 有与你有关的新动态时（单子交给你、被退回、请你验证、被重开、需要人介入、你发的单被接单、你修的单被关闭），**在你发出下一句话时，由智能体在这一轮最终答复的末尾（正文之后另起一行）告诉你**，例如“Cohive 提醒：#12 tester-a 交给你处理，可用 /cohive 12 查看”；新开会话时，第一次回复的末尾会告诉你还有几张待处理的单。放在末尾是因为回复常常很长，放开头容易被略过。提醒只有单号、动作、谁，不含标题与正文，要看内容用 `/cohive 12`（Codex 为 `$cohive 12`）。同一条在一个会话里只说一次。
 
 - **编程工具空闲、或者会话还没开始时不会提醒**：它只在你发消息时才有机会插话。这时靠 Telegram 群里的 @。
-- Claude Code 还会在界面上单独显示一行“Cohive 提醒”；Codex 桌面版不显示这一行，只靠智能体在回复里说。
+- Claude Code 还会在界面上单独显示一行“Cohive 提醒”，OpenCode 终端版在右上角弹出这一行；Codex 桌面版不显示这一行，只靠智能体在回复里说。
 - 协作服务连不上、慢、令牌失效时不提醒，也不会拖慢或拦住你的消息（最多等 2 秒；同一会话 20 秒内只查一次）。
 - 自己做的操作不提醒自己；同一会话里同一条只提醒一次，开着的几个会话各提醒一次。
 - 没有提醒时，执行 `cohive init` 结尾打印的那条 `cohive hook --check …` 命令排查。
-- 不想要：`cohive init --no-hooks`（只移除 cohive 的钩子，你自己的钩子不动）。
+- 不想要：`cohive init --no-hooks`（只移除 cohive 的钩子与 OpenCode 插件，你自己的钩子、插件不动）。
 - 团队里有人的 `cohive` 还是旧版本时，钩子会报“未知命令”，不影响使用；升级 `cohive` 即可。
 - Codex 在 git 工作树里读的是主检出目录的钩子配置：`cohive init` 生成的文件要提交。
 
@@ -143,12 +144,15 @@ cohive init --workspace pay
 |---|---|
 | Claude Code | `.mcp.json`（`cohive` 条目）、`.claude/settings.json`（确认规则；`hooks` 里会话开始、提交提示词各一组 `cohive hook …`）、`.claude/skills/cohive/SKILL.md` |
 | Codex | `.codex/config.toml`（`# >>> cohive` 与 `# <<< cohive` 之间的一段，含两条钩子）、`.agents/skills/cohive/SKILL.md` |
+| OpenCode | `opencode.json`（`mcp` 里的 `cohive` 条目；`permission` 里每个 cohive 工具一条规则，放在最后）、`.opencode/plugins/cohive.ts`（会话内提醒插件）、`.agents/skills/cohive/SKILL.md`（与 Codex 共用） |
 
 - 只改动自己管理的部分，原有配置保留；重复执行结果相同。
 - 这些文件**不含令牌**：编程工具通过本机命令 `cohive mcp-proxy --server … --workspace … --tool …` 连接协作服务，令牌由它从本机凭据文件读取。可以放心提交进仓库，团队共用。
-- 第一次在编程工具里打开项目时，会询问是否信任项目、是否启用 `cohive` 这个 MCP 服务，都选同意；Codex 还要在项目目录执行一次命令行版 `codex` 信任 cohive 的两条钩子（见上文第 3 步）。
+- 第一次在编程工具里打开项目时，会询问是否信任项目、是否启用 `cohive` 这个 MCP 服务，都选同意；Codex 还要在项目目录执行一次命令行版 `codex` 信任 cohive 的两条钩子（见上文第 3 步）。OpenCode 不询问。
+- OpenCode 的确认框有“仅本次 / 总是允许 / 拒绝”三个选项，“总是允许”只到 OpenCode 退出为止。仓库里只有带注释的 `opencode.jsonc` 时，`cohive init` 不改它，请把设置挪到 `opencode.json`，或参照 [examples/opencode](../../examples/opencode) 手工配置。
+- 三家的“全自动”模式（Claude Code 的 auto 模式、Codex 的“完全访问”、OpenCode 的 `--auto`）都会跳过确认，这是编程工具自身的设计。
 - `.claude/settings.json` 里的 `enabledMcpjsonServers` 会随仓库共享，审查合并请求时留意 `.mcp.json` 与它的改动。
-- `.mcp.json` 和 `.codex/config.toml` 里有协作服务地址与工作空间名，公开仓库要注意。
+- `.mcp.json`、`.codex/config.toml`、`opencode.json` 里有协作服务地址与工作空间名，公开仓库要注意。
 
 ## 备用方式
 

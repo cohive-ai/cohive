@@ -125,7 +125,7 @@ func TestInitEnglish(t *testing.T) {
 		"Claude Code: .mcp.json, .claude/settings.json", "These files contain no tokens", "In-session reminders:",
 		`choose "Trust this folder"`, "Hooks need review", "Trust all and continue", "(SessionStart, UserPromptSubmit)",
 		"once per computer and per clone directory", "If no reminder shows up, run cohive hook --check",
-		"Next:", "Use /cohive in Claude Code or $cohive in Codex"} {
+		"Next:", "Use /cohive in Claude Code and OpenCode, or $cohive in Codex"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("输出应包含 %q：\n%s", want, out)
 		}
@@ -145,7 +145,7 @@ func TestInitErrorsEnglish(t *testing.T) {
 		t.Fatalf("没有登录：%v", err)
 	}
 	saveLogins(t, "codex")
-	if _, err := run(t, "init", "--dir", t.TempDir(), "--tools", "vim"); err == nil || err.Error() != `--tools only supports claude-code and codex, got "vim"` {
+	if _, err := run(t, "init", "--dir", t.TempDir(), "--tools", "vim"); err == nil || err.Error() != `--tools only supports claude-code, codex, opencode, got "vim"` {
 		t.Fatalf("--tools：%v", err)
 	}
 	proj := t.TempDir()

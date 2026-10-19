@@ -102,7 +102,7 @@
   "server.flag.remove_username": "Username of the member to remove",
   "server.flag.handover_to": "Successor's username: open issues and services are handed over to them",
   "server.flag.as_admin": "Username of a workspace admin to record as the actor",
-  "server.flag.tool": "Tool name, for example claude-code or codex",
+  "server.flag.tool": "Tool name, for example claude-code, codex or opencode",
   "server.flag.token_id": "Token ID",
   "server.flag.service_name": "Service name",
   "server.flag.owner_username": "Owner's username",

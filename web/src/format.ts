@@ -60,8 +60,14 @@ export function severityLabel(severity: string): string {
   return key ? i18n.t(key) : severity;
 }
 
-export const toolLabel = (tool: string) =>
-  tool === "claude-code" ? "Claude Code" : tool === "codex" ? "Codex" : tool === "web" ? i18n.t("tool.web") : tool;
+// 工具名来自服务端（任意小写名字），用 Map 查，避免 "constructor" 这类名字取到对象原型上的属性
+const toolNames = new Map([
+  ["claude-code", "Claude Code"],
+  ["codex", "Codex"],
+  ["opencode", "OpenCode"],
+]);
+
+export const toolLabel = (tool: string) => toolNames.get(tool) ?? (tool === "web" ? i18n.t("tool.web") : tool);
 
 // 列表的连接符（中文顿号，英文逗号加空格）
 export const listSeparator = () => i18n.t("list.separator");

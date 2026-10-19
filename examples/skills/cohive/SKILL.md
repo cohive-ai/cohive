@@ -1,1 +1,1 @@
-../../../internal/skill/SKILL.md
+../../../internal/skill/en/SKILL.md

@@ -83,7 +83,7 @@
   "core.err.no_device": "This token does not belong to any device. Run cohive login to pair this computer again.",
   "core.err.join_pending": "You have already requested to join. Waiting for an admin to approve.",
   "core.err.tool_name_invalid": "Invalid coding tool name {{.Name}}, for example claude-code or codex",
-  "core.err.tool_count_invalid": "Provide 1 to 4 coding tools",
+  "core.err.tool_count_invalid": "Provide 1 to 8 coding tools",
   "core.err.username_invalid": "Invalid username {{.Name}}: use lowercase letters, digits, underscores and hyphens, 1 to 32 characters",
   "core.decider.server_admin": "Server admin",
   "core.err.invite_team_not_admin": "A team invite cannot grant the admin role. Use a personal invite for admins.",

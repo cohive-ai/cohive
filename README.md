@@ -9,7 +9,7 @@
 
 **A collaboration layer that lets the coding agents of everyone on a small team hand issues to each other, with people making the calls.**
 
-Team members write code with their own tools, such as Claude Code and Codex. Cohive lets these agents hand off issues to each other over remote MCP: whoever finds a problem drafts an issue, the owner accepts it, fixes it and asks for verification from inside their own coding tool, and the reporter confirms and closes it. Submitting, accepting and closing are confirmed by a person. The team chat only gets a signal ("whose turn it is, and what to do") with an @-mention. Teams host Cohive themselves.
+Team members write code with their own tools, such as Claude Code, Codex and OpenCode. Cohive lets these agents hand off issues to each other over remote MCP: whoever finds a problem drafts an issue, the owner accepts it, fixes it and asks for verification from inside their own coding tool, and the reporter confirms and closes it. Submitting, accepting and closing are confirmed by a person. The team chat only gets a signal ("whose turn it is, and what to do") with an @-mention. Teams host Cohive themselves.
 
 Cohive speaks English and Simplified Chinese: the web UI, CLI, MCP tool descriptions, session reminders and chat notifications. Each person picks a language in their Profile, each workspace picks the language of its group messages, and the server default is set with `COHIVE_DEFAULT_LANGUAGE`. More languages are welcome; see [Languages and translations](CONTRIBUTING.md#languages-and-translations).
 
@@ -41,7 +41,7 @@ Everything is visible on the board, and every step records which person's which 
 
 **The chat knocks, the client opens the door.** Chat messages contain only the issue number, the service, who handed it to whom, what to do next, and a title and one-line brief that a person has confirmed. Repro scripts, logs and evidence never go to the chat; they are read through authenticated MCP in the coding tool or on the board. Telegram is supported today.
 
-**People confirm.** `cohive init` configures the tools that change someone else's work (submit, accept, close) as "ask the user every time", so Claude Code's and Codex's own permission prompts stop them, rather than relying on a "please ask the user first" line in a prompt. Incoming issues and comments are treated as data, never as instructions.
+**People confirm.** `cohive init` configures the tools that change someone else's work (submit, accept, close) as "ask the user every time", so the coding tool's own permission prompt (Claude Code, Codex, OpenCode) stops them, rather than relying on a "please ask the user first" line in a prompt. Incoming issues and comments are treated as data, never as instructions.
 
 **In-session reminders.** When something new concerns you (handed to you, sent back, waiting for your verification), the agent tells you at the end of its reply the next time you send a message.
 
@@ -73,9 +73,9 @@ Chat notifications, Cloudflare Tunnel, backups and upgrades: see [Deploying with
    ```
 
    On Windows, in PowerShell: `$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex`. The CLI is served by your own Cohive server; no Go toolchain needed.
-3. **Run `cohive init` in the project directory** (skip it if a teammate already committed the generated config). Then use `/cohive` in Claude Code and `$cohive` in Codex.
+3. **Run `cohive init` in the project directory** (skip it if a teammate already committed the generated config). Then use `/cohive` in Claude Code and OpenCode, and `$cohive` in Codex.
 
-The first time you open the project in a coding tool, trust the project. For Codex, also run the `codex` CLI once in the project directory and trust Cohive's two hooks. Details: [Onboarding](docs/guides/onboarding.en.md).
+The first time you open the project in Claude Code or Codex, trust the project. For Codex, also run the `codex` CLI once in the project directory and trust Cohive's two hooks. OpenCode needs no trust step. Details: [Onboarding](docs/guides/onboarding.en.md).
 
 ## Concepts
 
@@ -99,7 +99,7 @@ What Cohive does not do: claim work or change code on anyone's behalf, or run ag
 
 ## Status and roadmap
 
-Phase one; the author's team is trying it out. Working today: the issue loop with human confirmation, the board, Telegram notifications and in-chat approvals, web accounts and invites, device pairing, multiple workspaces, an admin audit log, one-line CLI install, secret scanning before writes, in-session reminders and Docker deployment.
+Phase one; the author's team is trying it out. Supported coding tools: Claude Code, Codex and OpenCode (DeepSeek Harness can be set up by hand following [this guide](docs/guides/deepseek-harness.en.md); it is not officially supported yet). Working today: the issue loop with human confirmation, the board, Telegram notifications and in-chat approvals, web accounts and invites, device pairing, multiple workspaces, an admin audit log, one-line CLI install, secret scanning before writes, in-session reminders and Docker deployment.
 
 Next, ordered by trial feedback:
 

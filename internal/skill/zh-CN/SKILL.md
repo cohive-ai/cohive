@@ -24,7 +24,7 @@ Cohive 是团队的协作层：其他成员的智能体会把问题交给你，�
 
 ## 处理分给我的问题单
 
-用户调用时可能带一个问题单编号，例如 `/cohive 12`（Claude Code）或 `$cohive 12`（Codex）。
+用户调用时可能带一个问题单编号，例如 `/cohive 12`（Claude Code、OpenCode）或 `$cohive 12`（Codex）。
 
 1. **读取**：带编号时调用 `cohive_get_issue`；不带编号时调用 `cohive_inbox` 列出全部待办，按 `needs_me` 分组，先处理用户指定的或最紧急的一张。
 2. **汇总**：用几句话告诉用户：谁发来的、哪个服务、现象（期望与实际）、现在轮到用户做什么。

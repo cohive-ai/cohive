@@ -9,7 +9,7 @@
 
 **让小团队里每个人的编程智能体能互相递问题单、由人拍板的协作层。**
 
-团队成员各自用 Claude Code、Codex 写代码。Cohive 让这些智能体经远程 MCP 互相交接问题：发现问题的一方起草问题单，负责的一方在自己的编程工具里接单、修复、请求验证，最后由发起人确认关闭。发出、接单、关闭这几步都由人确认；群里只发“轮到谁做什么”的信号并 @ 到人。服务由团队自己部署。
+团队成员各自用 Claude Code、Codex、OpenCode 写代码。Cohive 让这些智能体经远程 MCP 互相交接问题：发现问题的一方起草问题单，负责的一方在自己的编程工具里接单、修复、请求验证，最后由发起人确认关闭。发出、接单、关闭这几步都由人确认；群里只发“轮到谁做什么”的信号并 @ 到人。服务由团队自己部署。
 
 ![看板](docs/images/board.png)
 
@@ -39,7 +39,7 @@
 
 **群里敲门，客户端开门。** 群消息只有单号、服务、谁交给谁、要做什么，以及经人确认过的标题和一句话简述；复现脚本、日志、证据从不发到群里，只能在编程工具或看板里经鉴权读取。目前支持 Telegram。
 
-**确认由人做。** `cohive init` 把“发出、接单、关闭”这几个会改变别人工作的工具配成“每次调用都要用户批准”，由 Claude Code、Codex 自己的权限确认拦下，而不是靠提示词里一句“请先询问用户”。收到的问题单、评论一律当数据，不当指令。
+**确认由人做。** `cohive init` 把“发出、接单、关闭”这几个会改变别人工作的工具配成“每次调用都要用户批准”，由 Claude Code、Codex、OpenCode 自己的权限确认拦下，而不是靠提示词里一句“请先询问用户”。收到的问题单、评论一律当数据，不当指令。
 
 **会话内提醒。** 有交给你、被退回、请你验证之类的新动态时，在你下次发消息时由智能体在回复末尾告诉你。
 
@@ -71,9 +71,9 @@ docker compose exec cohive cat /data/initial_admin_password
    ```
 
    Windows 在 PowerShell 里执行 `$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex`。命令行由你们自己的服务提供，不需要装 Go。
-3. **在项目目录执行 `cohive init`**（团队里有人提交过生成的配置就不用再做）。之后在 Claude Code 里用 `/cohive`，在 Codex 里用 `$cohive`。
+3. **在项目目录执行 `cohive init`**（团队里有人提交过生成的配置就不用再做）。之后在 Claude Code、OpenCode 里用 `/cohive`，在 Codex 里用 `$cohive`。
 
-第一次在编程工具里打开项目时要信任项目；Codex 还要在项目目录执行一次命令行版 `codex`，信任 cohive 的两条钩子。细节见 [新成员接入](docs/guides/onboarding.md)。
+第一次在 Claude Code、Codex 里打开项目时要信任项目；Codex 还要在项目目录执行一次命令行版 `codex`，信任 cohive 的两条钩子；OpenCode 不用信任。细节见 [新成员接入](docs/guides/onboarding.md)。
 
 ## 核心概念
 
@@ -97,7 +97,7 @@ Cohive 不做的事：不替人认领、不替人改代码、不在后台无人�
 
 ## 当前状态与路线图
 
-处于第一阶段，作者团队正在试用。已经可用：问题交接闭环与人工确认、看板、Telegram 群通知与群里审批、网页账号与邀请、设备配对、多工作空间、管理操作记录、命令行一键安装、写入前密钥扫描、会话内提醒、Docker 部署。
+处于第一阶段，作者团队正在试用。支持的编程工具：Claude Code、Codex、OpenCode（DeepSeek Harness 可按 [手工接入说明](docs/guides/deepseek-harness.md) 自行配置，暂不正式支持）。已经可用：问题交接闭环与人工确认、看板、Telegram 群通知与群里审批、网页账号与邀请、设备配对、多工作空间、管理操作记录、命令行一键安装、写入前密钥扫描、会话内提醒、Docker 部署。
 
 接下来（按试用反馈排序）：
 
@@ -113,6 +113,7 @@ Cohive 不做的事：不替人认领、不替人改代码、不在后台无人�
 - [用 Docker 部署](docs/guides/deploy-docker.md)
 - [新成员接入](docs/guides/onboarding.md)
 - [安装 cohive 命令行](docs/guides/install-cli.md)
+- [DeepSeek Harness 手工接入（暂不正式支持）](docs/guides/deepseek-harness.md)
 - [群通知与公网访问](docs/guides/group-notify.md)
 - [不用 Docker 的单机运行](docs/guides/single-host.md)
 - [方案](docs/plan.md)、[早期选型调研](docs/research/2026-10-14-component-selection.md)

@@ -105,6 +105,7 @@ it("切到英文后名称、列表连接符、时间格式都跟着变", async (
   expect(severityLabel("high")).toBe("High");
   expect(roleLabel("admin")).toBe("Admin");
   expect(toolsText(["claude-code", "codex"])).toBe("Claude Code, Codex");
+  expect(toolsText(["opencode", "dsh", "constructor"])).toBe("OpenCode, dsh, constructor");
   expect(workspaceListText([])).toBe("None");
   expect(workspaceLabel({ name: "pay", display_name: "Payments" })).toBe("Payments (pay)");
 

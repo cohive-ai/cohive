@@ -99,7 +99,7 @@
   "server.flag.remove_username": "要移出的成员登录名",
   "server.flag.handover_to": "接手人登录名：名下待处理问题单与服务全部转给他",
   "server.flag.as_admin": "记作操作人的本工作空间管理员登录名",
-  "server.flag.tool": "工具名，例如 claude-code、codex",
+  "server.flag.tool": "工具名，例如 claude-code、codex、opencode",
   "server.flag.token_id": "令牌编号",
   "server.flag.service_name": "服务名",
   "server.flag.owner_username": "负责人的登录名",
