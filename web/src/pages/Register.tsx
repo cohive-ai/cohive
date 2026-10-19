@@ -143,7 +143,7 @@ function JoinAsSignedIn({
             components={{ m: mono, b: strong }}
           />
         </Callout>
-        <Link to="/w/$ws" params={{ ws: invite.workspace }} className="inline-block text-teal hover:underline">
+        <Link to="/w/$ws" params={{ ws: invite.workspace }} className="inline-block text-accent hover:underline">
           {t("register.joined.enter", { workspace: wsName })}
         </Link>
       </div>
@@ -156,7 +156,7 @@ function JoinAsSignedIn({
         <Callout tone="teal">
           <Trans {...safeTrans} t={t} i18nKey="register.joined.pending" values={{ workspace: wsName }} components={{ b: strong }} />
         </Callout>
-        <Link to="/" className="inline-block text-teal hover:underline">
+        <Link to="/" className="inline-block text-accent hover:underline">
           {t("register.joined.home")}
         </Link>
       </div>
@@ -186,7 +186,7 @@ function JoinAsSignedIn({
           <Trans
             t={t}
             i18nKey="register.joined.mustChange"
-            components={{ l: <Link to="/password" search={{ redirect: here }} className="text-teal hover:underline" /> }}
+            components={{ l: <Link to="/password" search={{ redirect: here }} className="text-accent hover:underline" /> }}
           />
         </Callout>
       ) : (
@@ -207,7 +207,7 @@ function JoinAsSignedIn({
                 type="button"
                 onClick={() => signOut("stay")}
                 disabled={busy}
-                className="text-teal hover:underline"
+                className="text-accent hover:underline"
               />
             ),
           }}
@@ -223,7 +223,7 @@ function InvalidInvite() {
     <div className="space-y-3 text-sm">
       <p className="text-danger">{t("register.invalid.title")}</p>
       <p className="text-muted">{t("register.invalid.hint")}</p>
-      <Link to="/login" className="inline-block text-teal hover:underline">
+      <Link to="/login" className="inline-block text-accent hover:underline">
         {t("register.invalid.login")}
       </Link>
     </div>
@@ -275,7 +275,7 @@ function RegisterForm({ code, workspace, kind, role }: { code: string; workspace
         <Callout tone="teal">
           <Trans {...safeTrans} t={t} i18nKey="register.form.submitted" values={{ name }} components={{ m: <span className="font-mono font-medium" /> }} />
         </Callout>
-        <Link to="/login" className="inline-block text-teal hover:underline">
+        <Link to="/login" className="inline-block text-accent hover:underline">
           {t("register.form.toLogin")}
         </Link>
       </div>
@@ -354,7 +354,7 @@ function RegisterForm({ code, workspace, kind, role }: { code: string; workspace
               <Link
                 to="/login"
                 search={{ redirect: `/i/${encodeURIComponent(code)}` }}
-                className="text-teal hover:underline"
+                className="text-accent hover:underline"
               />
             ),
           }}

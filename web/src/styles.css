@@ -1,32 +1,46 @@
 @import "tailwindcss";
 
-/* 颜色令牌：浅灰绿底、石板色文字；琥珀只用于“等你处理”，青绿用于链接与选中；两个工具各一个低饱和标识色 */
+/* 颜色令牌，对齐黑金品牌（docs/brand）：
+   - accent 品牌金，只给可操作、被选中的东西：链接、主按钮、当前标签、焦点框；浅色主题文字用加深的金色，
+     accent-fill 是主按钮底色，上面的字用 accent-ink；
+   - 状态色含义不变：teal 进行中与成功，wait 等你处理与提醒（靛紫，和品牌金明显区分），danger 出错与退回；
+   - 两个工具各一个低饱和标识色；brand-gold 只用于标志里的智能体格子，两种主题都不变。
+   文字与背景的对比度由 contrast.test.ts 检查，至少达到 WCAG AA（4.5:1）。 */
 :root {
-  --bg: #e9ede8;
-  --surface: #fbfcfa;
-  --sunken: #e1e6e0;
-  --ink: #1e2b2f;
-  --muted: #5d6b6e;
-  --line: #d0d8d1;
-  --amber: #9a6414;
-  --amber-soft: #f3e3c4;
+  --brand-gold: #ffc000;
+  --bg: #f2f1ec;
+  --surface: #fcfbf8;
+  --sunken: #e8e6df;
+  --ink: #17171a;
+  --muted: #5e5e66;
+  --line: #d8d6ce;
+  --accent: #7a5800;
+  --accent-soft: #f6e9bd;
+  --accent-fill: #e6ac00;
+  --accent-ink: #1a1400;
+  --wait: #5b47c2;
+  --wait-soft: #ece8fa;
   --teal: #2e6b66;
   --teal-soft: #d4e6e2;
-  --tool-claude: #8a5a83;
+  --tool-claude: #7f4f78;
   --tool-codex: #3e6a93;
   --danger: #a3402f;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #141b1c;
-    --surface: #1c2426;
-    --sunken: #111718;
-    --ink: #e3e9e6;
-    --muted: #93a19f;
-    --line: #2c3638;
-    --amber: #e0a44a;
-    --amber-soft: #3a2e1a;
+    --bg: #0e0e10;
+    --surface: #17171a;
+    --sunken: #080809;
+    --ink: #f4f3ee;
+    --muted: #9c9ca3;
+    --line: #2e2e33;
+    --accent: #ffc000;
+    --accent-soft: #2a2105;
+    --accent-fill: #ffc000;
+    --accent-ink: #1a1400;
+    --wait: #a99bff;
+    --wait-soft: #25213f;
     --teal: #6fb3ab;
     --teal-soft: #1f3533;
     --tool-claude: #c49abd;
@@ -36,14 +50,18 @@
 }
 
 :root[data-theme="dark"] {
-  --bg: #141b1c;
-  --surface: #1c2426;
-  --sunken: #111718;
-  --ink: #e3e9e6;
-  --muted: #93a19f;
-  --line: #2c3638;
-  --amber: #e0a44a;
-  --amber-soft: #3a2e1a;
+  --bg: #0e0e10;
+  --surface: #17171a;
+  --sunken: #080809;
+  --ink: #f4f3ee;
+  --muted: #9c9ca3;
+  --line: #2e2e33;
+  --accent: #ffc000;
+  --accent-soft: #2a2105;
+  --accent-fill: #ffc000;
+  --accent-ink: #1a1400;
+  --wait: #a99bff;
+  --wait-soft: #25213f;
   --teal: #6fb3ab;
   --teal-soft: #1f3533;
   --tool-claude: #c49abd;
@@ -58,8 +76,12 @@
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-line: var(--line);
-  --color-amber: var(--amber);
-  --color-amber-soft: var(--amber-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-ink: var(--accent-ink);
+  --color-wait: var(--wait);
+  --color-wait-soft: var(--wait-soft);
   --color-teal: var(--teal);
   --color-teal-soft: var(--teal-soft);
   --color-tool-claude: var(--tool-claude);
@@ -86,7 +108,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--teal);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -94,8 +116,8 @@ body {
 /* 唯一的自动动效：问题单换到另一个人手上时短暂提示 */
 @keyframes handoff {
   0% {
-    box-shadow: 0 0 0 3px var(--amber);
-    background: var(--amber-soft);
+    box-shadow: 0 0 0 3px var(--wait);
+    background: var(--wait-soft);
   }
   100% {
     box-shadow: 0 0 0 0 transparent;
@@ -109,6 +131,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .handoff {
     animation: none;
-    outline: 2px solid var(--amber);
+    outline: 2px solid var(--wait);
   }
 }

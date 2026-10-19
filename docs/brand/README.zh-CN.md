@@ -28,7 +28,7 @@ README 顶部用两份横版，GitHub 按访客的深浅色主题自动切换：
 </picture>
 ```
 
-`site/assets/brand/` 里有一份同样的文件给网站用，改的时候两边一起改。
+`site/assets/brand/` 里有一份同样的文件给网站用，看板的 `web/index.html` 也内联了 `favicon.svg`。改的时候一起改；不一致时 `web/brand_test.go` 会失败。
 
 ## 配色
 

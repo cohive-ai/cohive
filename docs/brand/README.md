@@ -28,7 +28,7 @@ The README header uses the two horizontal lockups and lets GitHub pick by the vi
 </picture>
 ```
 
-`site/assets/brand/` holds a copy of these files for the site. Change both together.
+`site/assets/brand/` holds a copy of these files for the site, and the board inlines `favicon.svg` in `web/index.html`. Change them together; `web/brand_test.go` fails when they drift apart.
 
 ## Colors
 

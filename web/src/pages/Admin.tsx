@@ -112,7 +112,7 @@ export function AdminPage() {
             search={{ tab: item.id }}
             aria-current={tab === item.id ? "page" : undefined}
             className={`-mb-px border-b-2 px-3 py-2 text-sm ${
-              tab === item.id ? "border-teal text-ink" : "border-transparent text-muted hover:text-ink"
+              tab === item.id ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"
             }`}
           >
             {tabLabels[item.id]}
@@ -470,7 +470,7 @@ function MemberRow({
           {isSelf && <span className="text-xs text-muted">{t("members.you")}</span>}
           <span
             className={`rounded px-1.5 py-px text-xs ${
-              m.role === "admin" ? "bg-amber-soft text-amber" : "bg-sunken text-muted"
+              m.role === "admin" ? "bg-wait-soft text-wait" : "bg-sunken text-muted"
             }`}
           >
             {roleLabel(m.role)}
@@ -501,7 +501,7 @@ function MemberRow({
           </span>
         </p>
         {m.disabled && (m.pending_issues > 0 || m.owned_services > 0) && (
-          <p className="mt-1 text-xs text-amber">{t("members.disabledWarning")}</p>
+          <p className="mt-1 text-xs text-wait">{t("members.disabledWarning")}</p>
         )}
       </div>
       <div className="flex flex-wrap gap-2">
@@ -1037,7 +1037,7 @@ function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: Created
   const radio = (value: "personal" | "team", title: string, desc: string) => (
     <label
       className={`flex flex-1 cursor-pointer gap-2 rounded border px-3 py-2 text-sm ${
-        kind === value ? "border-teal bg-teal-soft" : "border-line bg-bg"
+        kind === value ? "border-accent bg-accent-soft" : "border-line bg-bg"
       }`}
     >
       <input
@@ -1046,7 +1046,7 @@ function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: Created
         value={value}
         checked={kind === value}
         onChange={() => setKind(value)}
-        className="mt-1 accent-[var(--teal)]"
+        className="mt-1 accent-[var(--accent)]"
       />
       <span>
         <span className="block font-medium">{title}</span>
@@ -1075,7 +1075,7 @@ function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: Created
                 type="checkbox"
                 checked={asAdmin}
                 onChange={(e) => setAsAdmin(e.target.checked)}
-                className="accent-[var(--teal)]"
+                className="accent-[var(--accent)]"
               />
               {t("newInvite.asAdmin")}
             </label>
@@ -1254,7 +1254,7 @@ export function WorkspaceForm({
                   t={t}
                   i18nKey="workspace.noExternalUrlAdmin"
                   components={{
-                    l: <Link to="/server" search={{ tab: "settings" }} className="text-teal hover:underline" />,
+                    l: <Link to="/server" search={{ tab: "settings" }} className="text-accent hover:underline" />,
                   }}
                 />
               ) : (
@@ -1290,7 +1290,7 @@ export function WorkspaceForm({
               type="checkbox"
               checked={showTitle}
               onChange={(e) => setShowTitle(e.target.checked)}
-              className="accent-[var(--teal)]"
+              className="accent-[var(--accent)]"
             />
             {t("workspace.showTitle")}
           </label>
@@ -1299,7 +1299,7 @@ export function WorkspaceForm({
               type="checkbox"
               checked={showBrief}
               onChange={(e) => setShowBrief(e.target.checked)}
-              className="accent-[var(--teal)]"
+              className="accent-[var(--accent)]"
             />
             {t("workspace.showBrief")}
           </label>

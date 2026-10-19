@@ -46,7 +46,7 @@ export function IssueDetailPage() {
               {others.map((w, i) => (
                 <span key={w.name}>
                   {i > 0 && listSeparator()}
-                  <Link to="/w/$ws/issues/$id" params={{ ws: w.name, id }} className="text-teal hover:underline">
+                  <Link to="/w/$ws/issues/$id" params={{ ws: w.name, id }} className="text-accent hover:underline">
                     {workspaceLabel(w)}
                   </Link>
                 </span>
@@ -54,7 +54,7 @@ export function IssueDetailPage() {
             </span>
           </p>
         )}
-        <Link to="/w/$ws" params={{ ws }} className="text-sm text-teal">
+        <Link to="/w/$ws" params={{ ws }} className="text-sm text-accent hover:underline">
           {t("detail.backToBoard")}
         </Link>
       </div>

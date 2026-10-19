@@ -75,7 +75,7 @@ export function BoardPage() {
               i18nKey="board.summaryMine"
               count={active.length}
               values={{ mine }}
-              components={{ hl: <span className="text-amber" /> }}
+              components={{ hl: <span className="text-wait" /> }}
             />
           ) : (
             t("board.summaryNone", { count: active.length })
@@ -129,8 +129,8 @@ function Card({ ws, issue, me, moved }: { ws: string; issue: BoardIssue; me: str
     <Link
       to="/w/$ws/issues/$id"
       params={{ ws, id: String(issue.id) }}
-      className={`block rounded-md border bg-surface px-3 py-2.5 hover:border-teal ${
-        forMe ? "border-line border-l-4 border-l-amber" : "border-line"
+      className={`block rounded-md border bg-surface px-3 py-2.5 hover:border-accent ${
+        forMe ? "border-line border-l-4 border-l-wait" : "border-line"
       } ${moved ? "handoff" : ""} ${done ? "opacity-75" : ""}`}
     >
       <div className="flex items-center gap-2 text-sm text-muted">
@@ -141,7 +141,7 @@ function Card({ ws, issue, me, moved }: { ws: string; issue: BoardIssue; me: str
       </div>
       <p className="mt-1 leading-snug text-ink">{issue.title}</p>
       {!done && (
-        <p className={`mt-1 text-sm ${forMe ? "text-amber" : "text-muted"}`}>
+        <p className={`mt-1 text-sm ${forMe ? "text-wait" : "text-muted"}`}>
           {needsText(t, issue, forMe)}
         </p>
       )}

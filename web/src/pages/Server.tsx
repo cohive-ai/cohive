@@ -59,7 +59,7 @@ export function ServerPage() {
             search={{ tab: x.id }}
             aria-current={tab === x.id ? "page" : undefined}
             className={`-mb-px border-b-2 px-3 py-2 text-sm ${
-              tab === x.id ? "border-teal text-ink" : "border-transparent text-muted hover:text-ink"
+              tab === x.id ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"
             }`}
           >
             {tabLabel[x.id]}
@@ -120,7 +120,7 @@ function WorkspaceRow({ w, onDeleted }: { w: ServerWorkspace; onDeleted: () => P
           <span className="font-medium">{workspaceName(w)}</span>
           {workspaceName(w) !== w.name && <span className="font-mono text-xs text-muted">{w.name}</span>}
           {w.i_am_member && <span className={`${tag} bg-teal-soft text-teal`}>{t("workspaces.member")}</span>}
-          <span className={`${tag} ${w.telegram_bound ? "bg-sunken text-muted" : "bg-amber-soft text-amber"}`}>
+          <span className={`${tag} ${w.telegram_bound ? "bg-sunken text-muted" : "bg-wait-soft text-wait"}`}>
             {w.telegram_bound ? t("workspaces.bound") : t("workspaces.unbound")}
           </span>
         </p>
@@ -314,7 +314,7 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
           <span className="font-mono font-medium">{a.name}</span>
           {a.display_name && <span>{a.display_name}</span>}
           {isSelf && <span className="text-xs text-muted">{t("accounts.you")}</span>}
-          {a.server_admin && <span className={`${tag} bg-amber-soft text-amber`}>{t("accounts.serverAdmin")}</span>}
+          {a.server_admin && <span className={`${tag} bg-wait-soft text-wait`}>{t("accounts.serverAdmin")}</span>}
           {a.disabled && <span className={`${tag} bg-sunken text-danger`}>{t("accounts.disabled")}</span>}
         </p>
         <p className="text-xs text-muted">
@@ -479,7 +479,7 @@ function ChannelsPanel() {
                 {c.bot_name && <span className="text-muted">@{c.bot_name}</span>}
                 {c.app_id && <span className="text-muted">{t("channels.appClientId", { id: c.app_id })}</span>}
                 <span
-                  className={`rounded px-1.5 py-px text-xs ${c.online ? "bg-teal-soft text-teal" : "bg-amber-soft text-amber"}`}
+                  className={`rounded px-1.5 py-px text-xs ${c.online ? "bg-teal-soft text-teal" : "bg-wait-soft text-wait"}`}
                 >
                   {c.online ? t("channels.online") : t("channels.offline")}
                 </span>

@@ -75,7 +75,7 @@ export function IssuesPage() {
                 <tr key={is.id} className="border-t border-line first:border-t-0 hover:bg-bg">
                   <td className="hidden px-3 py-2 align-top text-muted sm:table-cell">#{is.id}</td>
                   <td className="px-3 py-2">
-                    <Link to="/w/$ws/issues/$id" params={{ ws, id: String(is.id) }} className="text-ink hover:text-teal">
+                    <Link to="/w/$ws/issues/$id" params={{ ws, id: String(is.id) }} className="text-ink hover:text-accent">
                       <span className="text-muted sm:hidden">#{is.id} </span>
                       {is.title}
                     </Link>

@@ -46,18 +46,18 @@ export function MePage() {
           <ul className="divide-y divide-line rounded border border-line">
             {m.workspaces.map((w) => (
               <li key={w.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
-                <Link to="/w/$ws" params={{ ws: w.name }} className="font-medium text-ink hover:text-teal">
+                <Link to="/w/$ws" params={{ ws: w.name }} className="font-medium text-ink hover:text-accent">
                   {workspaceLabel(w)}
                 </Link>
                 <span
                   className={`rounded px-1.5 py-px text-xs ${
-                    w.role === "admin" ? "bg-amber-soft text-amber" : "bg-sunken text-muted"
+                    w.role === "admin" ? "bg-wait-soft text-wait" : "bg-sunken text-muted"
                   }`}
                 >
                   {roleLabel(w.role)}
                 </span>
                 {w.role === "admin" && (
-                  <Link to="/w/$ws/admin" params={{ ws: w.name }} className="ml-auto text-teal hover:underline">
+                  <Link to="/w/$ws/admin" params={{ ws: w.name }} className="ml-auto text-accent hover:underline">
                     {t("workspaces.manage")}
                   </Link>
                 )}
@@ -371,7 +371,7 @@ function Telegram({ me }: { me: Me }) {
               t={t}
               i18nKey="telegram.notOpened"
               components={{
-                l: <a href={attempt.url} target="_blank" rel="noopener noreferrer" className="text-teal hover:underline" />,
+                l: <a href={attempt.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline" />,
               }}
             />
           </p>

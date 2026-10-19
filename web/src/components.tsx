@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type DeviceToken, type WorkspaceRef } from "./api";
 import { joinList, roleLabel, tokensByWorkspace, toolLabel, workspaceLabel } from "./format";
 import { applyAccountLanguage } from "./i18n";
+import { BrandMark, BrandWordmark } from "./brand";
 import { btn } from "./ui";
 import {
   canAdminWorkspace,
@@ -34,8 +35,8 @@ const statusTone: Record<string, string> = {
   OPEN: "bg-teal-soft text-teal",
   ACCEPTED: "bg-teal-soft text-teal",
   FIXING: "bg-teal-soft text-teal",
-  REOPENED: "bg-amber-soft text-amber",
-  READY_FOR_VERIFICATION: "bg-amber-soft text-amber",
+  REOPENED: "bg-wait-soft text-wait",
+  READY_FOR_VERIFICATION: "bg-wait-soft text-wait",
   CLOSED: "bg-sunken text-muted",
   DECLINED: "bg-sunken text-danger",
   CANCELLED: "bg-sunken text-muted line-through",
@@ -71,7 +72,7 @@ export function Layout() {
     navigate({ to: "/login" });
   };
   const nav = "px-1 py-0.5 text-muted hover:text-ink";
-  const active = { className: "px-1 py-0.5 text-ink border-b-2 border-teal" };
+  const active = { className: "px-1 py-0.5 text-ink border-b-2 border-accent" };
 
   const workspaces = me.data?.workspaces ?? [];
   const current = workspaceFromPath(pathname);
@@ -88,10 +89,8 @@ export function Layout() {
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <Link to="/" className="flex items-center gap-2 text-ink">
-            <svg viewBox="0 0 32 32" className="h-5 w-5 text-teal" aria-hidden="true">
-              <path d="M16 3l11 6.5v13L16 29 5 22.5v-13z" fill="currentColor" />
-            </svg>
-            <span className="font-semibold tracking-wide">Cohive</span>
+            <BrandMark className="h-6 w-6" />
+            <BrandWordmark className="h-3.5 w-auto" />
           </Link>
           {workspaces.length > 0 || current ? (
             <WorkspaceSwitcher workspaces={workspaces} current={current} onChange={switchTo} />
@@ -199,7 +198,7 @@ export function NoWorkspace() {
           <Trans
             t={t}
             i18nKey="workspace.createHint"
-            components={{ create: <Link to="/server" className="text-teal hover:underline" /> }}
+            components={{ create: <Link to="/server" className="text-accent hover:underline" /> }}
           />
         </p>
       )}
