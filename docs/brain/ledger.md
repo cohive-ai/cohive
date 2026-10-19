@@ -28,7 +28,6 @@
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
 | IM2-D1 至 D8 | 飞书、Slack、Discord 接入的 8 项决定（顺序、测试环境、飞书与 Lark 分开、长连接实现、Slack 条款、账号连接方式、飞书一键建应用、主动私聊接口时机），详见报告第 6 节 | 见报告 | D1 A（共用前置 → Slack → 飞书 / Lark → Discord 按需）、D2 A、D3 A、D4 A、D5 A、D6 A、D7 A、D8 B | 接入实现 |
-| BRAND-2 | 落地页部署方式与域名 | A Cloudflare Pages（连仓库、输出目录 site，自动出分支预览）；B GitHub Pages（需加工作流，github.io 国内不稳）；域名待定（未定前可先用平台送的地址试运行） | A；域名由 lee 定 | 落地页上线、README 放链接、快速开始换掉 cohive.example.com |
 | TOOLS-1 | “DeepSeek harness”指什么 | A 官方 DeepSeek Harness（dsh）；B 用 DeepSeek 模型驱动 Claude Code 或 opencode；C 社区工具 | A | TOOLS-3 |
 | TOOLS-2 | opencode 做不做 | A 现在做第三种工具；B 等有人用再做 | A（四项能力实测齐全，现有技能文件可直接读） | 实现 |
 | TOOLS-3 | DeepSeek Harness 怎么处理 | A 暂缓，只写手工接入说明；B 实验性 --tools dsh 写家目录；C 原生插件正式支持 | A（配置只在用户级、钩子靠实验插件、开发者预览） | 同上 |
