@@ -19,6 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
+| ISSUE-15 个人中心改昵称 | 会话待 lee 启动（提议卡片 task_38fce0b3） | issue-15（未启动） | — | 待用户（lee 点开始后开工；开工时主脑在 #15 标开始修复） | 只允许网页会话改本人昵称、令牌拒绝；防冒充：不与所在工作空间其他在册成员的登录名或昵称相同（不区分大小写）；允许清空回退登录名；审计共用、入口网页；前端中英；交回 `docs/brain/inbox/ISSUE-15.md` |
 | IM2-1 Slack 接入 | 已合入 main `129bce2`（已验收 = `0ef06c8`） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，处理实测反馈，之后做飞书与 Lark） | `0ef06c8` | 待用户（lee 建免费 Slack 工作区、按 deploy/slack-app-manifest.yaml 建应用，两个令牌亲手写进 pm-dev1 的 deploy/.env 后跑 upgrade.sh，再绑频道、连账号，按 docs/guides/slack.md 第 7 节验收） | 真环境确认：Socket 确认时限、只在消息块里的 @ 是否提醒、免费版改旧消息 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
