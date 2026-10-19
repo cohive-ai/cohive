@@ -20,20 +20,13 @@
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
 | UI-1 产品配色对齐品牌 | `feature/ui-brand-colors` | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | `4b56d60` | 待用户（lee 不满意浅色效果，请 Open Design 重做浅色主题 VI；分支暂不合入，新方案到后由 brand-landing 在同一分支改浅色变量） | 换标志与图标；强调色品牌金（浅色加深、对比度达 AA）；深色黑金；浅色微调；状态色语义不变且与金区分；顺带品牌页色名改英文普通名、加两份 SVG 一致性测试；浅深两主题各三屏截图；交回 `docs/brain/inbox/UI-1.md` |
-| IM-2 飞书、Slack、Discord 接入 | 报告已合入 main | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，待做实现） | `18d152e` | 待用户（IM2-D1 至 D8） | 报告 `docs/research/2026-10-19-im-feishu-slack-discord.md` 第 6 节 |
-| TOOLS 编程工具适配 | 报告已合入 main `c27c34d` | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08`（保留，待做实现） | `4d5a6e6` | 待用户（TOOLS-1 至 TOOLS-6） | 报告 `docs/research/2026-10-19-coding-tools-opencode-deepseek.md` |
+| IM2-0 通讯接入公共前置 | 会话自建（从最新 main） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a` | — | 已派 | 把钉钉 handleBot 的群命令、私聊发码、我是谁抽成与平台无关的收件处理，Telegram、钉钉行为不变；之后同会话做 Slack（需 lee 建免费 Slack 测试工作区）；交回 `docs/brain/inbox/IM2-0.md` |
+| TOOLS-A opencode 适配与 DSH 接入说明 | 会话自建（从最新 main） | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08` | — | 已派 | cohive init --tools opencode（opencode.json 的 MCP 与按工具确认、随仓库的 .opencode/plugins 提醒插件、技能共用）；hook 接受 opencode；每台设备工具上限 4→8；DSH 只写手工接入说明（含会话日志默认上传与关闭建议）；交回 `docs/brain/inbox/TOOLS-A.md` |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
-| IM2-D1 至 D8 | 飞书、Slack、Discord 接入的 8 项决定（顺序、测试环境、飞书与 Lark 分开、长连接实现、Slack 条款、账号连接方式、飞书一键建应用、主动私聊接口时机），详见报告第 6 节 | 见报告 | D1 A（共用前置 → Slack → 飞书 / Lark → Discord 按需）、D2 A、D3 A、D4 A、D5 A、D6 A、D7 A、D8 B | 接入实现 |
-| TOOLS-1 | “DeepSeek harness”指什么 | A 官方 DeepSeek Harness（dsh）；B 用 DeepSeek 模型驱动 Claude Code 或 opencode；C 社区工具 | A | TOOLS-3 |
-| TOOLS-2 | opencode 做不做 | A 现在做第三种工具；B 等有人用再做 | A（四项能力实测齐全，现有技能文件可直接读） | 实现 |
-| TOOLS-3 | DeepSeek Harness 怎么处理 | A 暂缓，只写手工接入说明；B 实验性 --tools dsh 写家目录；C 原生插件正式支持 | A（配置只在用户级、钩子靠实验插件、开发者预览） | 同上 |
-| TOOLS-4 | opencode 提醒插件放哪 | A 随仓库 .opencode/plugins；B 每人家目录 | A | 同上 |
-| TOOLS-5 | 每台设备最多 4 种工具的上限是否放宽 | 放到 8 / 不变 | 放宽到 8，随 opencode 一起做 | 同上 |
-| TOOLS-6 | dsh 会话日志默认上传 DeepSeek，说明里怎么写 | 写明默认行为并建议关闭 / 不提 | 写明并建议关闭 | 同上 |
 | I18N-GH | 私密漏洞报告仍未开启（lee 亲手点：仓库设置 → 左侧“安全与质量”分组 → 高级安全 → 私密漏洞报告一栏的启用按钮） | 做 | 做 | 安全报告入口可用 |
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
