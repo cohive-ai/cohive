@@ -19,7 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| UI-1 第三版品牌与产品配色 | `feature/ui-brand-colors` | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | `d41318e` | 待用户（卡片标题 15→14px；实测字号字重从未变过，显大来自正文色由偏绿深灰改为近黑；对比图已发 lee） | 换标志与图标；强调色品牌金（浅色加深、对比度达 AA）；深色黑金；浅色微调；状态色语义不变且与金区分；顺带品牌页色名改英文普通名、加两份 SVG 一致性测试；浅深两主题各三屏截图；交回 `docs/brain/inbox/UI-1.md` |
+| THEME-1 主题抽象 | 会话自建（从最新 main） | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | — | 已派 | 主题文件；服务器自定义主题只收 CSS 变量（拒 url()、@import 等，限大小，路径由管理员配置）；个人中心深浅切换默认跟随系统；主题指南中英；cohive-server theme check；对比度规则网页测试与检查命令共用一份数据；交回 `docs/brain/inbox/THEME-1.md` |
 | IM2-1 Slack 接入 | 已合入 main `129bce2`（已验收 = `0ef06c8`） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，处理实测反馈，之后做飞书与 Lark） | `0ef06c8` | 待用户（lee 建免费 Slack 工作区、按 deploy/slack-app-manifest.yaml 建应用，两个令牌亲手写进 pm-dev1 的 deploy/.env 后跑 upgrade.sh，再绑频道、连账号，按 docs/guides/slack.md 第 7 节验收） | 真环境确认：Socket 确认时限、只在消息块里的 @ 是否提醒、免费版改旧消息 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
@@ -30,7 +30,6 @@
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
-- P1 THEME-1 主题抽象，方便开源用户自己改主题（lee 2026-10-19 提）：颜色、圆角、阴影全部收进一个主题文件；服务器可选加载自定义主题文件覆盖变量（例如数据目录下的 theme.css 或配置项指定路径）；个人中心加浅色、深色、跟随系统切换；写主题指南（变量表与对比度要求）；提供主题对比度检查命令（lee 10-19 确认全做）。UI-1 合入后交 brand-landing —— 来源 lee
 - P3 钉钉未核实项（国际版是否支持互动卡片与 Stream、卡片回调是否计入额度、模板导入导出、带参数打开单聊）遇到再起单，服务 dingtalk 负责人 guanyu；#5（接手钉钉维护）guanyu 尚未接单 —— 来源 #6 关闭
 - P3 已作废的单加“复制为新草稿”；操作记录列表写明命令行作废以哪个管理员（--as）名义 —— 来源 ISSUE-12 建议
 - P3 T-6 前端测试偶发失败：Cancel.test.tsx“看板默认隐藏已作废的单”在整套测试负载下偶发找不到元素（单跑 3 次、整套再跑 2 次均过），疑为等待时限不够 —— 来源 UI-1 验收
@@ -48,7 +47,7 @@
 ## 4. 环境与待清理
 - 本仓库自用 Cohive（2026-10-18 起）：主检出已 `cohive init` 接入测试服工作空间 `cohive-internal`（只配 Claude Code，含会话钩子），生成的 `.mcp.json`、`.claude/settings.json`、`.claude/skills/` 写在本地 `.git/info/exclude`，不提交；服务 `cohive` 负责人 lee。工作树里的实施会话没有这些文件，不受提醒打扰。朋友与同事在该空间报的问题单，由 lee 或主脑在主检出会话里用 /cohive 拉取，再分派。
 - 仓库：公开在 `https://github.com/cohive-ai/cohive`（2026-10-17 起），Apache-2.0。往 main 提交的一切都会公开，台账里不写本机绝对路径、令牌、公司事项。
-- 测试服（2026-10-18 19:30 起在办公室测试机 pm-dev1，与 pm 项目共用、互不干扰）：服务器上的检出 `~/cohive`（main），用仓库编排 `deploy/docker-compose.yml` 加本地覆盖文件（隧道容器用宿主机网络，不入仓），编排项目 `cohive`，容器 cohive-postgres-1、cohive-cohive-1、cohive-tunnel-1，卷 cohive_pgdata、cohive_data，均 unless-stopped；配置 `deploy/.env`（600，含机器人与隧道令牌、缺省语言 zh-CN，不入仓）；库为编排里的 `cohive`；监听 127.0.0.1:8787，经隧道 `cohive-test` 对外。运维目录 `~/cohive-ops`（README.md 中文说明、backup.sh、upgrade.sh、日志）。合入 main 后升级测试服：`ssh pm-dev1 ~/cohive-ops/upgrade.sh`（先备份，只快进拉 main，只重建 cohive，等 healthz，失败打印回滚办法），不再用本机 `scripts/cohive-server.sh`。当前 `cf5eba6`，已执行至 0014 迁移。pm 的容器、pm-cloudflared、/etc/cloudflared 一概不碰。
+- 测试服（2026-10-18 19:30 起在办公室测试机 pm-dev1，与 pm 项目共用、互不干扰）：服务器上的检出 `~/cohive`（main），用仓库编排 `deploy/docker-compose.yml` 加本地覆盖文件（隧道容器用宿主机网络，不入仓），编排项目 `cohive`，容器 cohive-postgres-1、cohive-cohive-1、cohive-tunnel-1，卷 cohive_pgdata、cohive_data，均 unless-stopped；配置 `deploy/.env`（600，含机器人与隧道令牌、缺省语言 zh-CN，不入仓）；库为编排里的 `cohive`；监听 127.0.0.1:8787，经隧道 `cohive-test` 对外。运维目录 `~/cohive-ops`（README.md 中文说明、backup.sh、upgrade.sh、日志）。合入 main 后升级测试服：`ssh pm-dev1 ~/cohive-ops/upgrade.sh`（先备份，只快进拉 main，只重建 cohive，等 healthz，失败打印回滚办法），不再用本机 `scripts/cohive-server.sh`。当前 `83b7677`，已执行至 0014 迁移。pm 的容器、pm-cloudflared、/etc/cloudflared 一概不碰。
 - 备份：服务器 crontab 每天 UTC 20:30（即 UTC+7 03:30）跑 `~/cohive-ops/backup.sh`，保留 14 份，在 `~/cohive-ops/backups/`；成功后用 Cohive 专用密钥同步到 pm-dev2 的 `/hdd/backup/cohive/`（授权只能写该目录，取回用 lee 本机的 pm-dev2 别名；每次最多删 3 份；跨机失败只记日志）；切换时的导出 `~/cohive-ops/cutover-20261018-193003.dump`。
 - 本机旧测试服（回滚用，保留）：launchd 的 server、tunnel、backup 三个服务已停用，plist 保留；容器 cohive-dev-postgres（已设 unless-stopped）与库 `cohive_test` 保留，数据停在 10-18 19:30；本机备份在 `~/.local/share/cohive-server/backups/`。lee 定 10-19 晚（迁移满 24 小时、服务器无异常）删除，删除清单：本机容器 cohive-dev-postgres 及其中的库 cohive_test、cohive、cohive_m5（容器删除即全删），~/Library/LaunchAgents 下 com.anormlylee.cohive.server、tunnel、backup 三个 plist；本机备份目录 `~/.local/share/cohive-server/backups/` 与 data 目录（含测试账号密码文件）先保留，删前再问。
 - 测试账号：admin（服务器管理员）、tester-a、tester-b（已停用）等；密码文件仍在本机 `~/.local/share/cohive-server/data/`（权限 600，测试凭据）。工作空间：default、proj-b、proj-c、lee、cohive-internal。
