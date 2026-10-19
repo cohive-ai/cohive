@@ -20,5 +20,12 @@ if [ -f "$dt_file" ]; then
   export COHIVE_DINGTALK_CLIENT_ID COHIVE_DINGTALK_CLIENT_SECRET COHIVE_DINGTALK_NOTICE_TEMPLATE COHIVE_DINGTALK_APPROVAL_TEMPLATE
 fi
 
+sl_file="${COHIVE_SLACK_ENV:-$HOME/.config/cohive/slack.env}"
+if [ -f "$sl_file" ]; then
+  # shellcheck disable=SC1090
+  source "$sl_file"
+  export COHIVE_SLACK_BOT_TOKEN COHIVE_SLACK_APP_TOKEN
+fi
+
 root="$(cd "$(dirname "$0")/.." && pwd)"
 exec "$root/bin/cohive-server" serve "$@"

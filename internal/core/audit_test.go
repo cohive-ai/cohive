@@ -343,6 +343,33 @@ func auditCases() []auditCase {
 			}
 			return f.svc.Unlink(ctx, core.WebActor(f.p.ann), f.p.ann.ID, core.ProviderDingTalk)
 		}, wantEvent{core.ActDingTalkUnlink, core.ViaWeb, "", "account", "ann", "ann", map[string]any{"self": true}}},
+		{"本人连接 Slack（私聊发码后网页确认）", func(t *testing.T, f *afix) error {
+			l, err := f.svc.StartLink(ctx, f.p.ann.ID, core.ProviderSlack)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.svc.SubmitLinkCode(ctx, core.ProviderSlack, l.Nonce, core.ChatSender{Tenant: "T1", UserID: "U-ANN", Name: "ann.s"}, true); err != nil {
+				t.Fatal(err)
+			}
+			return f.svc.ConfirmLink(ctx, core.WebActor(f.p.ann), l.ID, true)
+		}, wantEvent{core.ActLinkOf(core.ProviderSlack), core.ViaWeb, "", "account", "ann", "ann", map[string]any{"slack_name": "ann.s"}}},
+		{"管理员断开别人的 Slack", func(t *testing.T, f *afix) error {
+			if err := store.UpsertChatIdentity(ctx, f.svc.Pool, store.ChatIdentity{AccountID: f.p.ann.ID, Provider: store.ProviderSlack, Tenant: "T1", UserID: "U-ANN"}); err != nil {
+				t.Fatal(err)
+			}
+			return f.svc.Unlink(ctx, core.WebActor(f.p.root), f.p.ann.ID, core.ProviderSlack)
+		}, wantEvent{core.ActUnlinkOf(core.ProviderSlack), core.ViaWeb, "", "account", "ann", "root", map[string]any{"self": false}}},
+		{"Slack 频道里 @机器人 绑定频道", func(t *testing.T, f *afix) error {
+			if err := store.DeleteWorkspaceChats(ctx, f.svc.Pool, f.p.pay, ""); err != nil {
+				t.Fatal(err)
+			}
+			b, err := f.svc.StartChatBind(ctx, core.WebActor(f.p.payAdmin), f.p.pay, core.ProviderSlack)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = f.svc.CompleteChatBind(ctx, core.ProviderSlack, "C-PAY", "#pay", b.Code)
+			return err
+		}, wantEvent{core.ActWorkspaceChatBind, "slack", "pay", "workspace", "pay", "pay-admin", map[string]any{"chat_title": "#pay"}}},
 		{"群里 @机器人 绑定钉钉群", func(t *testing.T, f *afix) error {
 			if err := store.DeleteWorkspaceChats(ctx, f.svc.Pool, f.p.pay, ""); err != nil { // 夹具里 pay 绑了 Telegram 群
 				t.Fatal(err)

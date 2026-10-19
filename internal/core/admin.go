@@ -212,8 +212,9 @@ func providerKey(provider string) any {
 	switch provider {
 	case store.ProviderTelegram:
 		return lk("core.provider.telegram")
-	case store.ProviderDingTalk:
-		return lk("core.provider.dingtalk")
+	}
+	if UsesCode(provider) {
+		return lk("core.provider." + provider) // TestProviderKeysComplete 确认齐全
 	}
 	return provider
 }

@@ -125,6 +125,7 @@ All of these go in `deploy/.env` (`.env.example` has comments):
 | `COHIVE_TELEGRAM_BOT_TOKEN` | Telegram bot token |
 | `COHIVE_DINGTALK_CLIENT_ID`, `COHIVE_DINGTALK_CLIENT_SECRET` | Credentials of a DingTalk internal enterprise app. Set both to enable DingTalk (see [DingTalk integration](dingtalk.md), Chinese) |
 | `COHIVE_DINGTALK_NOTICE_TEMPLATE`, `COHIVE_DINGTALK_APPROVAL_TEMPLATE` | Template IDs for DingTalk notification and approval cards; falls back to plain messages when unset |
+| `COHIVE_SLACK_BOT_TOKEN`, `COHIVE_SLACK_APP_TOKEN` | Slack bot token (starts with `xoxb-`) and app-level token (starts with `xapp-`). Set both to enable Slack (see [Slack integration](slack.en.md)) |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Tunnel token, used with `--profile tunnel` |
 | `COHIVE_BIND`, `COHIVE_PORT` | Listen address and port on the host. Default `127.0.0.1` and `8787` |
 | `COHIVE_ALLOWED_HOSTS` | Extra host names allowed to reach MCP, besides the external URL (comma-separated) |

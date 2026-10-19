@@ -187,7 +187,11 @@ export interface Me {
   languages?: LanguageOption[];
 }
 
-export type ChatProvider = "telegram" | "dingtalk";
+export type ChatProvider = "telegram" | "dingtalk" | "slack";
+
+// CodeProvider 是用码绑定的通讯工具：私聊发码连接账号，群里 @机器人 发码绑群。
+export type CodeProvider = "dingtalk" | "slack";
+export const codeProviders: CodeProvider[] = ["dingtalk", "slack"];
 
 export interface ChatIdentity {
   provider: ChatProvider;
@@ -427,7 +431,8 @@ export interface ServerAccount {
   server_admin: boolean;
   disabled: boolean;
   telegram_linked: boolean;
-  dingtalk_linked?: boolean;
+  chat_linked?: string[]; // 已连接的用码绑定的通讯工具
+  dingtalk_linked?: boolean; // 旧版服务端
   devices: number;
   workspaces: { name: string; role: string; status: string }[] | null;
 }
@@ -538,7 +543,7 @@ export const api = {
   startLink: () => post<LinkStart>("/api/v1/me/links", { provider: "telegram" }),
   linkStatus: (id: number | string) => request<LinkStatus>(`/api/v1/me/links/${seg(id)}`),
   unlinkTelegram: () => del("/api/v1/me/links/telegram"),
-  startDingTalkLink: () => post<CodeStart>("/api/v1/me/links", { provider: "dingtalk" }),
+  startCodeLink: (provider: CodeProvider) => post<CodeStart>("/api/v1/me/links", { provider }),
   confirmLink: (id: number, accept: boolean) => post(`/api/v1/me/links/${seg(id)}/confirm`, { accept }),
   unlink: (provider: ChatProvider) => del(`/api/v1/me/links/${seg(provider)}`),
 

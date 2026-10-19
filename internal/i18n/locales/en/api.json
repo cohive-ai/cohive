@@ -15,6 +15,7 @@
   "api.authn.unavailable": "Service temporarily unavailable",
   "api.device_not_found": "Device not found",
   "api.dingtalk_disabled": "The Cohive server has not enabled DingTalk",
+  "api.slack_disabled": "The Cohive server has not enabled Slack",
   "api.id_invalid": "Invalid ID",
   "api.internal": "Internal error. Please try again later",
   "api.invalid_request": "Malformed request",

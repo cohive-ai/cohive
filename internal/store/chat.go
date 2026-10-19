@@ -5,19 +5,23 @@ import (
 	"time"
 )
 
-// 通讯工具
+// 通讯工具。数据库的取值约束（迁移 0014）已放开到规划中的全部平台：telegram、dingtalk、slack、feishu、lark、discord。
 const (
 	ProviderTelegram = "telegram"
 	ProviderDingTalk = "dingtalk"
+	ProviderSlack    = "slack"
 )
+
+// Providers 按显示顺序列出已接入的通讯工具。
+var Providers = []string{ProviderTelegram, ProviderDingTalk, ProviderSlack}
 
 // ChatIdentity 是账号在某种通讯工具上连接的账号：一个 Cohive 账号每种通讯工具最多一个，
 // 一个通讯账号（provider + tenant + user_id）全服务器只能连一个 Cohive 账号。
 type ChatIdentity struct {
 	AccountID   int64
 	Provider    string
-	Tenant      string // Telegram 为空；钉钉为 corpId
-	UserID      string // Telegram 用户编号；钉钉 userId。空表示只登记了用户名（Telegram 命令行兜底）
+	Tenant      string // Telegram 为空；钉钉为 corpId；Slack 为工作区编号（team_id）
+	UserID      string // Telegram 用户编号；钉钉 userId；Slack 用户编号。空表示只登记了用户名（Telegram 命令行兜底）
 	Handle      string // Telegram 用户名
 	DisplayName string // 钉钉昵称
 	LinkedAt    time.Time
@@ -93,7 +97,7 @@ type WorkspaceChat struct {
 	WorkspaceID int64
 	Provider    string
 	Tenant      string
-	ChatID      string // Telegram 群编号；钉钉 openConversationId
+	ChatID      string // Telegram 群编号；钉钉 openConversationId；Slack 频道编号
 	Title       string
 	BoundBy     *int64
 	CreatedAt   time.Time

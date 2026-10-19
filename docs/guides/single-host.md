@@ -44,7 +44,7 @@
    按实际修改 `COHIVE_DATABASE_URL`、`COHIVE_ADDR`。对外地址可以在网页“服务器管理 → 设置”里填，也可以写 `COHIVE_EXTERNAL_URL` 锁定；它的主机名自动加入 MCP 白名单，`COHIVE_ALLOWED_HOSTS` 只在还要用别的域名访问时才需要。**环境变量里已有的值优先于文件**：终端里残留的 `COHIVE_DATABASE_URL` 会让服务连到别的库，手动启动时可以用 `env -u COHIVE_DATABASE_URL scripts/cohive-server.sh start`。
    服务器缺省语言用 `COHIVE_DEFAULT_LANGUAGE` 设置（`en` 或 `zh-CN`；不设时为英文，团队以中文为主时设为 `zh-CN`），成员命令行可用 `COHIVE_LANG` 覆盖自己的语言。
 3. Telegram 机器人令牌：用 `scripts/set-telegram-token.sh` 保存到 `~/.config/cohive/telegram.env`。启动脚本只在服务进程里加载它，不打印、不写日志、不进 `server.env`。要换文件用 `COHIVE_TELEGRAM_ENV` 指定。
-   钉钉应用凭据同理：用 `scripts/set-dingtalk-credentials.sh` 保存到 `~/.config/cohive/dingtalk.env`（要换文件用 `COHIVE_DINGTALK_ENV`），见 [钉钉接入](dingtalk.md)。
+   钉钉应用凭据同理：用 `scripts/set-dingtalk-credentials.sh` 保存到 `~/.config/cohive/dingtalk.env`（要换文件用 `COHIVE_DINGTALK_ENV`），见 [钉钉接入](dingtalk.md)。Slack 的两个令牌也一样：用 `scripts/set-slack-tokens.sh` 保存到 `~/.config/cohive/slack.env`（要换文件用 `COHIVE_SLACK_ENV`），见 [Slack 接入](slack.md)。
 
 **同一个机器人令牌同时只能有一个程序收消息。** 同一台机器上另起调试服务时，用 `COHIVE_TELEGRAM_ENV=/不存在的路径` 让它不加载令牌，否则两边会抢消息，审批按钮时灵时不灵。
 

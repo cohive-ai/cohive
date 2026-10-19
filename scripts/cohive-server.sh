@@ -21,6 +21,7 @@
 #   只在服务进程里加载，不打印、不写日志、不进 server.env；可用 COHIVE_TELEGRAM_ENV 指定别的文件。
 # 钉钉应用凭据：同样处理 ~/.config/cohive/dingtalk.env（scripts/set-dingtalk-credentials.sh 写入），
 #   可用 COHIVE_DINGTALK_ENV 指定别的文件。
+# Slack 令牌：同样处理 ~/.config/cohive/slack.env（scripts/set-slack-tokens.sh 写入），可用 COHIVE_SLACK_ENV 指定别的文件。
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,6 +38,7 @@ pid_file="$run_dir/server.pid"
 log_file="$log_dir/server.log"
 tg_env="${COHIVE_TELEGRAM_ENV:-$HOME/.config/cohive/telegram.env}"
 dt_env="${COHIVE_DINGTALK_ENV:-$HOME/.config/cohive/dingtalk.env}"
+sl_env="${COHIVE_SLACK_ENV:-$HOME/.config/cohive/slack.env}"
 
 label="${COHIVE_LAUNCHD_LABEL:-com.anormlylee.cohive.server}"
 plist="${COHIVE_LAUNCHD_PLIST:-$HOME/Library/LaunchAgents/$label.plist}"
@@ -71,6 +73,7 @@ usage() {
   只在服务进程里加载，不打印、不写日志、不进 server.env；可用 COHIVE_TELEGRAM_ENV 指定别的文件。
 钉钉应用凭据：同样处理 ~/.config/cohive/dingtalk.env（scripts/set-dingtalk-credentials.sh 写入），
   可用 COHIVE_DINGTALK_ENV 指定别的文件。
+Slack 令牌：同样处理 ~/.config/cohive/slack.env（scripts/set-slack-tokens.sh 写入），可用 COHIVE_SLACK_ENV 指定别的文件。
 本脚本提示语的语言：COHIVE_LANG，其次 LC_ALL、LC_MESSAGES、LANG（zh 开头为中文，其余为英文）。
 EOF_USAGE_ZH
   else
@@ -98,6 +101,8 @@ Telegram bot token: read from ~/.config/cohive/telegram.env (written by scripts/
   loaded only inside the server process; never printed, logged or put in server.env; set COHIVE_TELEGRAM_ENV to use another file.
 DingTalk app credentials: handled the same way, from ~/.config/cohive/dingtalk.env (written by scripts/set-dingtalk-credentials.sh);
   set COHIVE_DINGTALK_ENV to use another file.
+Slack tokens: handled the same way, from ~/.config/cohive/slack.env (written by scripts/set-slack-tokens.sh);
+  set COHIVE_SLACK_ENV to use another file.
 Language of these messages: COHIVE_LANG, otherwise LC_ALL, LC_MESSAGES, LANG (zh... means Chinese, anything else English).
 EOF_USAGE_EN
   fi
@@ -151,6 +156,11 @@ exec_server() {
     # shellcheck disable=SC1090
     . "$dt_env"
     export COHIVE_DINGTALK_CLIENT_ID COHIVE_DINGTALK_CLIENT_SECRET COHIVE_DINGTALK_NOTICE_TEMPLATE COHIVE_DINGTALK_APPROVAL_TEMPLATE
+  fi
+  if [ -f "$sl_env" ]; then
+    # shellcheck disable=SC1090
+    . "$sl_env"
+    export COHIVE_SLACK_BOT_TOKEN COHIVE_SLACK_APP_TOKEN
   fi
   exec "$bin" serve --addr "$addr"
 }

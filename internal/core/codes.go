@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// 钉钉：账号连接（单聊发一次性码 + 网页确认）与群绑定（网页生成绑定码，群里 @机器人 发出）。
+// 用码绑定的通讯工具（钉钉、Slack……，见 UsesCode）：账号连接（私聊发一次性码 + 网页确认）与群绑定（网页生成绑定码，群里 @机器人 发出）。
 
 const (
 	ProviderDingTalk = store.ProviderDingTalk
@@ -66,8 +66,8 @@ func LooksLikeCode(s string) bool {
 
 // ChatSender 是通讯工具平台填写的发消息的人。
 type ChatSender struct {
-	Tenant string // 钉钉 corpId
-	UserID string // 钉钉 userId（senderStaffId）
+	Tenant string // 钉钉 corpId；Slack 工作区编号
+	UserID string // 钉钉 userId（senderStaffId）；Slack 用户编号
 	Name   string // 昵称
 }
 
@@ -172,15 +172,15 @@ func (s *Service) ConfirmLink(ctx context.Context, act Actor, id int64, accept b
 			i18n.T("core.link.detail_linked", i18n.D{"Provider": providerNameIn(i18n.Default(), l.Provider), "Name": l.CandidateName})); err != nil {
 			return err
 		}
-		return record(ctx, tx, act, store.AdminEvent{Action: ActDingTalkLink, TargetKind: "account", TargetID: idp(a.ID),
-			TargetName: a.Name, Detail: map[string]any{"dingtalk_name": l.CandidateName}})
+		return record(ctx, tx, act, store.AdminEvent{Action: ActLinkOf(l.Provider), TargetKind: "account", TargetID: idp(a.ID),
+			TargetName: a.Name, Detail: map[string]any{l.Provider + "_name": l.CandidateName}})
 	})
 }
 
-// StartChatBind 由工作空间管理员生成群绑定码（第一期只有钉钉用绑定码绑群）。
+// StartChatBind 由工作空间管理员生成群绑定码（只限用码绑定的通讯工具；Telegram 群在网页填群编号）。
 func (s *Service) StartChatBind(ctx context.Context, act Actor, wsID int64, provider string) (store.ChatBindRequest, error) {
-	if provider != ProviderDingTalk {
-		return store.ChatBindRequest{}, inputErr("core.err.bind_by_code_dingtalk_only")
+	if !UsesCode(provider) {
+		return store.ChatBindRequest{}, inputErr("core.err.bind_by_code_unsupported", i18n.D{"Provider": providerKey(provider)})
 	}
 	code, err := newCode()
 	if err != nil {
@@ -292,10 +292,10 @@ func bindChat(ctx context.Context, tx pgx.Tx, act Actor, wsID int64, provider, c
 		Detail: map[string]any{"provider": provider, "chat_title": title}})
 }
 
-// BindChat 由工作空间管理员或服务器命令行直接按群编号绑群（钉钉群编号在群里 @机器人 发“群编号”获取）。
+// BindChat 由工作空间管理员或服务器命令行直接按群编号绑用码绑定的通讯工具的群（群编号在群里 @机器人 发“群编号”获取）。
 func (s *Service) BindChat(ctx context.Context, act Actor, wsID int64, provider, chatID string) error {
 	chatID = strings.TrimSpace(chatID)
-	if provider != ProviderDingTalk || chatID == "" {
+	if !UsesCode(provider) || chatID == "" {
 		return inputErr("core.err.chat_id_required")
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {

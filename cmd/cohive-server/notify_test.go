@@ -79,3 +79,46 @@ func TestNotifyTestDingTalk(t *testing.T) {
 		t.Fatalf("--off 后钉钉群应一并解绑：%v", err)
 	}
 }
+
+// Slack：令牌只配一个或填反时报清楚；按频道编号绑 Slack 频道；notify test 经 Slack 发出；两种群参数不能同时用；--off 一并解绑。
+func TestNotifyTestSlack(t *testing.T) {
+	adminEnv(t)
+	mustRun(t, "migrate")
+	mustRun(t, "workspace", "add", "--name", "ops")
+	var calls []string
+	var body map[string]any
+	sl := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.URL.Path+" "+r.Header.Get("Authorization"))
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Write([]byte(`{"ok":true,"ts":"1.2"}`))
+	}))
+	defer sl.Close()
+	t.Setenv("COHIVE_TELEGRAM_BOT_TOKEN", "")
+	t.Setenv("COHIVE_SLACK_API_BASE", sl.URL)
+	t.Setenv("COHIVE_SLACK_BOT_TOKEN", "xoxb-bot")
+	t.Setenv("COHIVE_SLACK_APP_TOKEN", "")
+	if _, err := runCmd(t, "notify", "test", "--workspace", "ops"); err == nil || !strings.Contains(err.Error(), "COHIVE_SLACK_APP_TOKEN") {
+		t.Fatalf("令牌只配一个：%v", err)
+	}
+	t.Setenv("COHIVE_SLACK_BOT_TOKEN", "xapp-app")
+	t.Setenv("COHIVE_SLACK_APP_TOKEN", "xoxb-bot")
+	if _, err := runCmd(t, "notify", "test", "--workspace", "ops"); err == nil || !strings.Contains(err.Error(), "填反") {
+		t.Fatalf("令牌填反：%v", err)
+	}
+	t.Setenv("COHIVE_SLACK_BOT_TOKEN", "xoxb-bot")
+	t.Setenv("COHIVE_SLACK_APP_TOKEN", "xapp-app")
+	if _, err := runCmd(t, "workspace", "notify", "--workspace", "ops", "--slack-chat", "C1", "--dingtalk-chat", "cid"); err == nil || !strings.Contains(err.Error(), "只能用一个") {
+		t.Fatalf("两种群参数不能同时用：%v", err)
+	}
+	if out := mustRun(t, "workspace", "notify", "--workspace", "ops", "--slack-chat", "C1"); !strings.Contains(out, "Slack 频道 C1") {
+		t.Fatalf("绑 Slack 频道：%s", out)
+	}
+	out := mustRun(t, "notify", "test", "--workspace", "ops")
+	if !strings.Contains(out, "已发送") || len(calls) != 1 || calls[0] != "/chat.postMessage Bearer xoxb-bot" || body["channel"] != "C1" {
+		t.Fatalf("应经 Slack 用机器人令牌发到绑定的频道：%q %v %v", out, calls, body)
+	}
+	mustRun(t, "workspace", "notify", "--workspace", "ops", "--off")
+	if _, err := runCmd(t, "notify", "test", "--workspace", "ops"); err == nil || !strings.Contains(err.Error(), "还没配置群通知") {
+		t.Fatalf("--off 后 Slack 频道应一并解绑：%v", err)
+	}
+}

@@ -190,6 +190,7 @@
   "workspace": {
     "title": "工作空间：{{name}}",
     "nextStepDingtalk": "下一步：在下面绑定项目群（钉钉群用“生成群绑定码”，Telegram 群填群编号）；然后到“成员”里添加已有账号，或到“邀请”里生成邀请链接。",
+    "nextStepSlack": "下一步：在下面绑定项目频道（Slack 频道用“生成频道绑定码”）；然后到“成员”里添加已有账号，或到“邀请”里生成邀请链接。",
     "nextStepTelegram": "下一步：把 Telegram 机器人拉进项目群，在群里发 /chatid，把得到的群编号填到下面并保存；然后到“成员”里添加已有账号，或到“邀请”里生成邀请链接。",
     "displayName": "显示名",
     "displayNameHint": "给人看的名字，可随时改。留空则显示路径 <path>{{path}}</path>。路径出现在链接与项目配置里，不能修改。",
@@ -207,6 +208,7 @@
     "botDisabled": "协作服务没有启用 Telegram 机器人，下面的群设置暂时不会生效。请在服务器上配置机器人后重启协作服务。",
     "telegramChat": "Telegram 群编号",
     "telegramChatBoundDingtalk": "本工作空间已绑定钉钉群；要改用 Telegram 群，先解绑钉钉群。",
+    "telegramChatBoundSlack": "本工作空间已绑定 Slack 频道；要改用 Telegram 群，先解绑 Slack 频道。",
     "telegramChatHint": "把机器人拉进群后，在群里发 /chatid 获取，形如 -1001234567890。留空则不发群消息。",
     "showInGroup": "群消息里显示",
     "showTitle": "问题单标题",

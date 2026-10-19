@@ -4,7 +4,7 @@
 
 Cohive's group notifications work like "knock in the group, open the door in the client". When an issue is waiting for someone, the workspace's chat group gets a short message that carries only a signal and @-mentions that person. The person who is mentioned then runs `/cohive 12` (Claude Code) or `$cohive 12` (Codex) in their own coding tool to fetch the full content, triage it and decide. Repro scripts, evidence and logs are never posted to the group.
 
-This guide uses Telegram as the example. If you use DingTalk, read [Integrate Cohive with your own DingTalk organization](dingtalk.md) (Chinese): a DingTalk group is bound with a group binding code, members connect by sending a code in a direct chat and confirming in the web UI, and approval buttons come back to the server over a Stream long connection, so only outbound access is needed. Both chat tools can be enabled on the same server; in this first release each workspace binds to one group.
+This guide uses Telegram as the example. If you use DingTalk, read [Integrate Cohive with your own DingTalk organization](dingtalk.md) (Chinese): a DingTalk group is bound with a group binding code, members connect by sending a code in a direct chat and confirming in the web UI, and approval buttons come back to the server over a Stream long connection, so only outbound access is needed. If you use Slack, read [Integrate Cohive with your own Slack workspace](slack.en.md): you create the app in one step from the manifest in this repository, channels and accounts are bound the same way as with DingTalk, and approval buttons come back over a Socket Mode connection. Several chat tools can be enabled on the same server; in this first release each workspace binds to one group.
 
 ## 1. Prepare the bot
 

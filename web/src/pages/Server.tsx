@@ -2,7 +2,10 @@ import { useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { api, type ServerAccount, type ServerSettings, type ServerWorkspace } from "../api";
+import { api, type CodeProvider, type ServerAccount, type ServerSettings, type ServerWorkspace } from "../api";
+
+// linkedTo 判断账号是否连接了某种用码绑定的通讯工具（旧版服务端只有 dingtalk_linked）。
+const linkedTo = (a: ServerAccount, p: CodeProvider) => (a.chat_linked ? a.chat_linked.includes(p) : p === "dingtalk" && !!a.dingtalk_linked);
 import { NeedPasswordLogin, Notice } from "../components";
 import { absoluteTime, memberNamePattern, roleLabel, workspaceName } from "../format";
 import { btn, Callout, ConfirmButton, ErrorText, errMsg, Field, inputClass, Section, SuccessText } from "../ui";
@@ -320,7 +323,8 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
         <p className="text-xs text-muted">
           {[
             a.telegram_linked ? t("accounts.telegramLinked") : t("accounts.telegramNotLinked"),
-            a.dingtalk_linked ? t("accounts.dingtalkLinked") : "",
+            linkedTo(a, "dingtalk") ? t("accounts.dingtalkLinked") : "",
+            linkedTo(a, "slack") ? t("accounts.slackLinked") : "",
             t("accounts.devices", { count: a.devices }),
           ]
             .filter(Boolean)
@@ -383,7 +387,7 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
             />
           )
         )}
-        {a.dingtalk_linked && (
+        {linkedTo(a, "dingtalk") && (
           <ConfirmButton
             label={t("accounts.unlinkDingtalk")}
             title={t("accounts.unlinkDingtalkTitle")}
@@ -391,6 +395,18 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
             confirmLabel={t("accounts.unlinkConfirm")}
             action={async () => {
               await api.serverUnlink(a.name, "dingtalk");
+              await onChanged();
+            }}
+          />
+        )}
+        {linkedTo(a, "slack") && (
+          <ConfirmButton
+            label={t("accounts.unlinkSlack")}
+            title={t("accounts.unlinkSlackTitle")}
+            message={t("accounts.unlinkSlackMessage", { label })}
+            confirmLabel={t("accounts.unlinkConfirm")}
+            action={async () => {
+              await api.serverUnlink(a.name, "slack");
               await onChanged();
             }}
           />
@@ -475,7 +491,9 @@ function ChannelsPanel() {
           {q.data.channels.map((c) => (
             <li key={c.provider} className="space-y-1 px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{c.provider === "dingtalk" ? t("channels.dingtalk") : "Telegram"}</span>
+                <span className="font-medium">
+                  {c.provider === "dingtalk" ? t("channels.dingtalk") : c.provider === "slack" ? t("channels.slack") : "Telegram"}
+                </span>
                 {c.bot_name && <span className="text-muted">@{c.bot_name}</span>}
                 {c.app_id && <span className="text-muted">{t("channels.appClientId", { id: c.app_id })}</span>}
                 <span

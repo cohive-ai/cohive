@@ -267,8 +267,9 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			writeJSON(w, http.StatusServiceUnavailable, apiErr(w, "service_unavailable", "api.telegram_disabled"))
 			return
 		}
-		if in.Provider == core.ProviderDingTalk && !providerEnabled(opts, core.ProviderDingTalk) {
-			writeJSON(w, http.StatusServiceUnavailable, apiErr(w, "service_unavailable", "api.dingtalk_disabled"))
+		if core.UsesCode(in.Provider) && !providerEnabled(opts, in.Provider) {
+			// 键 api.<通讯工具>_disabled，core 的 TestProviderKeysComplete 确认齐全
+			writeJSON(w, http.StatusServiceUnavailable, apiErr(w, "service_unavailable", "api."+in.Provider+"_disabled"))
 			return
 		}
 		l, err := svc.StartLink(r.Context(), caller(r).Account.ID, in.Provider)
@@ -279,7 +280,7 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		out := map[string]any{"id": l.ID, "expires_in": int(time.Until(l.ExpiresAt).Seconds())}
 		if l.Provider == core.ProviderTelegram {
 			out["url"] = "https://t.me/" + name + "?start=" + l.Nonce
-		} else { // 钉钉：把绑定码私聊发给机器人，再回网页确认
+		} else { // 用码绑定的通讯工具：把绑定码私聊发给机器人，再回网页确认
 			out["code"] = l.Nonce
 		}
 		writeJSON(w, http.StatusOK, out)

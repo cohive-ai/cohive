@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cohive-ai/cohive/internal/i18n"
@@ -43,6 +44,22 @@ func dingtalkFromEnv() (*notify.DingTalkChannel, error) {
 	}, nil
 }
 
+// slackFromEnv 返回配置好的 Slack 通道；两个令牌都没配时返回 nil，只配了一个或明显填反时报错。令牌只从环境变量读，不打印。
+func slackFromEnv() (*notify.SlackChannel, error) {
+	bot, app := os.Getenv("COHIVE_SLACK_BOT_TOKEN"), os.Getenv("COHIVE_SLACK_APP_TOKEN")
+	switch {
+	case bot == "" && app == "":
+		return nil, nil
+	case bot == "":
+		return nil, i18n.Errorf("server.notify.slack_bot_token_missing")
+	case app == "":
+		return nil, i18n.Errorf("server.notify.slack_app_token_missing")
+	case strings.HasPrefix(bot, "xapp-") || strings.HasPrefix(app, "xoxb-"):
+		return nil, i18n.Errorf("server.notify.slack_tokens_swapped")
+	}
+	return &notify.SlackChannel{API: &notify.Slack{BotToken: bot, AppToken: app, BaseURL: os.Getenv("COHIVE_SLACK_API_BASE")}}, nil
+}
+
 // tail 返回字符串的最后几位，用于在日志里核对用的是哪个应用。
 func tail(s string, n int) string {
 	if len(s) <= n {
@@ -69,7 +86,11 @@ func notifyCmd(ctx context.Context, out io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
-	if telegramFromEnv() == nil && dt == nil {
+	sl, err := slackFromEnv()
+	if err != nil {
+		return err
+	}
+	if telegramFromEnv() == nil && dt == nil && sl == nil {
 		return i18n.Errorf("server.notify.no_credentials")
 	}
 	pool, err := openDB(ctx)
@@ -98,6 +119,11 @@ func notifyCmd(ctx context.Context, out io.Writer, args []string) error {
 			return i18n.Errorf("server.notify.dingtalk_credentials_missing")
 		}
 		ch = dt
+	case store.ProviderSlack:
+		if sl == nil {
+			return i18n.Errorf("server.notify.slack_credentials_missing")
+		}
+		ch = sl
 	default:
 		return i18n.Errorf("server.notify.not_configured", i18n.D{"Name": name})
 	}

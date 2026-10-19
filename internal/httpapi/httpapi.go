@@ -64,7 +64,7 @@ type Options struct {
 
 // ChannelInfo 是服务器启用的一种通讯工具。
 type ChannelInfo struct {
-	Provider string `json:"provider"`           // telegram、dingtalk
+	Provider string `json:"provider"`           // telegram、dingtalk、slack
 	BotName  string `json:"bot_name,omitempty"` // Telegram 机器人用户名
 	AppID    string `json:"app_id,omitempty"`   // 钉钉应用 Client ID 的尾号（核对用的是哪个应用）
 	Online   bool   `json:"online"`             // 收件循环是否在线

@@ -39,7 +39,7 @@ func (w Workspace) Label() string {
 // NotifyConfig 是工作空间的群通知配置。Channel 为空表示不发群通知。
 // Channel 与 Target 取自工作空间群表里的第一个群（第一期一个工作空间只允许一个群）。
 type NotifyConfig struct {
-	Channel   string // 通讯工具：telegram、dingtalk
+	Channel   string // 通讯工具：telegram、dingtalk、slack
 	Target    string // 群编号
 	ShowTitle bool
 	ShowBrief bool

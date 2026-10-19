@@ -58,7 +58,7 @@ func TestTelegramLink(t *testing.T) {
 	if m, _ := store.MemberByID(ctx, e.svc.Pool, e.a.MemberID); m.TelegramUserID != nil || m.TelegramUsername != "" {
 		t.Fatalf("应已解除：%+v", m)
 	}
-	if _, err := e.svc.StartLink(ctx, e.a.AccountID, "slack"); !errors.As(err, &ie) {
+	if _, err := e.svc.StartLink(ctx, e.a.AccountID, "wechat"); !errors.As(err, &ie) {
 		t.Fatalf("暂不支持的工具：%v", err)
 	}
 }
