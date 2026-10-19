@@ -110,3 +110,25 @@
 | 工具上限仍为 4 | TestDeviceToolLimit |
 | 插件模板改了、示例没同步 | TestOpencodeExampleInSync |
 | 不拦 opencode.jsonc | TestInitOpencodeRefuses、TestInitOpencodeEnglish |
+
+## 验收打回后补充：确认清单不可能漏
+
+主脑验收时发现：从 `confirmTools` 里删掉 `cohive_cancel_issue`，所有测试照样通过。补法如下：
+
+- **`internal/mcpserver` 新增导出的 `ToolPolicies` 表**：逐个工具写明是否需要用户确认（`Confirm`）。
+  - `register` 注册时对照这张表：表里没有这个工具，或者只读工具标了要确认，服务启动即报错。所以新增工具必须先决定是否要确认。
+  - 新测试 `TestToolPoliciesMatchRegistered`：表与实际注册的工具一一对应，不重复、没有多余条目。
+- **`cmd/cohive` 新测试 `TestConfirmListsMatchServer`**：在内存里起一个真实的 MCP 服务，从它实际注册的工具出发，逐个核对：
+  - 表里标了确认的必须在 `confirmTools`，其余的必须在 `allowTools`；
+  - 只读工具一定在 `allowTools`；
+  - 两张清单不重叠、不重复，也没有服务端不存在的工具名。
+- **与派活字面要求的出入**：派活写的是“标了写操作的都必须在 `confirmTools`”。但起草、更新进展、请求验证这三个工具也标了写操作，按“人工确认”的决策它们只影响自己或自己已接手的单，一直是故意放行的。照字面写，测试会把现行设计判错。所以没有用“是否写操作”推导，改用单独一列“是否需要确认”。“只读工具不许要求确认”仍按注解强制检查。
+- **变异验证**：7 个探针全部变红：
+  - 主脑的探针（`confirmTools` 删掉 `cohive_cancel_issue`）；
+  - `cancel` 换成不存在的名字；
+  - `allowTools` 漏掉只读工具；
+  - 表里把 `cancel` 改成不确认；
+  - 表里漏登记一个已注册的工具；
+  - 表里多一个不存在的工具；
+  - 只读工具标成要确认。
+- `go vet ./...`、`go test ./...` 全部通过（真实 Postgres）。

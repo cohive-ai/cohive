@@ -261,6 +261,42 @@ func merge(ms ...map[string]string) map[string]string {
 	return out
 }
 
+// ToolPolicy 是一个工具在编程工具里的确认策略：cohive init 按它给 Claude Code、Codex、OpenCode 配“每次询问”或“直接放行”
+// （cmd/cohive 的 confirmTools、allowTools 由测试保证与这张表一致）。
+type ToolPolicy struct {
+	Name string
+	// Confirm：影响他人工作或不可撤销，每次调用都要用户确认。其余直接放行：只读的，
+	// 以及只影响自己或自己已接手的单的写操作（起草、更新进展、请求验证）。
+	Confirm bool
+}
+
+// ToolPolicies 列出全部工具的确认策略。新增工具必须先在这里写明是否要确认：
+// 注册时找不到、或者只读工具标了确认，服务启动即报错（测试里同样会失败）。
+var ToolPolicies = []ToolPolicy{
+	{Name: "cohive_draft_issue"},
+	{Name: "cohive_submit_issue", Confirm: true},
+	{Name: "cohive_accept_issue", Confirm: true},
+	{Name: "cohive_update_issue"},
+	{Name: "cohive_request_verification"},
+	{Name: "cohive_close_issue", Confirm: true},
+	{Name: "cohive_cancel_issue", Confirm: true},
+	{Name: "cohive_delete_draft", Confirm: true},
+	{Name: "cohive_get_issue"},
+	{Name: "cohive_inbox"},
+	{Name: "cohive_search"},
+	{Name: "cohive_who_owns"},
+	{Name: "cohive_find_member"},
+}
+
+func policyOf(name string) (ToolPolicy, bool) {
+	for _, p := range ToolPolicies {
+		if p.Name == name {
+			return p, true
+		}
+	}
+	return ToolPolicy{}, false
+}
+
 // spec 描述一个工具：名称、注解、说明的文案键，以及是否会写入正文（说明末尾附密钥扫描提示）。
 type spec struct {
 	name   string
@@ -271,6 +307,11 @@ type spec struct {
 
 // register 按语言登记一个工具：说明和参数说明取自语言包，输入输出的 Schema 由类型推出后补说明。
 func register[In, Out any](s *mcp.Server, l i18n.Lang, sp spec, inDescs, outDescs map[string]string, h mcp.ToolHandlerFor[In, Out]) {
+	if p, ok := policyOf(sp.name); !ok {
+		panic(fmt.Sprintf("mcpserver: %s has no entry in ToolPolicies; decide whether it needs user confirmation", sp.name))
+	} else if p.Confirm && (sp.ann == nil || sp.ann.ReadOnlyHint) {
+		panic(fmt.Sprintf("mcpserver: %s is read-only but ToolPolicies asks for confirmation", sp.name))
+	}
 	in, err := view.Schema[In](l, inDescs)
 	if err != nil {
 		panic(fmt.Sprintf("mcpserver: input schema of %s: %v", sp.name, err))
