@@ -19,9 +19,9 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| UI-1 第三版品牌与产品配色 | `feature/ui-brand-colors` | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | `4b56d60` | 实施中（按 Open Design 第三版黑白黄重做，同分支一并换品牌素材与落地页；字号、留白、布局保持现状；ink 出深浅两组截图供 lee 选） | 换标志与图标；强调色品牌金（浅色加深、对比度达 AA）；深色黑金；浅色微调；状态色语义不变且与金区分；顺带品牌页色名改英文普通名、加两份 SVG 一致性测试；浅深两主题各三屏截图；交回 `docs/brain/inbox/UI-1.md` |
-| IM2-0 通讯接入公共前置 | `feature/im2-0-inbound` | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a` | `c50a042` | 打回（小项：补指令大小写混写的用例；其余通过） | 把钉钉 handleBot 的群命令、私聊发码、我是谁抽成与平台无关的收件处理，Telegram、钉钉行为不变；之后同会话做 Slack（需 lee 建免费 Slack 测试工作区）；交回 `docs/brain/inbox/IM2-0.md` |
-| TOOLS-A opencode 适配与 DSH 接入说明 | 会话自建（从最新 main） | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08` | — | 已派 | cohive init --tools opencode（opencode.json 的 MCP 与按工具确认、随仓库的 .opencode/plugins 提醒插件、技能共用）；hook 接受 opencode；每台设备工具上限 4→8；DSH 只写手工接入说明（含会话日志默认上传与关闭建议）；交回 `docs/brain/inbox/TOOLS-A.md` |
+| UI-1 第三版品牌与产品配色 | `feature/ui-brand-colors` | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | `c634041` | 待用户（验收通过；等 lee 看截图定正文色 0B0B0C 或 1F1F23） | 换标志与图标；强调色品牌金（浅色加深、对比度达 AA）；深色黑金；浅色微调；状态色语义不变且与金区分；顺带品牌页色名改英文普通名、加两份 SVG 一致性测试；浅深两主题各三屏截图；交回 `docs/brain/inbox/UI-1.md` |
+| IM2-1 Slack 接入 | 会话自建（从最新 main） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a` | — | 已派 | Socket 模式自实现、Block Kit、按钮回调走 Hub.Click 并拒绝外部工作区、接 Inbox；小迁移放开 provider 与 via 约束，“用码绑定的通讯工具”收成一个判断；网页连接与绑群；部署指南与应用清单；假 Slack 服务端到端；实测待 lee 建工作区并亲手配令牌；交回 `docs/brain/inbox/IM2-1.md` |
+| TOOLS-A opencode 适配与 DSH 接入说明 | `feature/tools-a-opencode` | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08` | `38ea876` | 打回（小项：确认清单与写工具对齐的测试；顺带补 toolLabel） | cohive init --tools opencode（opencode.json 的 MCP 与按工具确认、随仓库的 .opencode/plugins 提醒插件、技能共用）；hook 接受 opencode；每台设备工具上限 4→8；DSH 只写手工接入说明（含会话日志默认上传与关闭建议）；交回 `docs/brain/inbox/TOOLS-A.md` |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
@@ -34,7 +34,7 @@
 - P1 THEME-1 主题抽象，方便开源用户自己改主题（lee 2026-10-19 提）：颜色、圆角、阴影全部收进一个主题文件；服务器可选加载自定义主题文件覆盖变量（例如数据目录下的 theme.css 或配置项指定路径）；个人中心加浅色、深色、跟随系统切换；写主题指南（变量表与对比度要求）；提供主题对比度检查命令（lee 10-19 确认全做）。UI-1 合入后交 brand-landing —— 来源 lee
 - P3 钉钉未核实项（国际版是否支持互动卡片与 Stream、卡片回调是否计入额度、模板导入导出、带参数打开单聊）遇到再起单，服务 dingtalk 负责人 guanyu；#5（接手钉钉维护）guanyu 尚未接单 —— 来源 #6 关闭
 - P3 已作废的单加“复制为新草稿”；操作记录列表写明命令行作废以哪个管理员（--as）名义 —— 来源 ISSUE-12 建议
-- P3 T-6 前端测试偶发失败：ISSUE-13 实施方在 make build 的 vitest 阶段失败一次（用例名未留住），随后连跑两次通过；主脑复跑两次通过。再出现时记下用例名 —— 来源 ISSUE-13
+- P3 T-6 前端测试偶发失败：Cancel.test.tsx“看板默认隐藏已作废的单”在整套测试负载下偶发找不到元素（单跑 3 次、整套再跑 2 次均过），疑为等待时限不够 —— 来源 UI-1 验收
 - P3 DEP-2 依赖跟进：cohive-ai/cohive#3 等机器人按新分组配置自动重建或关闭，10-25 前后仍没动就手动关并留言；重建的分组请求（react 19.3.1、i18next 26.4.5、react-query 5.104.3、react-i18next 17.0.16）10-28 前后满两周再合；typescript 7、jsdom 30、vitest 5 等大版本单独请求逐个评估 —— 来源 DEP-1b
 - P2 T-5 cmd/cohive 用例从当前目录往上找 `.mcp.json`，在执行过 cohive init 的克隆里会读到本机配置，3 条用例失败（TestRevokedDeviceHintsForce、TestLoginOpensBrowserAndSaves、TestLegacyCredentials）；开源贡献者照着做也会碰到，测试应隔离仓库目录 —— 来源 N-2 合入时主脑发现
 - P2 OS-4 打标签时用 GitHub Actions 构建多架构镜像推到 ghcr，compose 缺省用预构建镜像（公开后第一个小任务）；另：机器人入群后 /bind 绑群、未配对时 init 自动走 login、安装脚本经同意写 PATH、Caddy 自动 HTTPS 示例、发布物附第三方许可证清单 —— 来源 OSS-1 建议
