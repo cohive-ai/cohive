@@ -6,6 +6,10 @@ import "./i18n";
 import { ApiError, setUnauthorizedHandler } from "./api";
 import { createAppRouter } from "./router";
 import "./styles.css";
+import { applyTheme, readThemePref } from "./theme";
+
+// index.html 已经在绘制前套过一次；这里再套一次，防止那段脚本被拦下
+applyTheme(readThemePref());
 
 const queryClient = new QueryClient({
   defaultOptions: {

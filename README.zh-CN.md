@@ -116,6 +116,7 @@ Cohive 不做的事：不替人认领、不替人改代码、不在后台无人�
 - [DeepSeek Harness 手工接入（暂不正式支持）](docs/guides/deepseek-harness.md)
 - [群通知与公网访问](docs/guides/group-notify.md)
 - [不用 Docker 的单机运行](docs/guides/single-host.md)
+- [自定义主题](docs/guides/theming.md)
 - [方案](docs/plan.md)、[早期选型调研](docs/research/2026-10-14-component-selection.md)
 
 ## 从源码构建

@@ -14,8 +14,8 @@ export default defineConfig({
       "/healthz": "http://127.0.0.1:8787",
     },
   },
-  // vitest 读取 test 字段；vite 8 的配置类型里没有它。css.include 让 contrast.test.ts 能以 ?raw 读到 styles.css 原文
-  ...({ test: { setupFiles: ["./src/test-setup.ts"], css: { include: [/styles\.css/] } } } as object),
+  // vitest 读取 test 字段；vite 8 的配置类型里没有它。css.include 让测试能以 ?raw 读到 styles.css、theme.css 原文
+  ...({ test: { setupFiles: ["./src/test-setup.ts"], css: { include: [/(styles|theme)\.css/] } } } as object),
   build: {
     outDir: "dist",
     emptyOutDir: true,

@@ -2,6 +2,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -25,6 +27,9 @@ type Options struct {
 	API httpapi.Options
 	// CLI 是提供下载的命令行安装包；为空时用随程序嵌入的那一套。
 	CLI *clidist.Dist
+	// Theme 是服务器管理员的自定义主题，已经过 internal/theme 过滤并重新生成。
+	// 为空时看板与默认完全一致：不提供 /theme.css，入口页也不多一个字节。
+	Theme []byte
 }
 
 // New 返回协作服务的根处理器。web 是看板的构建产物（index.html 与 assets/）。
@@ -47,8 +52,37 @@ func New(svc *core.Service, web fs.FS, opts Options) http.Handler {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprintln(w, "ok")
 	})
-	mux.Handle("/", spa(web))
+	themeHref := ""
+	if len(opts.Theme) > 0 {
+		sum := sha256.Sum256(opts.Theme)
+		themeHref = "/theme.css?v=" + hex.EncodeToString(sum[:6])
+		css := opts.Theme
+		mux.HandleFunc("GET /theme.css", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/css; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			// 地址带内容哈希，换了主题文件、重启后地址就变
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			_, _ = w.Write(css)
+		})
+	}
+	mux.Handle("/", spa(web, themeHref))
 	return mux
+}
+
+// withTheme 在入口页的 </head> 前加上自定义主题的样式表：排在默认样式之后，同名变量以它为准。
+func withTheme(index []byte, href string) []byte {
+	if href == "" {
+		return index
+	}
+	tag := `<link rel="stylesheet" href="` + href + `">` + "\n  "
+	i := strings.Index(string(index), "</head>")
+	if i < 0 {
+		return index
+	}
+	out := make([]byte, 0, len(index)+len(tag))
+	out = append(out, index[:i]...)
+	out = append(out, tag...)
+	return append(out, index[i:]...)
 }
 
 // notBuiltPage 是看板尚未构建时的提示页；文字按请求的语言渲染，其中的 <code> 标签在语言包里。
@@ -58,8 +92,8 @@ func notBuiltPage(l i18n.Lang) string {
 }
 
 // spa 托管看板静态文件：存在的文件原样返回，assets/ 下缺失的文件返回 404，
-// 其余路径交给前端路由（返回 index.html）。
-func spa(web fs.FS) http.Handler {
+// 其余路径交给前端路由（返回 index.html，有自定义主题时带上它的样式表）。
+func spa(web fs.FS, themeHref string) http.Handler {
 	files := http.FileServerFS(web)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -93,7 +127,7 @@ func spa(web fs.FS) http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = w.Write(index)
+		_, _ = w.Write(withTheme(index, themeHref))
 	})
 }
 

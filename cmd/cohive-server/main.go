@@ -22,13 +22,14 @@ func main() {
 		i18n.SetDefault(i18n.Local())
 	}
 	if err := run(context.Background(), os.Stdout, os.Args[1:]); err != nil {
-		if serving {
+		code, print := exitCode(err)
+		if print && serving {
 			// 服务器日志固定英文
 			fmt.Fprintln(os.Stderr, "error:", err)
-		} else {
+		} else if print {
 			fmt.Fprintln(os.Stderr, i18n.T("server.error", i18n.D{"Err": i18n.Message(i18n.Default(), err)}))
 		}
-		os.Exit(1)
+		os.Exit(code)
 	}
 }
 
@@ -61,6 +62,8 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		return auditCmd(ctx, out, args[1:])
 	case "server":
 		return serverCmd(ctx, out, args[1:])
+	case "theme":
+		return themeCmd(out, args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(out, usage())
 		return nil

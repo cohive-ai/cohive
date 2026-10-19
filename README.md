@@ -63,6 +63,8 @@ The last command shows the random password of the initial admin `admin`. It is w
 
 Chat notifications, Cloudflare Tunnel, backups and upgrades: see [Deploying with Docker](docs/guides/deploy-docker.en.md).
 
+To change the board's colors to your own, see [Custom themes](docs/guides/theming.en.md).
+
 ### For team members: three steps
 
 1. **Open the invite link and register.**
