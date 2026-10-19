@@ -253,6 +253,8 @@ func toolLabel(tool string) string {
 		return "Claude Code"
 	case "codex":
 		return "Codex"
+	case "opencode":
+		return "OpenCode"
 	}
 	return tool
 }

@@ -90,7 +90,7 @@
 
 ## 遗留
 
-1. IM2 合入后，在 `internal/notify/render.go` 的 `toolLabel` 加 `case "opencode": return "OpenCode"`（一行，加一个用例）。
+1. ~~IM2 合入后补群通知里的工具显示名~~：已补。变基到 IM2-0 合入后的 main（90b3882 之后），`internal/notify/render.go` 的 `toolLabel` 加了 OpenCode，并新增 `TestToolLabel`。internal/notify 只改了这一处。
 2. OpenCode 桌面版、经 ACP 接入的编辑器里，提示条能否显示还没验证（文档已如实写明）。智能体在回复末尾写出的提醒不受影响。
 3. 走查库 `cohive_walk_tools_a` 还在本机，按惯例合入后删。上一轮调研的走查库 `cohive_walk_opencode` 我去删时发现已经不在了。
 
