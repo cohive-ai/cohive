@@ -30,7 +30,7 @@ export function IssuesPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("list.searchLabel")}
-          className="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-2 text-sm placeholder:text-muted sm:max-w-sm"
+          className="min-w-0 flex-1 rounded border border-line-strong bg-surface px-3 py-2 text-sm placeholder:text-muted sm:max-w-sm"
         />
         <label className="sr-only" htmlFor="status">
           {t("list.filterStatus")}
@@ -39,7 +39,7 @@ export function IssuesPage() {
           id="status"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="rounded border border-line bg-surface px-3 py-2 text-sm"
+          className="rounded border border-line-strong bg-surface px-3 py-2 text-sm"
         >
           {/* “全部状态”不含已作废，选“已作废”才列出 */}
           {statusOptions().map((o) => (
@@ -75,13 +75,13 @@ export function IssuesPage() {
                 <tr key={is.id} className="border-t border-line first:border-t-0 hover:bg-bg">
                   <td className="hidden px-3 py-2 align-top text-muted sm:table-cell">#{is.id}</td>
                   <td className="px-3 py-2">
-                    <Link to="/w/$ws/issues/$id" params={{ ws, id: String(is.id) }} className="text-ink hover:text-teal">
+                    <Link to="/w/$ws/issues/$id" params={{ ws, id: String(is.id) }} className="text-ink hover:text-accent">
                       <span className="text-muted sm:hidden">#{is.id} </span>
                       {is.title}
                     </Link>
                     {/* 窄屏时把其余列合成一行带说明的摘要 */}
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted sm:hidden">
-                      <StatusTag status={is.status} label={statusLabel(is.status, is.status_label)} />
+                      <StatusTag compact status={is.status} label={statusLabel(is.status, is.status_label)} />
                       <span className="inline-flex items-center gap-1">
                         <ToolMark tool={is.source_tool} withLabel={false} />
                         {t("list.reportedBy", { name: is.source })}
@@ -92,7 +92,7 @@ export function IssuesPage() {
                     </div>
                   </td>
                   <td className="hidden px-3 py-2 sm:table-cell">
-                    <StatusTag status={is.status} label={statusLabel(is.status, is.status_label)} />
+                    <StatusTag compact status={is.status} label={statusLabel(is.status, is.status_label)} />
                   </td>
                   <td className="hidden px-3 py-2 text-muted sm:table-cell">{is.target_service || t("unset")}</td>
                   <td className="hidden px-3 py-2 sm:table-cell">

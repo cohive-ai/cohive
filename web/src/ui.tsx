@@ -1,21 +1,22 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { BrandMark } from "./brand";
 
-// 表单与对话框的通用件：颜色只用 styles.css 里的令牌
+// 表单与对话框的通用件：颜色、圆角、阴影只用 styles.css 里的令牌。主按钮加了 1px 边框，上下内边距相应少 1px，尺寸不变
 
 export const btn = {
   primary:
-    "inline-flex items-center justify-center rounded bg-teal px-3 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50",
+    "inline-flex items-center justify-center rounded border border-ink bg-accent-fill px-3 py-[7px] text-sm font-medium text-accent-ink shadow-hard hover:opacity-90 disabled:opacity-50",
   secondary:
-    "inline-flex items-center justify-center rounded border border-line bg-surface px-3 py-1.5 text-sm text-ink hover:bg-sunken disabled:opacity-50",
+    "inline-flex items-center justify-center rounded border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink hover:bg-sunken disabled:opacity-50",
   danger:
-    "inline-flex items-center justify-center rounded border border-line bg-surface px-3 py-1.5 text-sm text-danger hover:bg-sunken disabled:opacity-50",
+    "inline-flex items-center justify-center rounded border border-line-strong bg-surface px-3 py-1.5 text-sm text-danger hover:bg-sunken disabled:opacity-50",
   dangerSolid:
-    "inline-flex items-center justify-center rounded bg-danger px-3 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50",
+    "inline-flex items-center justify-center rounded bg-danger px-3 py-2 text-sm font-medium text-on-status hover:opacity-90 disabled:opacity-50",
 };
 
 export const inputClass =
-  "w-full rounded border border-line bg-bg px-3 py-2 text-sm text-ink placeholder:text-muted disabled:opacity-60";
+  "w-full rounded border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:shadow-focus focus-visible:outline-none disabled:opacity-60";
 
 export function Field({
   label,
@@ -82,9 +83,9 @@ export function SuccessText({ children }: { children: React.ReactNode }) {
   );
 }
 
-// 醒目提示：琥珀色只用于“需要你注意”
-export function Callout({ children, tone = "amber" }: { children: React.ReactNode; tone?: "amber" | "teal" }) {
-  const cls = tone === "amber" ? "border-amber bg-amber-soft text-ink" : "border-teal bg-teal-soft text-ink";
+// 醒目提示：黄色左边条只用于“需要你注意”，绿色用于成功
+export function Callout({ children, tone = "wait" }: { children: React.ReactNode; tone?: "wait" | "teal" }) {
+  const cls = tone === "wait" ? "border-wait-mark bg-accent-soft text-ink" : "border-teal bg-teal-soft text-ink";
   return <div className={`rounded border-l-4 px-4 py-3 text-sm ${cls}`}>{children}</div>;
 }
 
@@ -124,7 +125,7 @@ export function Dialog({
       onCancel={(e) => {
         if (!dismissible) e.preventDefault();
       }}
-      className={`m-auto ${wide ? "w-[min(calc(100vw-2rem),44rem)]" : "w-[min(calc(100vw-2rem),30rem)]"} rounded-lg border border-line bg-surface p-5 text-ink backdrop:bg-black/40`}
+      className={`m-auto ${wide ? "w-[min(calc(100vw-2rem),44rem)]" : "w-[min(calc(100vw-2rem),30rem)]"} rounded-lg border border-line bg-surface p-5 text-ink backdrop:bg-backdrop`}
     >
       {open && (
         <>
@@ -263,9 +264,7 @@ export function AuthShell({ title, children }: { title: string; children: React.
     <div className="flex min-h-dvh items-center justify-center px-4 py-8">
       <div className="w-full max-w-md rounded-lg border border-line bg-surface p-6">
         <div className="mb-5 flex items-center gap-2">
-          <svg viewBox="0 0 32 32" className="h-6 w-6 text-teal" aria-hidden="true">
-            <path d="M16 3l11 6.5v13L16 29 5 22.5v-13z" fill="currentColor" />
-          </svg>
+          <BrandMark className="h-7 w-7 text-ink" />
           <h1 className="text-lg font-semibold">{title}</h1>
         </div>
         {children}

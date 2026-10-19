@@ -40,7 +40,7 @@ export function WorkspaceLoadError({ error, what }: { error: Error; what: "board
               i18nKey="workspaceError.adminHint"
               components={{
                 link: (
-                  <Link to="/w/$ws/admin" params={{ ws }} search={{ tab: "members" }} className="text-teal hover:underline" />
+                  <Link to="/w/$ws/admin" params={{ ws }} search={{ tab: "members" }} className="text-accent hover:underline" />
                 ),
               }}
             />
@@ -53,7 +53,7 @@ export function WorkspaceLoadError({ error, what }: { error: Error; what: "board
               {others.map((w, i) => (
                 <span key={w.name}>
                   {i > 0 && listSeparator()}
-                  <Link to="/w/$ws" params={{ ws: w.name }} className="text-teal hover:underline">
+                  <Link to="/w/$ws" params={{ ws: w.name }} className="text-accent hover:underline">
                     {workspaceLabel(w)}
                   </Link>
                 </span>

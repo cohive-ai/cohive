@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type DeviceToken, type WorkspaceRef } from "./api";
 import { joinList, roleLabel, tokensByWorkspace, toolLabel, workspaceLabel } from "./format";
 import { applyAccountLanguage } from "./i18n";
+import { BrandMark, BrandWordmark } from "./brand";
 import { btn } from "./ui";
 import {
   canAdminWorkspace,
@@ -17,11 +18,12 @@ import {
 // 工具标识：哪个工具做的，是协作记录里的关键信息
 export function ToolMark({ tool, withLabel = true }: { tool: string; withLabel?: boolean }) {
   useTranslation(); // 切换语言时重绘（“网页”的名称随语言变）
+  // 颜色只上图标，工具名文字用 ink；未收录的工具用灰色（对照表见 docs/brand）
   const color =
-    tool === "claude-code" ? "text-tool-claude" : tool === "codex" ? "text-tool-codex" : "text-muted";
+    tool === "claude-code" ? "text-tool-claude" : tool === "codex" ? "text-tool-codex" : "text-tool-other";
   return (
-    <span className={`inline-flex items-center gap-1 ${color}`} title={toolLabel(tool)}>
-      <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 shrink-0" aria-hidden="true">
+    <span className="inline-flex items-center gap-1 text-ink" title={toolLabel(tool)}>
+      <svg viewBox="0 0 12 12" className={`h-2.5 w-2.5 shrink-0 ${color}`} aria-hidden="true">
         <path d="M6 0.5l5 2.9v5.2L6 11.5 1 8.6V3.4z" fill="currentColor" />
       </svg>
       {withLabel && <span className="text-xs">{toolLabel(tool)}</span>}
@@ -29,21 +31,27 @@ export function ToolMark({ tool, withLabel = true }: { tool: string; withLabel?:
   );
 }
 
+// 状态标签全部实色、加粗，扫一眼看底色就能分清：黄是轮到你，黑是在别人手上，黑框是还没人接，
+// 绿、红是已结束的好与坏；草稿和已作废不需要注意，故意压低
 const statusTone: Record<string, string> = {
-  DRAFT: "border border-dashed border-line text-muted",
-  OPEN: "bg-teal-soft text-teal",
-  ACCEPTED: "bg-teal-soft text-teal",
-  FIXING: "bg-teal-soft text-teal",
-  REOPENED: "bg-amber-soft text-amber",
-  READY_FOR_VERIFICATION: "bg-amber-soft text-amber",
-  CLOSED: "bg-sunken text-muted",
-  DECLINED: "bg-sunken text-danger",
-  CANCELLED: "bg-sunken text-muted line-through",
+  DRAFT: "border-dashed border-ink text-ink",
+  OPEN: "border-ink bg-surface text-ink",
+  ACCEPTED: "border-ink bg-ink text-surface",
+  FIXING: "border-ink bg-ink text-surface",
+  REOPENED: "border-accent-ink bg-wait-mark text-accent-ink",
+  READY_FOR_VERIFICATION: "border-accent-ink bg-wait-mark text-accent-ink",
+  CLOSED: "border-teal bg-teal text-on-status",
+  DECLINED: "border-danger bg-danger text-on-status",
+  CANCELLED: "border-line-strong text-muted line-through",
 };
 
-export function StatusTag({ status, label }: { status: string; label: string }) {
+// compact：看板卡片和问题单列表里用，字号小一档、不留上下内边距，标签比所在行矮，不挤占上下的空隙
+export function StatusTag({ status, label, compact = false }: { status: string; label: string; compact?: boolean }) {
+  const size = compact ? "px-1 text-2xs" : "px-1.5 py-px text-xs";
   return (
-    <span className={`inline-block rounded px-1.5 py-px text-xs whitespace-nowrap ${statusTone[status] ?? ""}`}>
+    <span
+      className={`inline-block rounded border-[1.5px] font-bold whitespace-nowrap ${size} ${statusTone[status] ?? "border-transparent"}`}
+    >
       {label}
     </span>
   );
@@ -71,7 +79,7 @@ export function Layout() {
     navigate({ to: "/login" });
   };
   const nav = "px-1 py-0.5 text-muted hover:text-ink";
-  const active = { className: "px-1 py-0.5 text-ink border-b-2 border-teal" };
+  const active = { className: "px-1 py-0.5 font-semibold text-ink border-b-[3px] border-accent-fill" };
 
   const workspaces = me.data?.workspaces ?? [];
   const current = workspaceFromPath(pathname);
@@ -88,10 +96,8 @@ export function Layout() {
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <Link to="/" className="flex items-center gap-2 text-ink">
-            <svg viewBox="0 0 32 32" className="h-5 w-5 text-teal" aria-hidden="true">
-              <path d="M16 3l11 6.5v13L16 29 5 22.5v-13z" fill="currentColor" />
-            </svg>
-            <span className="font-semibold tracking-wide">Cohive</span>
+            <BrandMark className="h-6 w-6" />
+            <BrandWordmark className="h-3.5 w-auto" />
           </Link>
           {workspaces.length > 0 || current ? (
             <WorkspaceSwitcher workspaces={workspaces} current={current} onChange={switchTo} />
@@ -169,7 +175,7 @@ function WorkspaceSwitcher({
       <select
         value={current ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        className="max-w-[14rem] rounded border border-line bg-bg px-2 py-1 text-sm text-ink"
+        className="max-w-[14rem] rounded border border-line-strong bg-bg px-2 py-1 text-sm text-ink"
       >
         {!current && (
           <option value="" disabled>
@@ -199,7 +205,7 @@ export function NoWorkspace() {
           <Trans
             t={t}
             i18nKey="workspace.createHint"
-            components={{ create: <Link to="/server" className="text-teal hover:underline" /> }}
+            components={{ create: <Link to="/server" className="text-accent hover:underline" /> }}
           />
         </p>
       )}

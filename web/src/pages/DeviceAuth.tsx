@@ -147,7 +147,7 @@ function ResultMessage({ status }: { status: string }) {
           {msg[status] ?? t("device.currentStatus", { status: statusLabels[status]?.() ?? status })}
         </Notice>
       )}
-      <Link to="/me" className="inline-block text-sm text-teal hover:underline">
+      <Link to="/me" className="inline-block text-sm text-accent hover:underline">
         {t("device.viewDevices")}
       </Link>
     </div>

@@ -30,7 +30,7 @@ function NotFound() {
   return (
     <div className="mx-auto max-w-md px-4 py-16">
       <Notice>
-        <Trans t={t} i18nKey="notFound" components={{ home: <Link to="/" className="text-teal hover:underline" /> }} />
+        <Trans t={t} i18nKey="notFound" components={{ home: <Link to="/" className="text-accent hover:underline" /> }} />
       </Notice>
     </div>
   );

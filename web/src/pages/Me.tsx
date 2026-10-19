@@ -46,18 +46,18 @@ export function MePage() {
           <ul className="divide-y divide-line rounded border border-line">
             {m.workspaces.map((w) => (
               <li key={w.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
-                <Link to="/w/$ws" params={{ ws: w.name }} className="font-medium text-ink hover:text-teal">
+                <Link to="/w/$ws" params={{ ws: w.name }} className="font-medium text-ink hover:text-accent">
                   {workspaceLabel(w)}
                 </Link>
                 <span
                   className={`rounded px-1.5 py-px text-xs ${
-                    w.role === "admin" ? "bg-amber-soft text-amber" : "bg-sunken text-muted"
+                    w.role === "admin" ? "border-[1.5px] border-ink bg-ink font-bold text-surface" : "bg-sunken text-muted"
                   }`}
                 >
                   {roleLabel(w.role)}
                 </span>
                 {w.role === "admin" && (
-                  <Link to="/w/$ws/admin" params={{ ws: w.name }} className="ml-auto text-teal hover:underline">
+                  <Link to="/w/$ws/admin" params={{ ws: w.name }} className="ml-auto text-accent hover:underline">
                     {t("workspaces.manage")}
                   </Link>
                 )}
@@ -113,7 +113,7 @@ function AccountLanguage({ me }: { me: Me }) {
     <div>
       <select
         aria-label={t("language.label")}
-        className="rounded border border-line bg-surface px-2 py-1 text-sm text-ink disabled:opacity-60"
+        className="rounded border border-line-strong bg-surface px-2 py-1 text-sm text-ink disabled:opacity-60"
         value={me.account.language ?? ""}
         disabled={busy}
         onChange={(e) => void change(e.target.value)}
@@ -364,14 +364,14 @@ function Telegram({ me }: { me: Me }) {
       </div>
 
       {attempt && waiting && !linked && (
-        <div className="mt-3 rounded border border-line bg-bg px-3 py-2 text-sm">
+        <div className="mt-3 rounded border border-line-strong bg-bg px-3 py-2 text-sm">
           <p>{t("telegram.opened")}</p>
           <p className="mt-1 text-muted">
             <Trans
               t={t}
               i18nKey="telegram.notOpened"
               components={{
-                l: <a href={attempt.url} target="_blank" rel="noopener noreferrer" className="text-teal hover:underline" />,
+                l: <a href={attempt.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline" />,
               }}
             />
           </p>
