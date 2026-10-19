@@ -19,14 +19,15 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
+| UI-1 产品配色对齐品牌 | 会话自建（从最新 main） | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | — | 已派 | 换标志与图标；强调色品牌金（浅色加深、对比度达 AA）；深色黑金；浅色微调；状态色语义不变且与金区分；顺带品牌页色名改英文普通名、加两份 SVG 一致性测试；浅深两主题各三屏截图；交回 `docs/brain/inbox/UI-1.md` |
 | IM-2 调研飞书、Slack、Discord 接入 | 会话自建（从最新 main，只提交报告） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a` | — | 已派 | 在旧飞书调研基础上补全；逐平台核对应用形态、长连接或回调、@ 与消息更新、审批按钮回调与身份、群绑定与账号连接、私聊、限流、网络地区、SDK；不注册不建应用；报告 `docs/research/2026-10-19-im-feishu-slack-discord.md` 含顺序建议与待 lee 决定项 |
 | TOOLS 编程工具适配 | 报告已合入 main `c27c34d` | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08`（保留，待做实现） | `4d5a6e6` | 待用户（TOOLS-1 至 TOOLS-6） | 报告 `docs/research/2026-10-19-coding-tools-opencode-deepseek.md` |
-| BRAND-1 落地页与标志入库 | 会话自建（从最新 main） | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | — | 已派 | 接手 Open Design 交接（以第二版黑金为准）：标志进 docs/brand/，落地页进 site/，字体自托管附 OFL，README 顶部换深浅自适应标志，内容与 README 核对，贡献者区接口失败降级；不部署、不配域名；交回 `docs/brain/inbox/BRAND-1.md` 含部署选项 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
+| BRAND-2 | 落地页部署方式与域名 | A Cloudflare Pages（连仓库、输出目录 site，自动出分支预览）；B GitHub Pages（需加工作流，github.io 国内不稳）；域名待定（未定前可先用平台送的地址试运行） | A；域名由 lee 定 | 落地页上线、README 放链接、快速开始换掉 cohive.example.com |
 | TOOLS-1 | “DeepSeek harness”指什么 | A 官方 DeepSeek Harness（dsh）；B 用 DeepSeek 模型驱动 Claude Code 或 opencode；C 社区工具 | A | TOOLS-3 |
 | TOOLS-2 | opencode 做不做 | A 现在做第三种工具；B 等有人用再做 | A（四项能力实测齐全，现有技能文件可直接读） | 实现 |
 | TOOLS-3 | DeepSeek Harness 怎么处理 | A 暂缓，只写手工接入说明；B 实验性 --tools dsh 写家目录；C 原生插件正式支持 | A（配置只在用户级、钩子靠实验插件、开发者预览） | 同上 |
@@ -38,7 +39,6 @@
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
 - P3 钉钉未核实项（国际版是否支持互动卡片与 Stream、卡片回调是否计入额度、模板导入导出、带参数打开单聊）遇到再起单，服务 dingtalk 负责人 guanyu；#5（接手钉钉维护）guanyu 尚未接单 —— 来源 #6 关闭
-- P1 UI-1 产品网页配色对齐品牌（lee 定 A 并要求浅色主题微调）：换标志与网站图标；主按钮、选中等强调色改品牌金（浅色下用加深的金保证对比度）；深色主题改黑金；浅色主题整体微调向品牌靠拢（中性色、边框、强调色协调），仍以耐看易读为先；状态色语义不变且与金色区分；BRAND-1 合入后交同一会话 brand-landing 做 —— 来源 lee 2026-10-19
 - P3 已作废的单加“复制为新草稿”；操作记录列表写明命令行作废以哪个管理员（--as）名义 —— 来源 ISSUE-12 建议
 - P3 T-6 前端测试偶发失败：ISSUE-13 实施方在 make build 的 vitest 阶段失败一次（用例名未留住），随后连跑两次通过；主脑复跑两次通过。再出现时记下用例名 —— 来源 ISSUE-13
 - P3 DEP-2 依赖跟进：cohive-ai/cohive#3 等机器人按新分组配置自动重建或关闭，10-25 前后仍没动就手动关并留言；重建的分组请求（react 19.3.1、i18next 26.4.5、react-query 5.104.3、react-i18next 17.0.16）10-28 前后满两周再合；typescript 7、jsdom 30、vitest 5 等大版本单独请求逐个评估 —— 来源 DEP-1b
