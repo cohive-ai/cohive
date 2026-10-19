@@ -307,3 +307,19 @@ func TestGuidesListEveryToken(t *testing.T) {
 		}
 	}
 }
+
+// 层叠：浅色块里写的变量，默认深色块没定义的（圆角、阴影）在深色主题也生效；深色块定义了的不受影响
+func TestResolveCascade(t *testing.T) {
+	d := defaults(t)
+	custom := Theme{Light: map[string]string{"radius-panel": "8px", "bg": "#fafafa"}, Dark: map[string]string{"ink": "#eeeeee"}}
+	light, dark := Resolve(d, custom, "light"), Resolve(d, custom, "dark")
+	if light["radius-panel"] != "8px" || dark["radius-panel"] != "8px" {
+		t.Errorf("radius-panel light %q dark %q, want 8px in both", light["radius-panel"], dark["radius-panel"])
+	}
+	if light["bg"] != "#fafafa" || dark["bg"] != d.Dark["bg"] {
+		t.Errorf("bg light %q dark %q", light["bg"], dark["bg"])
+	}
+	if dark["ink"] != "#eeeeee" || light["ink"] != d.Light["ink"] {
+		t.Errorf("ink light %q dark %q", light["ink"], dark["ink"])
+	}
+}
