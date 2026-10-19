@@ -254,7 +254,7 @@ func TestDingTalkChannelSend(t *testing.T) {
 		t.Fatalf("没配模板时发 Markdown：%+v", c)
 	}
 	card := &notify.DingTalkChannel{API: f.api(), NoticeTemplate: "tpl-n"}
-	m := notify.Rendered{Title: "#1 新单", Text: "@ann 请接单", Key: "n5",
+	m := notify.Rendered{Title: "#1 新单", Text: `<a atId="u-ann">安</a> 请接单`, Key: "n5",
 		Mentions: []store.ChatIdentity{{Provider: store.ProviderDingTalk, Tenant: "corp1", UserID: "u-ann", DisplayName: "安"}}}
 	if err := card.Send(ctx, "cid1", m); err != nil {
 		t.Fatal(err)
@@ -265,6 +265,15 @@ func TestDingTalkChannelSend(t *testing.T) {
 	}
 	b := c[0].body
 	at := b["imGroupOpenDeliverModel"].(map[string]any)["atUserIds"].(map[string]any)
+	cardAt, ok := b["cardAtUserIds"].([]any)
+	if !ok || len(cardAt) != 1 || cardAt[0] != "u-ann" {
+		t.Fatalf("卡片内 @ 必须声明用户编号：%+v", b)
+	}
+	content := b["cardData"].(map[string]any)["cardParamMap"].(map[string]any)["content"]
+	if content != `<a atId="u-ann">安</a> 请接单` {
+		t.Fatalf("卡片正文：%v", content)
+	}
+
 	if b["outTrackId"] != "cohive-n5" || b["cardTemplateId"] != "tpl-n" || b["openSpaceId"] != "dtv1.card//IM_GROUP.cid1" ||
 		len(at) != 1 || at["u-ann"] != "安" || b["callbackType"] != nil {
 		t.Fatalf("通知卡片：%+v", b)

@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -195,6 +198,15 @@ func (d *DingTalk) DeliverCard(ctx context.Context, c CardDelivery) error {
 		},
 		"imGroupOpenDeliverModel": map[string]any{"robotCode": d.robotCode(), "atUserIds": c.AtUserIDs},
 	}
+	// 卡片内 @ 与群消息提醒分别声明，使用同一批钉钉 userId。
+	if len(c.AtUserIDs) > 0 {
+		ids := make([]string, 0, len(c.AtUserIDs))
+		for id := range c.AtUserIDs {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		in["cardAtUserIds"] = ids
+	}
 	if c.Callback {
 		in["callbackType"] = "STREAM"
 	}
@@ -215,8 +227,12 @@ func (d *DingTalk) UpdateCard(ctx context.Context, outTrackID string, params map
 	return d.call(ctx, "update card", http.MethodPut, "/v1.0/card/instances", in, nil)
 }
 
+// 卡片专用标签不能发到普通 Markdown；用户输入的尖括号已由 Formatter 转义。
+var dtCardMention = regexp.MustCompile(`<a atId="[^"]*">([^<]*)</a>`)
+
 // GroupMarkdown 以机器人身份往群里发一条 Markdown 消息（不支持 @，降级时用）。
 func (d *DingTalk) GroupMarkdown(ctx context.Context, chatID, title, text string) error {
+	text = dtCardMention.ReplaceAllString(text, "$1")
 	param, _ := json.Marshal(map[string]string{"title": title, "text": text})
 	in := map[string]any{"msgKey": "sampleMarkdown", "msgParam": string(param), "openConversationId": chatID, "robotCode": d.robotCode()}
 	return d.call(ctx, "send group message", http.MethodPost, "/v1.0/robot/groupMessages/send", in, nil)
@@ -284,10 +300,13 @@ func (DingTalkFormat) Link(l i18n.Lang, u string) string {
 	return "[" + l.T("notify.link_text") + "](" + strings.NewReplacer("(", "%28", ")", "%29", " ", "%20").Replace(u) + ")"
 }
 
-// Mention 连接了钉钉时写成 @名字（钉钉按卡片的 atUserIds 提醒到人），没连接时只写名字。
+// Mention 用绑定的钉钉 userId 生成卡片内 @ 标签；未连接时只写名字。
 func (DingTalkFormat) Mention(_ i18n.Lang, label string, id *store.ChatIdentity, _ bool) string {
 	if id == nil || id.UserID == "" {
 		return label
 	}
-	return "@" + label
+	if id.DisplayName != "" {
+		label = (DingTalkFormat{}).Esc(id.DisplayName)
+	}
+	return `<a atId="` + html.EscapeString(id.UserID) + `">` + label + `</a>`
 }

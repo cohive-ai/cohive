@@ -54,6 +54,8 @@ Cohive 不读通讯录，不需要通讯录权限。成员连接钉钉时，机�
 | 标题 | 绑定变量 `title`（字符串） |
 | 正文（Markdown 或富文本组件） | 绑定变量 `content`（字符串，内容是 Markdown） |
 
+正文必须使用支持 Markdown 的组件，才能渲染卡片内的 @ 标签。Cohive 会同时发送群消息提醒名单 `atUserIds`、卡片内名单 `cardAtUserIds`，并在正文中生成 `<a atId=钉钉userId>钉钉昵称</a>`；仅写普通的 `@名字` 不会生成卡片内的 @ 高亮。
+
 不需要按钮。预览用的示例数据：`title` 填“#12 新单交给 @张三”，`content` 填几行 Markdown。
 
 ### 4.2 审批卡片（名称：Cohive 审批）

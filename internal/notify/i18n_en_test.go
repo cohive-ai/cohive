@@ -128,7 +128,7 @@ func TestRenderEnglishDingTalk(t *testing.T) {
 	ws := store.Workspace{Name: "payments", Language: "en", Notify: store.NotifyConfig{Channel: store.ProviderDingTalk, Target: "cid", ShowTitle: true}}
 	m := notify.RenderFor(notify.DingTalkFormat{}, store.ProviderDingTalk, "https://c.example.com", ws, is,
 		store.Notification{Event: "closed", ActorMemberID: claude.ID, ActorTool: "claude-code", Recipients: []int64{codex.ID}}, people)
-	if m.Title != "#12 Closed" || !strings.Contains(m.Text, "FYI owner @lee-codex") || len(m.Mentions) != 1 || m.Lang != i18n.EN ||
+	if m.Title != "#12 Closed" || !strings.Contains(m.Text, `FYI owner <a atId="u-codex">lee-codex</a>`) || len(m.Mentions) != 1 || m.Lang != i18n.EN ||
 		!strings.Contains(m.Text, "[View issue](https://c.example.com/w/payments/issues/12)") {
 		t.Fatalf("钉钉英文关单消息：%+v", m)
 	}

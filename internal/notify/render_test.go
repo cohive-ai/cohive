@@ -162,7 +162,7 @@ func TestAcceptedAndClosedDingTalk(t *testing.T) {
 	ws := store.Workspace{Name: "payments", Notify: store.NotifyConfig{Channel: store.ProviderDingTalk, Target: "cid", ShowTitle: true}}
 	m := notify.RenderFor(notify.DingTalkFormat{}, store.ProviderDingTalk, "", ws, is,
 		store.Notification{Event: "closed", ActorMemberID: claude.ID, ActorTool: "claude-code", Recipients: []int64{codex.ID}}, people)
-	if m.Title != "#12 已关闭" || !strings.Contains(m.Text, "告知负责人 @lee-codex") || len(m.Mentions) != 1 || m.Mentions[0].UserID != "u-codex" {
+	if m.Title != "#12 已关闭" || !strings.Contains(m.Text, `告知负责人 <a atId="u-codex">lee-codex</a>`) || len(m.Mentions) != 1 || m.Mentions[0].UserID != "u-codex" {
 		t.Fatalf("钉钉关单消息：%+v", m)
 	}
 	m = notify.RenderFor(notify.DingTalkFormat{}, store.ProviderDingTalk, "", ws, is,
@@ -202,7 +202,7 @@ func TestOverdueMessages(t *testing.T) {
 	m := notify.RenderFor(notify.DingTalkFormat{}, store.ProviderDingTalk, "", w.ws, is,
 		store.Notification{Event: "overdue_admin", IssueStatus: "OPEN", Recipients: []int64{codex.ID}},
 		map[int64]notify.Person{codex.ID: {Name: codex.Name, Chats: []store.ChatIdentity{{Provider: store.ProviderDingTalk, UserID: "u-codex"}}}})
-	if m.Title != "#12 催办（已请管理员协调）" || len(m.Mentions) != 1 || !strings.Contains(m.Text, "@lee-codex") {
+	if m.Title != "#12 催办（已请管理员协调）" || len(m.Mentions) != 1 || !strings.Contains(m.Text, `<a atId="u-codex">lee-codex</a>`) {
 		t.Fatalf("钉钉催办：%+v", m)
 	}
 	if text := render(t, workspace(true, true, ""), is, "overdue", codex.ID, "cohive", codex.ID); strings.Contains(text, "SECRET") {

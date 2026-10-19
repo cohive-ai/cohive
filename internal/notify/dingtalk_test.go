@@ -14,6 +14,7 @@ import (
 
 	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/notify"
+	"github.com/cohive-ai/cohive/internal/store"
 )
 
 const fakeSecret = "dt-secret-SHOULD-NOT-LEAK"
@@ -190,5 +191,97 @@ func TestDingTalkFormat(t *testing.T) {
 	}
 	if got := f.Link(i18n.ZhCN, "https://c.example.com/w/pay/issues/12"); got != "[查看问题单](https://c.example.com/w/pay/issues/12)" {
 		t.Fatalf("链接：%q", got)
+	}
+}
+
+// 卡片内的 @ 必须使用钉钉身份标签，昵称和编号均不能注入标签。
+func TestDingTalkCardMention(t *testing.T) {
+	f := notify.DingTalkFormat{}
+	for _, tc := range []struct {
+		name string
+		id   *store.ChatIdentity
+		want string
+	}{
+		{"已绑定", &store.ChatIdentity{UserID: "u-ann", DisplayName: "安"}, `<a atId="u-ann">安</a>`},
+		{"没有昵称", &store.ChatIdentity{UserID: "u-ann"}, `<a atId="u-ann">ann</a>`},
+		{"未绑定", nil, "ann"},
+		{"编号为空", &store.ChatIdentity{DisplayName: "安"}, "ann"},
+		{"转义", &store.ChatIdentity{UserID: `u"<`, DisplayName: `<安>@all`}, `<a atId="u&#34;&lt;">＜安＞＠all</a>`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := f.Mention(i18n.ZhCN, "ann", tc.id, false); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDingTalkMarkdownFallbackHasNoCardTags(t *testing.T) {
+	f := newFakeDingTalk(t)
+	ch := &notify.DingTalkChannel{API: f.api()}
+	person := store.ChatIdentity{Provider: store.ProviderDingTalk, UserID: "u-ann", DisplayName: "安"}
+	text := ch.Format().Mention(i18n.ZhCN, "ann", &person, false) + " 请处理"
+	if err := ch.Send(context.Background(), "cid1", notify.Rendered{Title: "通知", Text: text, Mentions: []store.ChatIdentity{person}}); err != nil {
+		t.Fatal(err)
+	}
+	calls := f.callsTo("/v1.0/robot/groupMessages/send")
+	var param map[string]string
+	if len(calls) != 1 {
+		t.Fatalf("calls: %+v", calls)
+	}
+	if err := json.Unmarshal([]byte(calls[0].body["msgParam"].(string)), &param); err != nil {
+		t.Fatal(err)
+	}
+	if param["text"] != "安 请处理" {
+		t.Fatalf("降级消息不应泄露卡片标签：%q", param["text"])
+	}
+}
+
+// 从问题单渲染到 HTTP 请求，卡片标签和两份 @ 名单必须对应同一身份。
+func TestDingTalkRenderedMentionDelivery(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		actor       int64
+		linked      bool
+		wantMention bool
+	}{
+		{"他人收到通知", claude.ID, true, true},
+		{"未绑定不提及", claude.ID, false, false},
+		{"操作者不提及自己", codex.ID, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeDingTalk(t)
+			ch := &notify.DingTalkChannel{API: f.api(), NoticeTemplate: "tpl"}
+			people := map[int64]notify.Person{claude.ID: {Name: claude.Name}, codex.ID: {Name: codex.Name}}
+			if tc.linked {
+				p := people[codex.ID]
+				p.Chats = []store.ChatIdentity{{Provider: store.ProviderDingTalk, UserID: "staff-123", DisplayName: "小明"}}
+				people[codex.ID] = p
+			}
+			msg := notify.RenderFor(ch.Format(), store.ProviderDingTalk, "", workspace(true, true, "").ws, sampleIssue(),
+				store.Notification{Event: "assigned", ActorMemberID: tc.actor, Recipients: []int64{codex.ID, codex.ID}}, people)
+			if err := ch.Send(context.Background(), "cid1", msg); err != nil {
+				t.Fatal(err)
+			}
+			body := f.callsTo("/v1.0/card/instances/createAndDeliver")[0].body
+			cardAt, hasCardAt := body["cardAtUserIds"]
+			at, hasAt := body["imGroupOpenDeliverModel"].(map[string]any)["atUserIds"]
+			content := body["cardData"].(map[string]any)["cardParamMap"].(map[string]any)["content"].(string)
+			if !tc.wantMention {
+				if hasCardAt || hasAt || strings.Contains(content, "<a atId=") {
+					t.Fatalf("不应 @：%+v", body)
+				}
+				return
+			}
+			if !hasCardAt || !hasAt {
+				t.Fatalf("缺少 @ 参数：%+v", body)
+			}
+			ids := cardAt.([]any)
+			users := at.(map[string]any)
+			if len(ids) != 1 || ids[0] != "staff-123" || len(users) != 1 || users["staff-123"] != "小明" ||
+				!strings.Contains(content, `<a atId="staff-123">小明</a>`) {
+				t.Fatalf("@ 身份必须一致且去重：%+v", body)
+			}
+		})
 	}
 }
