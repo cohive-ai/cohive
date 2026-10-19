@@ -6,3 +6,11 @@ This product includes software developed by third parties:
 - gitleaks detection rules (internal/secretscan/gitleaks/gitleaks.toml),
   MIT License, Copyright (c) 2019 Zachary Rice.
   See internal/secretscan/gitleaks/LICENSE.
+
+- Michroma font, version 1.100 (site/fonts/michroma/, website only),
+  SIL Open Font License 1.1, Copyright 2011 The Michroma Project Authors.
+  See site/fonts/michroma/OFL.txt.
+
+- JetBrains Mono font, version 2.304 (site/fonts/jetbrains-mono/, website only),
+  SIL Open Font License 1.1, Copyright 2020 The JetBrains Mono Project Authors.
+  See site/fonts/jetbrains-mono/OFL.txt.
