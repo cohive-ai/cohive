@@ -180,3 +180,44 @@ func TestInboxWhoamiAndChatID(t *testing.T) {
 		t.Fatalf("私聊里问群编号：%+v", r)
 	}
 }
+
+// 文字指令不区分大小写：Slack、飞书等的用户常打首字母大写的英文指令。parseText 不导出，经钉钉通道端到端验证
+// （“@机器人 加文字”的通讯工具都用它拆指令）。
+func TestTextCommandsCaseInsensitive(t *testing.T) {
+	g := newFakeGateway(t)
+	ws := store.Workspace{ID: 4, Name: "ops", Language: "en", Notify: store.NotifyConfig{Channel: store.ProviderDingTalk, Target: "cid-ops"}}
+	fc := &fakeCore{workspace: ws, dtGroups: map[string]store.Workspace{"cid-ops": ws},
+		dtUsers: map[string]store.Account{"corp1/u-lee": {ID: 9, Name: "lee", Language: "en"}}}
+	dc := &fakeDTCore{link: core.LinkSubmit{Account: "lee"}}
+	ch := &notify.DingTalkChannel{API: g.api(), Core: dc, Logf: t.Logf}
+	ch.Hub = &notify.Hub{Core: fc, Channels: map[string]notify.Channel{store.ProviderDingTalk: ch}, Logf: t.Logf}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go ch.Run(ctx)
+	<-g.opened
+	waitOnline(t, ch)
+	hook := g.srv.URL + "/robot/send"
+	say := func(id, conv, kind, content string) {
+		g.frames <- frame("CALLBACK", "/v1.0/im/bot/messages/get", id, map[string]any{
+			"conversationId": conv, "conversationType": kind, "conversationTitle": "Ops", "senderStaffId": "u-lee", "senderCorpId": "corp1",
+			"sessionWebhook": hook, "msgtype": "text", "text": map[string]string{"content": content}})
+		g.ackFor(t, id)
+	}
+	say("m1", "cid-ops", "2", "@Cohive ChatID")
+	say("m2", "cid-ops", "2", "@Cohive WHOAMI")
+	say("m3", "cid-ops", "2", "@Cohive BindGroup GOODCODE")
+	say("m4", "cid-dm", "1", "Bind abcd-2345")
+	joined := waitReplies(t, g, 4)
+	for _, want := range []string{"The chat ID of this group (Ops) is `cid-ops`", "connected to Cohive account lee",
+		"This group is now bound to workspace", "Received. Go back to the Cohive web app"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("大小写混写的指令应被识别，回复应包含 %q：\n%s", want, joined)
+		}
+	}
+	dc.mu.Lock()
+	calls := strings.Join(dc.calls, "\n")
+	dc.mu.Unlock()
+	if !strings.Contains(calls, "bind|dingtalk|cid-ops|Ops|GOODCODE") || !strings.Contains(calls, "link|dingtalk|abcd-2345|corp1|u-lee||私聊") {
+		t.Fatalf("BindGroup、Bind 应分别按绑群、私聊发码处理：\n%s", calls)
+	}
+}
