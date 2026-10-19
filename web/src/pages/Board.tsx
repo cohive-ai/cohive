@@ -147,7 +147,7 @@ function Card({ ws, issue, me, moved }: { ws: string; issue: BoardIssue; me: str
         {issue.target_service && <span className="ml-auto truncate">{issue.target_service}</span>}
       </div>
       {/* 已结束的卡片只淡化标题和底部信息，状态标签不淡化 */}
-      <p className={`mt-1 leading-snug text-ink ${done ? "opacity-75" : ""}`}>{issue.title}</p>
+      <p className={`mt-1 text-card-title text-ink ${done ? "opacity-75" : ""}`}>{issue.title}</p>
       {!done && (
         <p className={`mt-1 text-sm ${forMe ? "text-wait" : "text-muted"}`}>
           {needsText(t, issue, forMe)}
