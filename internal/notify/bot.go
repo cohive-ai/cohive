@@ -17,39 +17,72 @@ import (
 	"github.com/cohive-ai/cohive/internal/store"
 )
 
-// HandleCommand 处理机器人收到的命令，返回要回复的内容。只认 /chatid 与 /whoami；
+// tgCaps：Telegram 用带参数的机器人链接连接账号（见 handleStart），群绑定在网页填群编号，只回应认得的命令。
+var tgCaps = InboxCaps{}
+
+// tgInbound 把发给本机器人的 /chatid、/whoami 翻译成统一的收件消息；别的消息、发给别的机器人的命令返回假。
 // 群里带 @机器人名 的命令只在机器人名匹配时处理，避免和群里其他机器人冲突。
-// lang 是回复的语言：群里用群所属工作空间的语言（群还没绑定时是服务器缺省语言），私聊用对方账号的语言。
-func HandleCommand(u Update, botName string, lang i18n.Lang) (string, bool) {
-	if u.Message == nil {
-		return "", false
+func tgInbound(m *TGMessage, botName string) (Inbound, bool) {
+	if m == nil {
+		return Inbound{}, false
 	}
-	fields := strings.Fields(u.Message.Text)
+	fields := strings.Fields(m.Text)
 	if len(fields) == 0 {
-		return "", false
+		return Inbound{}, false
 	}
 	cmd, target, _ := strings.Cut(fields[0], "@")
 	if target != "" && !strings.EqualFold(target, botName) {
+		return Inbound{}, false
+	}
+	if cmd != "/chatid" && cmd != "/whoami" {
+		return Inbound{}, false
+	}
+	in := Inbound{Provider: store.ProviderTelegram, ChatID: int64String(m.Chat.ID), ChatTitle: m.Chat.Title,
+		Private: m.Chat.Type == "private", Cmd: strings.TrimPrefix(cmd, "/"), First: fields[0], Args: fields[1:]}
+	if m.From != nil {
+		in.From = tgUser(m.From)
+	}
+	return in, true
+}
+
+// tgReplyText 按 Telegram 的文案与 HTML 写出回复。
+func tgReplyText(r Reply, in Inbound) string {
+	l := r.Lang
+	switch r.Kind {
+	case ReplyChatID:
+		if r.Private {
+			return l.T("notify.tg.chatid_private")
+		}
+		return l.T("notify.tg.chatid_group", i18n.D{"Title": html.EscapeString(in.ChatTitle), "ID": in.ChatID})
+	case ReplyWhoami:
+		if in.From.UserID == "" {
+			return ""
+		}
+		name := l.T("notify.tg.whoami_no_username")
+		if in.From.Handle != "" {
+			name = "<code>" + html.EscapeString(in.From.Handle) + "</code>"
+		}
+		text := l.T("notify.tg.whoami", i18n.D{"Name": name, "ID": in.From.UserID})
+		if !r.Linked { // 没连接或没有业务层：只说 Telegram 这边的身份
+			return text
+		}
+		text += l.T("notify.tg.whoami_account", i18n.D{"Account": html.EscapeString(r.Account)})
+		if r.Workspace != "" {
+			text += l.T("notify.tg.whoami_role", i18n.D{"Workspace": html.EscapeString(r.Workspace), "Role": r.Role})
+		}
+		return text
+	}
+	return ""
+}
+
+// HandleCommand 处理机器人收到的 /chatid 与 /whoami（不查业务层），返回要回复的内容。lang 是回复的语言。
+func HandleCommand(u Update, botName string, lang i18n.Lang) (string, bool) {
+	in, ok := tgInbound(u.Message, botName)
+	if !ok {
 		return "", false
 	}
-	m := u.Message
-	switch cmd {
-	case "/chatid":
-		if m.Chat.Type == "private" {
-			return lang.T("notify.tg.chatid_private"), true
-		}
-		return lang.T("notify.tg.chatid_group", i18n.D{"Title": html.EscapeString(m.Chat.Title), "ID": m.Chat.ID}), true
-	case "/whoami":
-		if m.From == nil {
-			return "", false
-		}
-		name := lang.T("notify.tg.whoami_no_username")
-		if m.From.Username != "" {
-			name = "<code>" + html.EscapeString(m.From.Username) + "</code>"
-		}
-		return lang.T("notify.tg.whoami", i18n.D{"Name": name, "ID": m.From.ID}), true
-	}
-	return "", false
+	text := tgReplyText(Inbox{Caps: tgCaps, Lang: lang}.Handle(context.Background(), in), in)
+	return text, text != ""
 }
 
 // chatAPI 是机器人用到的 Telegram 操作，由 *Telegram 实现，测试时可替换。
@@ -169,15 +202,17 @@ func (b *Bot) Handle(ctx context.Context, u Update) {
 	if u.Message == nil {
 		return
 	}
-	lang := b.replyLang(ctx, u.Message)
-	reply, ok := HandleCommand(u, b.Username(), lang)
-	if ok && b.Core != nil {
-		reply += b.whoamiExtra(ctx, u, lang)
+	var reply string
+	if in, ok := tgInbound(u.Message, b.Username()); ok {
+		x := Inbox{Caps: tgCaps, Logf: b.logf}
+		if b.Core != nil {
+			x.Hub = b.hub()
+		}
+		reply = tgReplyText(x.Handle(ctx, in), in)
+	} else if b.Core != nil {
+		reply, _ = b.handleStart(ctx, u, b.replyLang(ctx, u.Message))
 	}
-	if !ok && b.Core != nil {
-		reply, ok = b.handleStart(ctx, u, lang)
-	}
-	if !ok || reply == "" {
+	if reply == "" {
 		return
 	}
 	if err := b.api().Reply(ctx, u.Message.Chat.ID, u.Message.MessageID, reply); err != nil {
@@ -235,27 +270,6 @@ func (b *Bot) handleStart(ctx context.Context, u Update, lang i18n.Lang) (string
 	// 刚连接上：之后的话发给这个账号，按账号的语言
 	lang = b.hub().accountLang(ctx, store.ProviderTelegram, "", int64String(m.From.ID))
 	return lang.T("notify.tg.linked", i18n.D{"Account": html.EscapeString(res.Account)}), true
-}
-
-// whoamiExtra 在 /whoami 的回复后补上连接的 Cohive 账号；在群里再补上他在本群工作空间的角色。
-func (b *Bot) whoamiExtra(ctx context.Context, u Update, lang i18n.Lang) string {
-	cmd, _ := b.command(u.Message)
-	if cmd != "/whoami" || u.Message.From == nil {
-		return ""
-	}
-	chat := ""
-	if u.Message.Chat.Type != "private" {
-		chat = int64String(u.Message.Chat.ID)
-	}
-	acc, wsLabel, role, ok := b.hub().Whoami(ctx, lang, tgUser(u.Message.From), chat)
-	if !ok {
-		return ""
-	}
-	text := lang.T("notify.tg.whoami_account", i18n.D{"Account": html.EscapeString(acc)})
-	if wsLabel == "" {
-		return text
-	}
-	return text + lang.T("notify.tg.whoami_role", i18n.D{"Workspace": html.EscapeString(wsLabel), "Role": role})
 }
 
 func tgUser(u *TGUser) ChatUser {

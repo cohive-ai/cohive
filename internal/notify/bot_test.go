@@ -45,7 +45,8 @@ func TestWhoAmICommand(t *testing.T) {
 }
 
 func TestIgnoresOtherMessages(t *testing.T) {
-	for _, text := range []string{"大家好", "/start", "/chatid@OtherBot", ""} {
+	// 只认 /chatid、/whoami：中文写法、别的命令（含钉钉那边的绑定指令）都不回应
+	for _, text := range []string{"大家好", "/start", "/chatid@OtherBot", "", "/群编号", "/我是谁", "/bindgroup ABCD2345", "ABCD2345", "/ChatID"} {
 		if _, ok := notify.HandleCommand(msg(text, "group", -1, "lee"), "CohiveBot", i18n.ZhCN); ok {
 			t.Fatalf("%q 不应被处理", text)
 		}
