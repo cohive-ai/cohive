@@ -20,7 +20,7 @@
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
 | UI-1 第三版品牌与产品配色 | `feature/ui-brand-colors` | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | `4b56d60` | 实施中（按 Open Design 第三版黑白黄重做，同分支一并换品牌素材与落地页；字号、留白、布局保持现状；ink 出深浅两组截图供 lee 选） | 换标志与图标；强调色品牌金（浅色加深、对比度达 AA）；深色黑金；浅色微调；状态色语义不变且与金区分；顺带品牌页色名改英文普通名、加两份 SVG 一致性测试；浅深两主题各三屏截图；交回 `docs/brain/inbox/UI-1.md` |
-| IM2-0 通讯接入公共前置 | 会话自建（从最新 main） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a` | — | 已派 | 把钉钉 handleBot 的群命令、私聊发码、我是谁抽成与平台无关的收件处理，Telegram、钉钉行为不变；之后同会话做 Slack（需 lee 建免费 Slack 测试工作区）；交回 `docs/brain/inbox/IM2-0.md` |
+| IM2-0 通讯接入公共前置 | `feature/im2-0-inbound` | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a` | `c50a042` | 打回（小项：补指令大小写混写的用例；其余通过） | 把钉钉 handleBot 的群命令、私聊发码、我是谁抽成与平台无关的收件处理，Telegram、钉钉行为不变；之后同会话做 Slack（需 lee 建免费 Slack 测试工作区）；交回 `docs/brain/inbox/IM2-0.md` |
 | TOOLS-A opencode 适配与 DSH 接入说明 | 会话自建（从最新 main） | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08` | — | 已派 | cohive init --tools opencode（opencode.json 的 MCP 与按工具确认、随仓库的 .opencode/plugins 提醒插件、技能共用）；hook 接受 opencode；每台设备工具上限 4→8；DSH 只写手工接入说明（含会话日志默认上传与关闭建议）；交回 `docs/brain/inbox/TOOLS-A.md` |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
