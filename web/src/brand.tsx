@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-// 品牌标志，图形与 docs/brand 的 SVG 相同：外框和人的格子随文字颜色，智能体格子固定用品牌金
+// 品牌标志，图形与 docs/brand 的 SVG 相同：外框和人的格子随文字颜色，智能体格子固定用品牌黄
 export function BrandMark({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 100 100" className={className} aria-hidden="true">
@@ -12,7 +12,7 @@ export function BrandMark({ className = "" }: { className?: string }) {
         strokeLinejoin="miter"
       />
       <polygon points="39,37.5 49.83,43.75 49.83,56.25 39,62.5 28.17,56.25 28.17,43.75" fill="currentColor" />
-      <polygon points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" fill="var(--brand-gold)" />
+      <polygon points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" fill="var(--brand-yellow)" />
     </svg>
   );
 }

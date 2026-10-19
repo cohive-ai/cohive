@@ -7,7 +7,7 @@ export function LanguageSelect({ className = "" }: { className?: string }) {
   return (
     <select
       aria-label={t("language.label")}
-      className={`rounded border border-line bg-surface px-2 py-1 text-sm text-ink ${className}`}
+      className={`rounded border border-line-strong bg-surface px-2 py-1 text-sm text-ink ${className}`}
       value={current.resolvedLanguage}
       onChange={(e) => void setLanguage(e.target.value)}
     >

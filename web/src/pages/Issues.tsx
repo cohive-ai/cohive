@@ -30,7 +30,7 @@ export function IssuesPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("list.searchLabel")}
-          className="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-2 text-sm placeholder:text-muted sm:max-w-sm"
+          className="min-w-0 flex-1 rounded border border-line-strong bg-surface px-3 py-2 text-sm placeholder:text-muted sm:max-w-sm"
         />
         <label className="sr-only" htmlFor="status">
           {t("list.filterStatus")}
@@ -39,7 +39,7 @@ export function IssuesPage() {
           id="status"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="rounded border border-line bg-surface px-3 py-2 text-sm"
+          className="rounded border border-line-strong bg-surface px-3 py-2 text-sm"
         >
           {/* “全部状态”不含已作废，选“已作废”才列出 */}
           {statusOptions().map((o) => (

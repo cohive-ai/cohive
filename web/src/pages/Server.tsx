@@ -58,8 +58,8 @@ export function ServerPage() {
             to="/server"
             search={{ tab: x.id }}
             aria-current={tab === x.id ? "page" : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${
-              tab === x.id ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"
+            className={`-mb-px border-b-[3px] px-3 py-2 text-sm ${
+              tab === x.id ? "border-accent-fill font-semibold text-ink" : "border-transparent text-muted hover:text-ink"
             }`}
           >
             {tabLabel[x.id]}
@@ -314,8 +314,8 @@ function AccountRow({ a, isSelf, onChanged }: { a: ServerAccount; isSelf: boolea
           <span className="font-mono font-medium">{a.name}</span>
           {a.display_name && <span>{a.display_name}</span>}
           {isSelf && <span className="text-xs text-muted">{t("accounts.you")}</span>}
-          {a.server_admin && <span className={`${tag} bg-wait-soft text-wait`}>{t("accounts.serverAdmin")}</span>}
-          {a.disabled && <span className={`${tag} bg-sunken text-danger`}>{t("accounts.disabled")}</span>}
+          {a.server_admin && <span className={`${tag} border-[1.5px] border-ink bg-ink font-bold text-surface`}>{t("accounts.serverAdmin")}</span>}
+          {a.disabled && <span className={`${tag} border-[1.5px] border-danger bg-danger font-bold text-on-status`}>{t("accounts.disabled")}</span>}
         </p>
         <p className="text-xs text-muted">
           {[

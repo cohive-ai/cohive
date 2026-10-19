@@ -111,8 +111,8 @@ export function AdminPage() {
             params={{ ws }}
             search={{ tab: item.id }}
             aria-current={tab === item.id ? "page" : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${
-              tab === item.id ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"
+            className={`-mb-px border-b-[3px] px-3 py-2 text-sm ${
+              tab === item.id ? "border-accent-fill font-semibold text-ink" : "border-transparent text-muted hover:text-ink"
             }`}
           >
             {tabLabels[item.id]}
@@ -388,7 +388,7 @@ function MembersTab({ ws, self }: { ws: string; self: string }) {
                       {m.display_name && <span>{m.display_name}</span>}
                       <span className="rounded bg-sunken px-1.5 py-px text-xs text-muted">{t("members.removedTag")}</span>
                       {m.disabled && (
-                        <span className="rounded bg-sunken px-1.5 py-px text-xs text-danger">{t("members.disabledTag")}</span>
+                        <span className="rounded border-[1.5px] border-danger bg-danger font-bold text-on-status px-1.5 py-px text-xs">{t("members.disabledTag")}</span>
                       )}
                     </p>
                   </div>
@@ -470,13 +470,13 @@ function MemberRow({
           {isSelf && <span className="text-xs text-muted">{t("members.you")}</span>}
           <span
             className={`rounded px-1.5 py-px text-xs ${
-              m.role === "admin" ? "bg-wait-soft text-wait" : "bg-sunken text-muted"
+              m.role === "admin" ? "border-[1.5px] border-ink bg-ink font-bold text-surface" : "bg-sunken text-muted"
             }`}
           >
             {roleLabel(m.role)}
           </span>
           {m.disabled && (
-            <span className="rounded bg-sunken px-1.5 py-px text-xs text-danger" title={t("members.disabledTitle")}>
+            <span className="rounded border-[1.5px] border-danger bg-danger font-bold text-on-status px-1.5 py-px text-xs" title={t("members.disabledTitle")}>
               {t("members.disabledShort")}
             </span>
           )}
@@ -626,7 +626,7 @@ function AddMemberDialog({
         </Field>
       </form>
       {found && (
-        <div className="mt-3 space-y-3 rounded border border-line bg-bg px-3 py-2 text-sm">
+        <div className="mt-3 space-y-3 rounded border border-line-strong bg-bg px-3 py-2 text-sm">
           <p>
             <span className="font-mono font-medium">{found.name}</span>
             {found.display_name && <span className="ml-2">{found.display_name}</span>}
@@ -645,7 +645,7 @@ function AddMemberDialog({
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value as "member" | "admin")}
-                  className="rounded border border-line bg-surface px-2 py-1 text-sm"
+                  className="rounded border border-line-strong bg-surface px-2 py-1 text-sm"
                 >
                   <option value="member">{t("addMember.roleMember")}</option>
                   <option value="admin">{t("addMember.roleAdmin")}</option>
@@ -742,7 +742,7 @@ export function HandoverDialog({
       aria-label={label}
       value={assign[key] ?? ""}
       onChange={(e) => setAssign({ ...assign, [key]: e.target.value })}
-      className="w-full rounded border border-line bg-surface px-2 py-1 text-sm sm:w-48"
+      className="w-full rounded border border-line-strong bg-surface px-2 py-1 text-sm sm:w-48"
     >
       <option value="">{t("handover.choose")}</option>
       {candidates.map((c) => (
@@ -782,7 +782,7 @@ export function HandoverDialog({
                 setAllTo(e.target.value);
                 if (e.target.value) setAssign(assignAll(h, e.target.value));
               }}
-              className="rounded border border-line bg-surface px-2 py-1 text-sm"
+              className="rounded border border-line-strong bg-surface px-2 py-1 text-sm"
             >
               <option value="">{t("handover.oneByOne")}</option>
               {candidates.map((c) => (
@@ -941,7 +941,7 @@ function InvitesTab({ ws }: { ws: string }) {
                         <span className="text-muted">{t("invites.joinsAs", { role: roleLabel(inv.role) })}</span>
                         <span
                           className={`rounded px-1.5 py-px text-xs ${
-                            active ? "bg-teal-soft text-teal" : "bg-sunken text-muted"
+                            active ? "border-[1.5px] border-teal bg-teal font-bold text-on-status" : "bg-sunken text-muted"
                           }`}
                         >
                           {stateLabels[st]}
@@ -1037,7 +1037,7 @@ function NewInviteForm({ ws, onCreated }: { ws: string; onCreated: (inv: Created
   const radio = (value: "personal" | "team", title: string, desc: string) => (
     <label
       className={`flex flex-1 cursor-pointer gap-2 rounded border px-3 py-2 text-sm ${
-        kind === value ? "border-accent bg-accent-soft" : "border-line bg-bg"
+        kind === value ? "border-accent bg-accent-soft ring-1 ring-accent ring-inset" : "border-line-strong bg-surface"
       }`}
     >
       <input

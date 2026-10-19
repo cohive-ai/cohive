@@ -6,25 +6,29 @@
 <title>Cohive · Brand</title>
 <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="fonts/fonts.css">
+<script>/* Theme before first paint to avoid a flash: ?theme= wins, then the visitor's last choice, then the system setting */
+(function(){var d=document.documentElement,t=null;try{t=new URLSearchParams(location.search).get('theme');if(t!=='light'&&t!=='dark')t=localStorage.getItem('cohive-theme')}catch(e){}
+if(t!=='light'&&t!=='dark')t=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.dataset.theme=t})();</script>
 <style>
 /* ============ TOKENS ============ */
 :root{
   --bg:#0B0B0C; --surface:#141416; --surface-2:#1C1C1F; --line:#2B2B30; --line-strong:#45454C;
-  --fg:#F4F3EE; --muted:#9C9CA3; --dim:#6A6A71; --gold:#FFC000; --gold-ink:#1A1400; --danger:#FF4D3D; --ok:#3DDC84;
+  --fg:#F5F5F5; --muted:#9C9CA3; --dim:#6A6A71; --yellow:#FFCC00; --yellow-ink:#0B0B0C; --danger:#FF4D3D; --ok:#3DDC84;
   --f-wide:'Michroma','Eurostile','Arial Black',sans-serif;
   --f-zh:'PingFang SC','Noto Sans SC','Microsoft YaHei',system-ui,sans-serif;
   --f-body:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Noto Sans SC',system-ui,sans-serif;
   --f-mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  --yellow-t:var(--yellow);
   --wrap:min(1240px,100% - clamp(32px,6vw,96px));
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--fg);font:16px/1.65 var(--f-body);overflow-x:hidden}
 a{color:inherit} svg{display:block} button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
-:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+:focus-visible{outline:2px solid var(--yellow);outline-offset:3px}
 html[data-lang="zh"] [lang="en"], html[data-lang="en"] [lang="zh"]{display:none!important}
 .wrap{width:var(--wrap);margin-inline:auto}
-.kicker{font:400 11px/1 var(--f-wide);letter-spacing:.32em;text-transform:uppercase;color:var(--gold);display:flex;align-items:center;gap:14px}
-.kicker::before{content:"";width:28px;height:2px;background:var(--gold)}
+.kicker{font:400 11px/1 var(--f-wide);letter-spacing:.32em;text-transform:uppercase;color:var(--yellow-t);display:flex;align-items:center;gap:14px}
+.kicker::before{content:"";width:28px;height:2px;background:var(--yellow)}
 h2{font:400 clamp(24px,3vw,40px)/1.15 var(--f-wide);text-transform:uppercase;margin:18px 0 14px}
 html[data-lang="zh"] h2{font-family:var(--f-zh);font-weight:800;letter-spacing:.04em}
 .lead{color:var(--muted);max-width:64ch}
@@ -35,8 +39,9 @@ section{padding-block:clamp(64px,9vw,120px);border-top:1px solid var(--line)}
 .nav{position:sticky;top:0;z-index:20;background:color-mix(in oklab,var(--bg) 85%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
 .nav .wrap{display:flex;align-items:center;gap:20px;height:64px}
 .nav a.back{font:400 10px/1 var(--f-wide);letter-spacing:.2em;text-transform:uppercase;text-decoration:none;color:var(--muted)}
-.nav a.back:hover{color:var(--gold)}
+.nav a.back:hover{color:var(--yellow-t)}
 .nav .mk{width:26px;height:26px}
+.theme-t{margin-left:auto}
 .lang{display:flex;border:1px solid var(--line-strong);height:32px;margin-left:auto}
 .lang button{padding:0 11px;font:400 10px/1 var(--f-wide);color:var(--dim)}
 .lang button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
@@ -120,7 +125,7 @@ section{padding-block:clamp(64px,9vw,120px);border-top:1px solid var(--line)}
 .readme{margin-top:24px;position:relative}
 .readme pre{font:13px/1.7 var(--f-mono);background:#070708;border:1px solid var(--line);padding:18px 90px 18px 20px;overflow-x:auto;color:#D8D7D0}
 .readme button{position:absolute;top:10px;right:10px;font:400 10px/1 var(--f-wide);letter-spacing:.16em;padding:8px 10px;background:var(--surface-2);border:1px solid var(--line-strong)}
-.readme button.done{background:var(--gold);color:var(--gold-ink)}
+.readme button.done{background:var(--yellow);color:var(--yellow-ink)}
 footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:var(--dim)}
 
 @media (max-width:1024px){
@@ -136,6 +141,25 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
   .chip{min-height:140px}
   .tile{min-height:220px}
 }
+
+/* ============ 1b. LIGHT THEME ============ */
+html[data-theme="light"]{
+  --bg:#F5F5F5; --surface:#FFFFFF; --surface-2:#EBEBEB; --line:#DCDCDC; --line-strong:#A6A6A6;
+  --fg:#0B0B0C; --muted:#555555; --dim:#7A7A7A;
+  --yellow-t:var(--fg); --ok:#13803D; --danger:#D42A1C;
+  color-scheme:light;
+}
+/* 代码块、终端在浅色主题里保持深色：局部还原深色变量 */
+html[data-theme="light"] :is(pre,.term,.copy,.readme){
+  --fg:#F5F5F5; --muted:#9C9CA3; --dim:#6A6A71; --line:#2B2B30; --line-strong:#45454C; --surface-2:#1C1C1F;
+  --yellow-t:#FFCC00; --ok:#3DDC84; --danger:#FF4D3D; color:#F5F5F5;
+}
+/* 浅色主题只用黑白黄：黄色不做文字色，标题强调改为黑字压黄条 */
+html[data-theme="light"] :is(.h-xl,.h-lg) em{color:var(--fg);background:linear-gradient(transparent 62%,var(--yellow) 62%,var(--yellow) 92%,transparent 92%);-webkit-box-decoration-break:clone;box-decoration-break:clone;padding-inline:.06em}
+.theme-t{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line-strong);color:var(--muted);transition:.2s}
+.theme-t:hover{border-color:var(--fg);color:var(--fg)}
+.theme-t svg{width:15px;height:15px}
+html[data-theme="light"] .theme-t .i-sun, html:not([data-theme="light"]) .theme-t .i-moon{display:none}
 </style>
 </head>
 <body>
@@ -144,7 +168,7 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
   <symbol id="m" viewBox="0 0 100 100">
     <polyline points="88.1,28 50,6 11.9,28 11.9,72 50,94 88.1,72" fill="none" style="stroke:var(--o,currentColor)" stroke-width="10"/>
     <polygon points="39,37.5 49.83,43.75 49.83,56.25 39,62.5 28.17,56.25 28.17,43.75" style="fill:var(--h,currentColor)"/>
-    <polygon points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" style="fill:var(--a,#FFC000)"/>
+    <polygon points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" style="fill:var(--a,#FFCC00)"/>
   </symbol>
   <symbol id="w" viewBox="-2 -2 172 24">
     <g fill="none" stroke="currentColor" stroke-width="4" clip-path="url(#wmc)"><polyline points="24,0 6,0 0,6 0,14 6,20 24,20"/><polygon points="40,0 52,0 58,6 58,14 52,20 40,20 34,14 34,6"/><path d="M68 -2V22M92 -2V22M68 10H92M102 -2V22M146 10H164"/><polyline points="112,-3 124,18.1 136,-3"/><polyline points="168,0 146,0 146,20 168,20"/></g>
@@ -154,7 +178,8 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
 <header class="nav"><div class="wrap">
   <svg class="mk"><use href="#m"/></svg>
   <a class="back" href="./">← <span lang="zh">返回主页</span><span lang="en">Back to site</span></a>
-  <div class="lang"><button data-set-lang="zh" aria-pressed="true">中</button><button data-set-lang="en" aria-pressed="false">EN</button></div>
+  <button class="theme-t" data-theme-toggle aria-label="Light or dark"><svg class="i-moon" viewBox="0 0 16 16"><path fill="currentColor" d="M6.2 1.2A6.8 6.8 0 1 0 14.8 9.8 5.6 5.6 0 0 1 6.2 1.2z"/></svg><svg class="i-sun" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="3"/><path d="M8 .5v2.2M8 13.3v2.2M.5 8h2.2M13.3 8h2.2M2.7 2.7l1.6 1.6M11.7 11.7l1.6 1.6M2.7 13.3l1.6-1.6M11.7 4.3l1.6-1.6"/></g></svg></button>
+  <div class="lang" style="margin-left:0"><button data-set-lang="zh" aria-pressed="true">中</button><button data-set-lang="en" aria-pressed="false">EN</button></div>
 </div></header>
 
 <main>
@@ -163,13 +188,13 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
     <div class="kicker"><span lang="zh">品牌标志</span><span lang="en">Brand mark</span></div>
     <svg class="lockup" viewBox="0 0 258 64" aria-label="Cohive">
       <g transform="scale(.64)">
-        <polyline class="o" points="88.1,28 50,6 11.9,28 11.9,72 50,94 88.1,72" fill="none" stroke="#F4F3EE" stroke-width="10"/>
-        <polygon class="c1" points="39,37.5 49.83,43.75 49.83,56.25 39,62.5 28.17,56.25 28.17,43.75" fill="#F4F3EE"/>
-        <polygon class="c2" points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" fill="#FFC000"/>
+        <polyline class="o" points="88.1,28 50,6 11.9,28 11.9,72 50,94 88.1,72" fill="none" style="stroke:var(--fg)" stroke-width="10"/>
+        <polygon class="c1" points="39,37.5 49.83,43.75 49.83,56.25 39,62.5 28.17,56.25 28.17,43.75" style="fill:var(--fg)"/>
+        <polygon class="c2" points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" fill="#FFCC00"/>
       </g>
-      <g class="w" transform="translate(86 22)" style="color:#F4F3EE"><use href="#w" x="-2" y="-2" width="172" height="24"/></g>
+      <g class="w" transform="translate(86 22)" style="color:var(--fg)"><use href="#w" x="-2" y="-2" width="172" height="24"/></g>
     </svg>
-    <p><span lang="zh">一枚六边形，缺了右边一条边。它是蜂巢，也是字母 C；缺口里的金色格子，是正在接进来的那个智能体。</span><span lang="en">A hexagon missing its right edge — a hive cell and a letter C. The gold cell in the opening is the agent plugging in.</span></p>
+    <p><span lang="zh">一枚六边形，缺了右边一条边。它是蜂巢，也是字母 C；缺口里的黄色格子，是正在接进来的那个智能体。</span><span lang="en">A hexagon missing its right edge — a hive cell and a letter C. The yellow cell in the opening is the agent plugging in.</span></p>
   </div>
 </section>
 
@@ -178,9 +203,9 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
     <div class="kicker"><span lang="zh">构思</span><span lang="en">Concept</span></div>
     <h2><span lang="zh">三层意思，一个形状</span><span lang="en">Three ideas, one shape</span></h2>
     <div class="concept">
-      <div class="cc"><svg viewBox="0 0 100 100"><polyline points="88.1,28 50,6 11.9,28 11.9,72 50,94 88.1,72" fill="none" stroke="#F4F3EE" stroke-width="10"/></svg><h3><span lang="zh">开口的蜂巢 = C</span><span lang="en">Open cell = C</span></h3><p><span lang="zh">六边形是 hive 的直接隐喻。去掉右边一条边，它同时读作 Cohive 的 C，也表示协作层对外开放、可以自托管接入。</span><span lang="en">The hexagon is the hive. Remove one edge and it reads as the C of Cohive — an open layer anyone can self-host and plug into.</span></p></div>
-      <div class="cc"><svg viewBox="0 0 100 100"><polygon points="39,37.5 49.83,43.75 49.83,56.25 39,62.5 28.17,56.25 28.17,43.75" fill="#F4F3EE"/><polygon points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" fill="#FFC000"/></svg><h3><span lang="zh">白格是人，金格是智能体</span><span lang="en">White is the person, gold the agent</span></h3><p><span lang="zh">两枚格子并排，大小相同，但颜色有主次：人在内侧拍板，智能体在外侧干活。对应「智能体递单，人来拍板」。</span><span lang="en">Two equal cells, different roles: the person sits inside and decides, the agent sits at the edge and does the work.</span></p></div>
-      <div class="cc"><svg viewBox="0 0 100 100"><polyline points="88.1,28 50,6 11.9,28 11.9,72 50,94 88.1,72" fill="none" stroke="#45454C" stroke-width="10"/><polygon points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" fill="#FFC000"/><path d="M78 50H97" stroke="#FFC000" stroke-width="3"/></svg><h3><span lang="zh">金格落在缺口</span><span lang="en">Gold sits at the gap</span></h3><p><span lang="zh">金格正对缺口，像刚从外面接进来，指每个人各自的 Claude Code、Codex 经远程 MCP 接入。</span><span lang="en">The gold cell faces the gap as if it just docked — each teammate's own Claude Code or Codex joining over remote MCP.</span></p></div>
+      <div class="cc"><svg viewBox="0 0 100 100"><polyline points="88.1,28 50,6 11.9,28 11.9,72 50,94 88.1,72" fill="none" style="stroke:var(--fg)" stroke-width="10"/></svg><h3><span lang="zh">开口的蜂巢 = C</span><span lang="en">Open cell = C</span></h3><p><span lang="zh">六边形是 hive 的直接隐喻。去掉右边一条边，它同时读作 Cohive 的 C，也表示协作层对外开放、可以自托管接入。</span><span lang="en">The hexagon is the hive. Remove one edge and it reads as the C of Cohive — an open layer anyone can self-host and plug into.</span></p></div>
+      <div class="cc"><svg viewBox="0 0 100 100"><polygon points="39,37.5 49.83,43.75 49.83,56.25 39,62.5 28.17,56.25 28.17,43.75" style="fill:var(--fg)"/><polygon points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" fill="#FFCC00"/></svg><h3><span lang="zh">白格是人，黄格是智能体</span><span lang="en">White is the person, yellow the agent</span></h3><p><span lang="zh">两枚格子并排，大小相同，但颜色有主次：人在内侧拍板，智能体在外侧干活。对应「智能体递单，人来拍板」。</span><span lang="en">Two equal cells, different roles: the person sits inside and decides, the agent sits at the edge and does the work.</span></p></div>
+      <div class="cc"><svg viewBox="0 0 100 100"><polyline points="88.1,28 50,6 11.9,28 11.9,72 50,94 88.1,72" fill="none" style="stroke:var(--line-strong)" stroke-width="10"/><polygon points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" fill="#FFCC00"/><path d="M78 50H97" style="stroke:var(--yellow-t)" stroke-width="3"/></svg><h3><span lang="zh">黄格落在缺口</span><span lang="en">Yellow sits at the gap</span></h3><p><span lang="zh">黄格正对缺口，像刚从外面接进来，指每个人各自的 Claude Code、Codex 经远程 MCP 接入。</span><span lang="en">The yellow cell faces the gap as if it just docked — each teammate's own Claude Code or Codex joining over remote MCP.</span></p></div>
     </div>
   </div>
 </section>
@@ -193,15 +218,15 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
     <div class="build">
       <div class="grid-art">
         <svg viewBox="0 0 100 100">
-          <g stroke="#2B2B30" stroke-width=".3">
+          <g style="stroke:var(--line)" stroke-width=".3">
             <path d="M0 10H100M0 20H100M0 30H100M0 40H100M0 50H100M0 60H100M0 70H100M0 80H100M0 90H100M10 0V100M20 0V100M30 0V100M40 0V100M50 0V100M60 0V100M70 0V100M80 0V100M90 0V100"/>
           </g>
-          <polygon points="50,6 88.1,28 88.1,72 50,94 11.9,72 11.9,28" fill="none" stroke="#45454C" stroke-width=".5" stroke-dasharray="1.5 1.5"/>
-          <polyline points="88.1,28 50,6 11.9,28 11.9,72 50,94 88.1,72" fill="none" stroke="#F4F3EE" stroke-width="10" opacity=".9"/>
-          <polygon points="39,37.5 49.83,43.75 49.83,56.25 39,62.5 28.17,56.25 28.17,43.75" fill="#F4F3EE" opacity=".9"/>
-          <polygon points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" fill="#FFC000"/>
-          <g fill="none" stroke="#FFC000" stroke-width=".4"><circle cx="39" cy="50" r="12.5"/><circle cx="63" cy="50" r="12.5"/><circle cx="50" cy="50" r="44"/></g>
-          <g font-family="JetBrains Mono,monospace" font-size="3" fill="#FFC000"><text x="52" y="4">R 44</text><text x="33" y="70">r 12.5</text><text x="90" y="52">gap</text></g>
+          <polygon points="50,6 88.1,28 88.1,72 50,94 11.9,72 11.9,28" fill="none" style="stroke:var(--line-strong)" stroke-width=".5" stroke-dasharray="1.5 1.5"/>
+          <polyline points="88.1,28 50,6 11.9,28 11.9,72 50,94 88.1,72" fill="none" style="stroke:var(--fg)" stroke-width="10" opacity=".9"/>
+          <polygon points="39,37.5 49.83,43.75 49.83,56.25 39,62.5 28.17,56.25 28.17,43.75" style="fill:var(--fg)" opacity=".9"/>
+          <polygon points="63,37.5 73.83,43.75 73.83,56.25 63,62.5 52.17,56.25 52.17,43.75" fill="#FFCC00"/>
+          <g fill="none" style="stroke:var(--yellow-t)" stroke-width=".4"><circle cx="39" cy="50" r="12.5"/><circle cx="63" cy="50" r="12.5"/><circle cx="50" cy="50" r="44"/></g>
+          <g font-family="JetBrains Mono,monospace" font-size="3" style="fill:var(--yellow-t)"><text x="52" y="4">R 44</text><text x="33" y="70">r 12.5</text><text x="90" y="52">gap</text></g>
         </svg>
       </div>
       <div class="specs">
@@ -222,9 +247,9 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
     <h2><span lang="zh">横版与竖版</span><span lang="en">Horizontal & stacked</span></h2>
     <div class="locks">
       <div class="tile" style="background:var(--bg)"><small><span lang="zh">横版 · 首选</span><span lang="en">Horizontal · primary</span></small>
-        <svg class="h" viewBox="0 0 258 64" style="color:#F4F3EE"><use href="#m" width="64" height="64"/><use href="#w" x="84" y="20" width="172" height="24"/></svg></div>
+        <svg class="h" viewBox="0 0 258 64" style="color:var(--fg)"><use href="#m" width="64" height="64"/><use href="#w" x="84" y="20" width="172" height="24"/></svg></div>
       <div class="tile" style="background:var(--surface)"><small><span lang="zh">竖版</span><span lang="en">Stacked</span></small>
-        <svg class="v" viewBox="0 0 174 140" style="color:#F4F3EE"><use href="#m" x="37" y="0" width="100" height="100"/><use href="#w" x="0" y="114" width="172" height="24"/></svg></div>
+        <svg class="v" viewBox="0 0 174 140" style="color:var(--fg)"><use href="#m" x="37" y="0" width="100" height="100"/><use href="#w" x="0" y="114" width="172" height="24"/></svg></div>
     </div>
   </div>
 </section>
@@ -234,9 +259,9 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
     <div class="kicker"><span lang="zh">配色版本</span><span lang="en">Colorways</span></div>
     <h2><span lang="zh">四种底色</span><span lang="en">Four grounds</span></h2>
     <div class="ways">
-      <div class="way"><div class="sw" style="background:#0B0B0C;color:#F4F3EE"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><b><span lang="zh">黑底 · 标准</span><span lang="en">Black · primary</span></b><span lang="zh">默认使用</span><span lang="en">Default</span></div></div>
-      <div class="way"><div class="sw" style="background:#F4F3EE;color:#0B0B0C"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><b><span lang="zh">白底</span><span lang="en">Light</span></b><span lang="zh">文档、浅色界面</span><span lang="en">Docs, light UI</span></div></div>
-      <div class="way"><div class="sw" style="background:#FFC000;color:#0B0B0C;--a:#F4F3EE"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><b><span lang="zh">金底</span><span lang="en">Gold</span></b><span lang="zh">贴纸、活动物料；金格变白</span><span lang="en">Stickers; gold cell turns white</span></div></div>
+      <div class="way"><div class="sw" style="background:#0B0B0C;color:#F5F5F5"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><b><span lang="zh">黑底 · 标准</span><span lang="en">Black · primary</span></b><span lang="zh">默认使用</span><span lang="en">Default</span></div></div>
+      <div class="way"><div class="sw" style="background:#F5F5F5;color:#0B0B0C"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><b><span lang="zh">白底</span><span lang="en">Light</span></b><span lang="zh">文档、浅色界面</span><span lang="en">Docs, light UI</span></div></div>
+      <div class="way"><div class="sw" style="background:#FFCC00;color:#0B0B0C;--a:#F5F5F5"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><b><span lang="zh">黄底</span><span lang="en">Yellow</span></b><span lang="zh">贴纸、活动物料；黄格变白</span><span lang="en">Stickers; yellow cell turns white</span></div></div>
       <div class="way"><div class="sw" style="background:#1C1C1F;color:#9C9CA3;--a:#9C9CA3"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><b><span lang="zh">单色</span><span lang="en">Mono</span></b><span lang="zh">印章、蚀刻、单色印刷</span><span lang="en">Stamps, etching, 1-color print</span></div></div>
     </div>
   </div>
@@ -247,7 +272,7 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
     <div class="kicker"><span lang="zh">尺寸与安全距离</span><span lang="en">Size & clear space</span></div>
     <h2><span lang="zh">16 像素也能认出</span><span lang="en">Legible down to 16px</span></h2>
     <div class="sizes">
-      <div class="scale" style="color:#F4F3EE">
+      <div class="scale" style="color:var(--fg)">
         <figure><svg width="96" height="96"><use href="#m"/></svg><figcaption>96</figcaption></figure>
         <figure><svg width="48" height="48"><use href="#m"/></svg><figcaption>48</figcaption></figure>
         <figure><svg width="32" height="32"><use href="#m"/></svg><figcaption>32</figcaption></figure>
@@ -256,11 +281,11 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
       </div>
       <div class="clear">
         <svg viewBox="-30 -30 160 160">
-          <rect x="-25" y="-25" width="150" height="150" fill="none" stroke="#FFC000" stroke-width=".8" stroke-dasharray="3 3"/>
-          <rect x="0" y="0" width="100" height="100" fill="none" stroke="#45454C" stroke-width=".6"/>
-          <g style="color:#F4F3EE"><use href="#m" width="100" height="100"/></g>
-          <g fill="#FFC000" font-family="JetBrains Mono,monospace" font-size="7"><text x="-22" y="-14">¼ W</text></g>
-          <path d="M-25 -8H0" stroke="#FFC000" stroke-width=".8"/>
+          <rect x="-25" y="-25" width="150" height="150" fill="none" style="stroke:var(--yellow-t)" stroke-width=".8" stroke-dasharray="3 3"/>
+          <rect x="0" y="0" width="100" height="100" fill="none" style="stroke:var(--line-strong)" stroke-width=".6"/>
+          <g style="color:var(--fg)"><use href="#m" width="100" height="100"/></g>
+          <g style="fill:var(--yellow-t)" font-family="JetBrains Mono,monospace" font-size="7"><text x="-22" y="-14">¼ W</text></g>
+          <path d="M-25 -8H0" style="stroke:var(--yellow-t)" stroke-width=".8"/>
         </svg>
       </div>
     </div>
@@ -271,12 +296,12 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
 <section>
   <div class="wrap">
     <div class="kicker"><span lang="zh">色板</span><span lang="en">Palette</span></div>
-    <h2><span lang="zh">黑为主，金只出现一次</span><span lang="en">Black leads. Gold appears once.</span></h2>
-    <p class="lead"><span lang="zh">点击色块复制色值。每一屏里金色只给一个最重要的东西：标志里的智能体格子，或者唯一的主按钮。</span><span lang="en">Click to copy. Each screen gives gold to one thing only — the agent cell, or the single primary button.</span></p>
+    <h2><span lang="zh">黑白打底，黄只出现一次</span><span lang="en">Black and white lead. Yellow appears once.</span></h2>
+    <p class="lead"><span lang="zh">点击色块复制色值。每一屏里黄色只给一个最重要的东西：标志里的智能体格子，或者唯一的主按钮。</span><span lang="en">Click to copy. Each screen gives yellow to one thing only — the agent cell, or the single primary button.</span></p>
     <div class="pal">
-      <button class="chip" data-hex="#0B0B0C" style="background:#0B0B0C;color:#F4F3EE;box-shadow:inset 0 0 0 1px #2B2B30"><em>COPY</em><b><span lang="zh">夜黑</span><span lang="en">Black</span></b><span>#0B0B0C</span></button>
-      <button class="chip" data-hex="#FFC000" style="background:#FFC000;color:#1A1400"><em>COPY</em><b><span lang="zh">金黄</span><span lang="en">Gold</span></b><span>#FFC000</span></button>
-      <button class="chip" data-hex="#F4F3EE" style="background:#F4F3EE;color:#0B0B0C"><em>COPY</em><b><span lang="zh">骨白</span><span lang="en">Bone</span></b><span>#F4F3EE</span></button>
+      <button class="chip" data-hex="#0B0B0C" style="background:#0B0B0C;color:#F5F5F5;box-shadow:inset 0 0 0 1px #2B2B30"><em>COPY</em><b><span lang="zh">黑</span><span lang="en">Black</span></b><span>#0B0B0C</span></button>
+      <button class="chip" data-hex="#FFCC00" style="background:#FFCC00;color:#0B0B0C"><em>COPY</em><b><span lang="zh">黄</span><span lang="en">Yellow</span></b><span>#FFCC00</span></button>
+      <button class="chip" data-hex="#F5F5F5" style="background:#F5F5F5;color:#0B0B0C"><em>COPY</em><b><span lang="zh">白</span><span lang="en">White</span></b><span>#F5F5F5</span></button>
       <button class="chip" data-hex="#1C1C1F" style="background:#1C1C1F;color:#9C9CA3"><em>COPY</em><b><span lang="zh">碳灰</span><span lang="en">Carbon</span></b><span>#1C1C1F</span></button>
     </div>
   </div>
@@ -287,14 +312,14 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
     <div class="kicker"><span lang="zh">使用规范</span><span lang="en">Usage</span></div>
     <h2><span lang="zh">四条要做，四条别做</span><span lang="en">Four do's, four don'ts</span></h2>
     <div class="rules">
-      <div class="rule do"><div class="ex" style="color:#F4F3EE"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><span lang="zh">深色底上用标准版</span><span lang="en">Use the primary on dark</span></div></div>
-      <div class="rule do"><div class="ex" style="background:#F4F3EE;color:#0B0B0C"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><span lang="zh">浅色底换黑框黑格</span><span lang="en">Switch to black on light</span></div></div>
-      <div class="rule do"><div class="ex" style="color:#F4F3EE"><svg viewBox="0 0 100 100" style="width:30%"><use href="#m"/></svg></div><div class="cap"><span lang="zh">四周留足安全距离</span><span lang="en">Keep the clear space</span></div></div>
-      <div class="rule do"><div class="ex" style="color:#9C9CA3;--a:#9C9CA3"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><span lang="zh">只能单色时整体同色</span><span lang="en">One color means all one color</span></div></div>
-      <div class="rule dont"><div class="ex" style="color:#F4F3EE"><svg viewBox="0 0 100 100" style="transform:rotate(30deg)"><use href="#m"/></svg></div><div class="cap"><span lang="zh">不要旋转，缺口永远朝右</span><span lang="en">Don't rotate — the gap faces right</span></div></div>
-      <div class="rule dont"><div class="ex" style="color:#FFC000;--h:#F4F3EE;--a:#F4F3EE"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><span lang="zh">不要把外框涂成金色</span><span lang="en">Don't make the frame gold</span></div></div>
-      <div class="rule dont"><div class="ex" style="color:#F4F3EE;--a:#F4F3EE;--h:#FFC000"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><span lang="zh">不要交换人和智能体的颜色</span><span lang="en">Don't swap person and agent colors</span></div></div>
-      <div class="rule dont"><div class="ex" style="color:#F4F3EE"><svg viewBox="0 0 100 100" style="transform:scaleX(1.4)"><use href="#m"/></svg></div><div class="cap"><span lang="zh">不要拉伸变形</span><span lang="en">Don't stretch it</span></div></div>
+      <div class="rule do"><div class="ex" style="background:#0B0B0C;color:#F5F5F5;--dk:1"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><span lang="zh">深色底上用标准版</span><span lang="en">Use the primary on dark</span></div></div>
+      <div class="rule do"><div class="ex" style="background:#F5F5F5;color:#0B0B0C"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><span lang="zh">浅色底换黑框黑格</span><span lang="en">Switch to black on light</span></div></div>
+      <div class="rule do"><div class="ex" style="color:var(--fg)"><svg viewBox="0 0 100 100" style="width:30%"><use href="#m"/></svg></div><div class="cap"><span lang="zh">四周留足安全距离</span><span lang="en">Keep the clear space</span></div></div>
+      <div class="rule do"><div class="ex" style="color:var(--muted);--a:var(--muted)"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><span lang="zh">只能单色时整体同色</span><span lang="en">One color means all one color</span></div></div>
+      <div class="rule dont"><div class="ex" style="color:var(--fg)"><svg viewBox="0 0 100 100" style="transform:rotate(30deg)"><use href="#m"/></svg></div><div class="cap"><span lang="zh">不要旋转，缺口永远朝右</span><span lang="en">Don't rotate — the gap faces right</span></div></div>
+      <div class="rule dont"><div class="ex" style="color:#FFCC00;--h:var(--fg);--a:var(--fg)"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><span lang="zh">不要把外框涂成黄色</span><span lang="en">Don't make the frame yellow</span></div></div>
+      <div class="rule dont"><div class="ex" style="color:var(--fg);--a:var(--fg);--h:#FFCC00"><svg viewBox="0 0 100 100"><use href="#m"/></svg></div><div class="cap"><span lang="zh">不要交换人和智能体的颜色</span><span lang="en">Don't swap person and agent colors</span></div></div>
+      <div class="rule dont"><div class="ex" style="color:var(--fg)"><svg viewBox="0 0 100 100" style="transform:scaleX(1.4)"><use href="#m"/></svg></div><div class="cap"><span lang="zh">不要拉伸变形</span><span lang="en">Don't stretch it</span></div></div>
     </div>
   </div>
 </section>
@@ -305,12 +330,12 @@ footer{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:
     <h2><span lang="zh">下载 SVG</span><span lang="en">Download SVG</span></h2>
     <div class="dl">
       <a href="assets/brand/cohive-lockup-reverse.svg" download><span class="ic" style="background:#0B0B0C"><img src="assets/brand/cohive-mark-reverse.svg" alt=""></span><span><b><span lang="zh">横版 · 深色底</span><span lang="en">Horizontal · dark</span></b><span>cohive-lockup-reverse.svg</span></span></a>
-      <a href="assets/brand/cohive-lockup.svg" download><span class="ic" style="background:#F4F3EE"><img src="assets/brand/cohive-mark.svg" alt=""></span><span><b><span lang="zh">横版 · 浅色底</span><span lang="en">Horizontal · light</span></b><span>cohive-lockup.svg</span></span></a>
+      <a href="assets/brand/cohive-lockup.svg" download><span class="ic" style="background:#F5F5F5"><img src="assets/brand/cohive-mark.svg" alt=""></span><span><b><span lang="zh">横版 · 浅色底</span><span lang="en">Horizontal · light</span></b><span>cohive-lockup.svg</span></span></a>
       <a href="assets/brand/cohive-lockup-reverse-stacked.svg" download><span class="ic" style="background:#0B0B0C"><img src="assets/brand/cohive-mark-reverse.svg" alt=""></span><span><b><span lang="zh">竖版 · 深色底</span><span lang="en">Stacked · dark</span></b><span>…-reverse-stacked.svg</span></span></a>
-      <a href="assets/brand/cohive-lockup-stacked.svg" download><span class="ic" style="background:#F4F3EE"><img src="assets/brand/cohive-mark.svg" alt=""></span><span><b><span lang="zh">竖版 · 浅色底</span><span lang="en">Stacked · light</span></b><span>cohive-lockup-stacked.svg</span></span></a>
+      <a href="assets/brand/cohive-lockup-stacked.svg" download><span class="ic" style="background:#F5F5F5"><img src="assets/brand/cohive-mark.svg" alt=""></span><span><b><span lang="zh">竖版 · 浅色底</span><span lang="en">Stacked · light</span></b><span>cohive-lockup-stacked.svg</span></span></a>
       <a href="assets/brand/cohive-mark-reverse.svg" download><span class="ic" style="background:#0B0B0C"><img src="assets/brand/cohive-mark-reverse.svg" alt=""></span><span><b><span lang="zh">标志 · 深色底</span><span lang="en">Mark · dark</span></b><span>cohive-mark-reverse.svg</span></span></a>
-      <a href="assets/brand/cohive-mark.svg" download><span class="ic" style="background:#F4F3EE"><img src="assets/brand/cohive-mark.svg" alt=""></span><span><b><span lang="zh">标志 · 浅色底</span><span lang="en">Mark · light</span></b><span>cohive-mark.svg</span></span></a>
-      <a href="assets/brand/cohive-mark-mono.svg" download><span class="ic" style="background:#F4F3EE"><img src="assets/brand/cohive-mark-mono.svg" alt=""></span><span><b><span lang="zh">标志 · 单色</span><span lang="en">Mark · mono</span></b><span>cohive-mark-mono.svg</span></span></a>
+      <a href="assets/brand/cohive-mark.svg" download><span class="ic" style="background:#F5F5F5"><img src="assets/brand/cohive-mark.svg" alt=""></span><span><b><span lang="zh">标志 · 浅色底</span><span lang="en">Mark · light</span></b><span>cohive-mark.svg</span></span></a>
+      <a href="assets/brand/cohive-mark-mono.svg" download><span class="ic" style="background:#F5F5F5"><img src="assets/brand/cohive-mark-mono.svg" alt=""></span><span><b><span lang="zh">标志 · 单色</span><span lang="en">Mark · mono</span></b><span>cohive-mark-mono.svg</span></span></a>
       <a href="assets/brand/favicon.svg" download><span class="ic"><img src="assets/brand/favicon.svg" alt=""></span><span><b><span lang="zh">网站图标</span><span lang="en">Favicon</span></b><span>favicon.svg</span></span></a>
     </div>
     <div class="readme">
@@ -333,6 +358,7 @@ function setLang(l){
   root.dataset.lang = l; root.lang = l === 'en' ? 'en' : 'zh-CN';
   document.querySelectorAll('[data-set-lang]').forEach(b => b.setAttribute('aria-pressed', b.dataset.setLang === l));
   try{ localStorage.setItem(KEY,l) }catch(e){}
+  document.querySelectorAll('[data-theme-toggle]').forEach(b => b.setAttribute('aria-label', t('切换深浅色', 'Light or dark')));
   document.title = t('Cohive · 品牌标志','Cohive · Brand');
 }
 document.querySelectorAll('[data-set-lang]').forEach(b => b.addEventListener('click', () => setLang(b.dataset.setLang)));
@@ -349,6 +375,12 @@ const q = new URLSearchParams(location.search).get('lang');
 let s = 'en'; try{ s = localStorage.getItem(KEY) || (navigator.language.startsWith('zh')?'zh':'en') }catch(e){}
 if (q === 'zh' || q === 'en') s = q;
 setLang(s);
+
+/* 深浅主题切换 */
+document.querySelectorAll('[data-theme-toggle]').forEach(b => b.addEventListener('click', () => {
+  const r = document.documentElement, n = r.dataset.theme === 'light' ? 'dark' : 'light';
+  r.dataset.theme = n; try{ localStorage.setItem('cohive-theme', n) }catch(e){}
+}));
 </script>
 </body>
 </html>

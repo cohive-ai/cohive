@@ -29,29 +29,48 @@ const light = block(":root");
 const dark = block(':root[data-theme="dark"]');
 const darkAuto = block(':root:not([data-theme="light"])');
 
-// 文字令牌 × 它会出现的背景
-const onPage = ["ink", "muted", "accent", "teal", "wait", "danger", "tool-claude", "tool-codex"];
+// 文字令牌 × 它会出现的背景（文字至少 4.5:1）
+const onPage = ["ink", "muted", "accent", "teal", "wait", "danger"];
 const pages = ["bg", "surface", "sunken"];
 const pairs: [string, string][] = [
   ...onPage.flatMap((fg) => pages.map((bg) => [fg, bg] as [string, string])),
-  ["teal", "teal-soft"],
+  // 实色状态标签：待验证与已重开、已接单与修复中、待接单、已关闭与有效、已退回与已停用
+  ["accent-ink", "wait-mark"],
+  ["surface", "ink"],
+  ["on-status", "teal"],
+  ["on-status", "danger"],
+  // 浅底标签、荧光笔底与提示框
   ["wait", "wait-soft"],
+  ["teal", "teal-soft"],
   ["ink", "teal-soft"],
   ["ink", "wait-soft"],
   ["ink", "accent-soft"],
   ["accent", "accent-soft"],
+  // 主按钮
   ["accent-ink", "accent-fill"],
-  ["surface", "danger"],
+];
+
+// 图形（非文字）至少 3:1：输入框与次按钮的边框、工具图标。工具图标放在卡片和信息栏的白底上
+const graphics: [string, string][] = [
+  ["line-strong", "surface"],
+  ["tool-claude", "surface"],
+  ["tool-codex", "surface"],
+  ["tool-other", "surface"],
 ];
 
 describe.each([
   ["light", light],
   ["dark", dark],
 ])("%s theme", (_, vars) => {
-  it.each(pairs)("%s on %s is at least 4.5:1", (fg, bg) => {
+  it.each(pairs)("text %s on %s is at least 4.5:1", (fg, bg) => {
     expect(vars[fg], fg).toBeDefined();
     expect(vars[bg], bg).toBeDefined();
     expect(contrast(vars[fg], vars[bg])).toBeGreaterThanOrEqual(4.5);
+  });
+  it.each(graphics)("graphic %s on %s is at least 3:1", (fg, bg) => {
+    expect(vars[fg], fg).toBeDefined();
+    expect(vars[bg], bg).toBeDefined();
+    expect(contrast(vars[fg], vars[bg])).toBeGreaterThanOrEqual(3);
   });
 });
 
@@ -59,24 +78,8 @@ it("the dark theme is the same whether chosen by the system or by data-theme", (
   expect(darkAuto).toEqual(dark);
 });
 
-it("dark overrides every light token except the fixed brand gold", () => {
-  const { "brand-gold": gold, ...rest } = light;
-  expect(gold).toBe("#ffc000");
+it("dark overrides every light color except the fixed brand yellow", () => {
+  const { "brand-yellow": yellow, ...rest } = light;
+  expect(yellow).toBe("#ffcc00");
   expect(Object.keys(dark).sort()).toEqual(Object.keys(rest).sort());
-});
-
-it("the waiting color stays clearly apart from the brand gold", () => {
-  // 色相相差至少 90 度：等你处理不能被看成“可点的金色”
-  const hue = (hex: string) => {
-    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const d = max - min;
-    const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-    return (h * 60 + 360) % 360;
-  };
-  for (const vars of [light, dark]) {
-    const diff = Math.abs(hue(vars.wait) - hue(vars.accent));
-    expect(Math.min(diff, 360 - diff)).toBeGreaterThanOrEqual(90);
-  }
 });

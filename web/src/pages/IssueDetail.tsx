@@ -157,7 +157,7 @@ function Field({ title, text, mono }: { title: string; text?: string; mono?: boo
 
 function Event({ e }: { e: IssueEvent }) {
   const { t } = useTranslation("issues");
-  const dot = e.tool === "claude-code" ? "bg-tool-claude" : e.tool === "codex" ? "bg-tool-codex" : "bg-muted";
+  const dot = e.tool === "claude-code" ? "bg-tool-claude" : e.tool === "codex" ? "bg-tool-codex" : "bg-tool-other";
   const assignee = typeof e.payload?.assignee === "string" ? e.payload.assignee : undefined;
   // 管理员移出成员时的改派：负责人或发起人换成谁
   const ownerTo = typeof e.payload?.owner_to_name === "string" ? e.payload.owner_to_name : undefined;

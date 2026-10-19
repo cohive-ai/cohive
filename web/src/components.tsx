@@ -18,11 +18,12 @@ import {
 // 工具标识：哪个工具做的，是协作记录里的关键信息
 export function ToolMark({ tool, withLabel = true }: { tool: string; withLabel?: boolean }) {
   useTranslation(); // 切换语言时重绘（“网页”的名称随语言变）
+  // 颜色只上图标，工具名文字用 ink；未收录的工具用灰色（对照表见 docs/brand）
   const color =
-    tool === "claude-code" ? "text-tool-claude" : tool === "codex" ? "text-tool-codex" : "text-muted";
+    tool === "claude-code" ? "text-tool-claude" : tool === "codex" ? "text-tool-codex" : "text-tool-other";
   return (
-    <span className={`inline-flex items-center gap-1 ${color}`} title={toolLabel(tool)}>
-      <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 shrink-0" aria-hidden="true">
+    <span className="inline-flex items-center gap-1 text-ink" title={toolLabel(tool)}>
+      <svg viewBox="0 0 12 12" className={`h-2.5 w-2.5 shrink-0 ${color}`} aria-hidden="true">
         <path d="M6 0.5l5 2.9v5.2L6 11.5 1 8.6V3.4z" fill="currentColor" />
       </svg>
       {withLabel && <span className="text-xs">{toolLabel(tool)}</span>}
@@ -30,21 +31,25 @@ export function ToolMark({ tool, withLabel = true }: { tool: string; withLabel?:
   );
 }
 
+// 状态标签全部实色、加粗，扫一眼看底色就能分清：黄是轮到你，黑是在别人手上，黑框是还没人接，
+// 绿、红是已结束的好与坏；草稿和已作废不需要注意，故意压低
 const statusTone: Record<string, string> = {
-  DRAFT: "border border-dashed border-line text-muted",
-  OPEN: "bg-teal-soft text-teal",
-  ACCEPTED: "bg-teal-soft text-teal",
-  FIXING: "bg-teal-soft text-teal",
-  REOPENED: "bg-wait-soft text-wait",
-  READY_FOR_VERIFICATION: "bg-wait-soft text-wait",
-  CLOSED: "bg-sunken text-muted",
-  DECLINED: "bg-sunken text-danger",
-  CANCELLED: "bg-sunken text-muted line-through",
+  DRAFT: "border-dashed border-ink text-ink",
+  OPEN: "border-ink bg-surface text-ink",
+  ACCEPTED: "border-ink bg-ink text-surface",
+  FIXING: "border-ink bg-ink text-surface",
+  REOPENED: "border-accent-ink bg-wait-mark text-accent-ink",
+  READY_FOR_VERIFICATION: "border-accent-ink bg-wait-mark text-accent-ink",
+  CLOSED: "border-teal bg-teal text-on-status",
+  DECLINED: "border-danger bg-danger text-on-status",
+  CANCELLED: "border-line-strong text-muted line-through",
 };
 
 export function StatusTag({ status, label }: { status: string; label: string }) {
   return (
-    <span className={`inline-block rounded px-1.5 py-px text-xs whitespace-nowrap ${statusTone[status] ?? ""}`}>
+    <span
+      className={`inline-block rounded border-[1.5px] px-1.5 py-px text-xs font-bold whitespace-nowrap ${statusTone[status] ?? "border-transparent"}`}
+    >
       {label}
     </span>
   );
@@ -72,7 +77,7 @@ export function Layout() {
     navigate({ to: "/login" });
   };
   const nav = "px-1 py-0.5 text-muted hover:text-ink";
-  const active = { className: "px-1 py-0.5 text-ink border-b-2 border-accent" };
+  const active = { className: "px-1 py-0.5 font-semibold text-ink border-b-[3px] border-accent-fill" };
 
   const workspaces = me.data?.workspaces ?? [];
   const current = workspaceFromPath(pathname);
@@ -168,7 +173,7 @@ function WorkspaceSwitcher({
       <select
         value={current ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        className="max-w-[14rem] rounded border border-line bg-bg px-2 py-1 text-sm text-ink"
+        className="max-w-[14rem] rounded border border-line-strong bg-bg px-2 py-1 text-sm text-ink"
       >
         {!current && (
           <option value="" disabled>

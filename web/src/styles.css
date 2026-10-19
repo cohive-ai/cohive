@@ -1,92 +1,127 @@
 @import "tailwindcss";
 
-/* 颜色令牌，对齐黑金品牌（docs/brand）：
-   - accent 品牌金，只给可操作、被选中的东西：链接、主按钮、当前标签、焦点框；浅色主题文字用加深的金色，
-     accent-fill 是主按钮底色，上面的字用 accent-ink；
-   - 状态色含义不变：teal 进行中与成功，wait 等你处理与提醒（靛紫，和品牌金明显区分），danger 出错与退回；
-   - 两个工具各一个低饱和标识色；brand-gold 只用于标志里的智能体格子，两种主题都不变。
-   文字与背景的对比度由 contrast.test.ts 检查，至少达到 WCAG AA（4.5:1）。 */
+/* 主题令牌，对齐黑白黄品牌（第三版，docs/brand）。组件里只用这些令牌，不写死颜色、圆角和阴影。
+   - 品牌只有三色：黑 #0B0B0C、白 #F5F5F5 / #FFFFFF、黄 #FFCC00，叫“黄 / yellow”，不叫“金”。
+   - accent 是“可操作、被选中”的文字级颜色：浅色为黑、深色为白。黄色只做面和标记，从不当浅底上的文字：
+     accent-fill 是主按钮底、当前导航下划线、输入框聚焦光圈；wait-mark 是“轮到你”的左边条、待验证标签底、交接高亮。
+   - 状态色含义不变：teal 是已结束 · 好（已关闭、有效、在线、已绑定），danger 是出错与已退回；
+     绿、红实色标签上的字用 on-status。进行中的状态用黑白（实黑、黑框），不再用绿色。
+   - 工具标识色只用于图形，工具名文字用 ink；未收录的工具用 tool-other（灰）。对照表见 docs/brand。
+   - brand-yellow 只用于标志里的智能体格子，两种主题都不变。
+   对比度由 contrast.test.ts 检查：文字至少 4.5:1（WCAG AA），line-strong 与工具色按图形标准至少 3:1。 */
 :root {
-  --brand-gold: #ffc000;
-  --bg: #f2f1ec;
-  --surface: #fcfbf8;
-  --sunken: #e8e6df;
-  --ink: #17171a;
-  --muted: #5e5e66;
-  --line: #d8d6ce;
-  --accent: #7a5800;
-  --accent-soft: #f6e9bd;
-  --accent-fill: #e6ac00;
-  --accent-ink: #1a1400;
-  --wait: #5b47c2;
-  --wait-soft: #ece8fa;
-  --teal: #2e6b66;
-  --teal-soft: #d4e6e2;
-  --tool-claude: #7f4f78;
-  --tool-codex: #3e6a93;
-  --danger: #a3402f;
+  --brand-yellow: #ffcc00;
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --sunken: #ebebeb;
+  --ink: #0b0b0c;
+  --muted: #555555;
+  --line: #dcdcdc;
+  --line-strong: #8a8a8a;
+  --accent: #0b0b0c;
+  --accent-soft: #fff5cc;
+  --accent-fill: #ffcc00;
+  --accent-ink: #0b0b0c;
+  --wait: #0b0b0c;
+  --wait-soft: #ffe680;
+  --wait-mark: #ffcc00;
+  --teal: #0e7436;
+  --teal-soft: #e1f3e7;
+  --tool-claude: #d97757;
+  --tool-codex: #000000;
+  --tool-other: #8a8a8a;
+  --danger: #c2261a;
+  --on-status: #ffffff;
+  --backdrop: rgb(0 0 0 / 0.4);
+  /* 形状：圆角统一收小，呼应标志的硬切角；硬阴影是界面唯一的装饰 */
+  --radius-control: 2px;
+  --radius-panel: 4px;
+  --hard-shadow: 2px 2px 0 var(--ink);
+  --focus-ring: 0 0 0 3px var(--accent-fill);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0e0e10;
-    --surface: #17171a;
-    --sunken: #080809;
-    --ink: #f4f3ee;
+    --bg: #0b0b0c;
+    --surface: #141416;
+    --sunken: #070708;
+    --ink: #f5f5f5;
     --muted: #9c9ca3;
-    --line: #2e2e33;
-    --accent: #ffc000;
-    --accent-soft: #2a2105;
-    --accent-fill: #ffc000;
-    --accent-ink: #1a1400;
-    --wait: #a99bff;
-    --wait-soft: #25213f;
-    --teal: #6fb3ab;
-    --teal-soft: #1f3533;
-    --tool-claude: #c49abd;
-    --tool-codex: #8fb2d4;
-    --danger: #e08a7a;
+    --line: #2b2b30;
+    --line-strong: #6a6a72;
+    --accent: #f5f5f5;
+    --accent-soft: #2a2410;
+    --accent-fill: #ffcc00;
+    --accent-ink: #0b0b0c;
+    --wait: #ffcc00;
+    --wait-soft: #3a3000;
+    --wait-mark: #ffcc00;
+    --teal: #4cc47f;
+    --teal-soft: #12301e;
+    --tool-claude: #d97757;
+    --tool-codex: #ffffff;
+    --tool-other: #8a8a92;
+    --danger: #ff6b5c;
+    --on-status: #0b0b0c;
+    --backdrop: rgb(0 0 0 / 0.6);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #0e0e10;
-  --surface: #17171a;
-  --sunken: #080809;
-  --ink: #f4f3ee;
+  --bg: #0b0b0c;
+  --surface: #141416;
+  --sunken: #070708;
+  --ink: #f5f5f5;
   --muted: #9c9ca3;
-  --line: #2e2e33;
-  --accent: #ffc000;
-  --accent-soft: #2a2105;
-  --accent-fill: #ffc000;
-  --accent-ink: #1a1400;
-  --wait: #a99bff;
-  --wait-soft: #25213f;
-  --teal: #6fb3ab;
-  --teal-soft: #1f3533;
-  --tool-claude: #c49abd;
-  --tool-codex: #8fb2d4;
-  --danger: #e08a7a;
+  --line: #2b2b30;
+  --line-strong: #6a6a72;
+  --accent: #f5f5f5;
+  --accent-soft: #2a2410;
+  --accent-fill: #ffcc00;
+  --accent-ink: #0b0b0c;
+  --wait: #ffcc00;
+  --wait-soft: #3a3000;
+  --wait-mark: #ffcc00;
+  --teal: #4cc47f;
+  --teal-soft: #12301e;
+  --tool-claude: #d97757;
+  --tool-codex: #ffffff;
+  --tool-other: #8a8a92;
+  --danger: #ff6b5c;
+  --on-status: #0b0b0c;
+  --backdrop: rgb(0 0 0 / 0.6);
 }
 
 @theme inline {
+  --color-brand-yellow: var(--brand-yellow);
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-sunken: var(--sunken);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
   --color-accent-fill: var(--accent-fill);
   --color-accent-ink: var(--accent-ink);
   --color-wait: var(--wait);
   --color-wait-soft: var(--wait-soft);
+  --color-wait-mark: var(--wait-mark);
   --color-teal: var(--teal);
   --color-teal-soft: var(--teal-soft);
   --color-tool-claude: var(--tool-claude);
   --color-tool-codex: var(--tool-codex);
+  --color-tool-other: var(--tool-other);
   --color-danger: var(--danger);
+  --color-on-status: var(--on-status);
+  --color-backdrop: var(--backdrop);
+  /* rounded、rounded-md 用小圆角，rounded-lg 用面板圆角 */
+  --radius: var(--radius-control);
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-panel);
+  --shadow-hard: var(--hard-shadow);
+  --shadow-focus: var(--focus-ring);
   /* 只用系统字体：看板必须能在断网的内网里打开 */
   --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
     "Noto Sans CJK SC", "Segoe UI", sans-serif;
@@ -107,17 +142,18 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 焦点框用 accent（浅黑深白）：黄色在白底上只有 1.5:1，做焦点框不够醒目 */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
 }
 
 /* 唯一的自动动效：问题单换到另一个人手上时短暂提示 */
 @keyframes handoff {
   0% {
-    box-shadow: 0 0 0 3px var(--wait);
-    background: var(--wait-soft);
+    box-shadow: 0 0 0 3px var(--wait-mark);
+    background: var(--accent-soft);
   }
   100% {
     box-shadow: 0 0 0 0 transparent;
@@ -131,6 +167,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .handoff {
     animation: none;
-    outline: 2px solid var(--wait);
+    outline: 2px solid var(--wait-mark);
   }
 }

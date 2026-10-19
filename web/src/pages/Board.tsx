@@ -75,7 +75,7 @@ export function BoardPage() {
               i18nKey="board.summaryMine"
               count={active.length}
               values={{ mine }}
-              components={{ hl: <span className="text-wait" /> }}
+              components={{ hl: <span className="rounded bg-wait-soft px-1 font-semibold text-wait" /> }}
             />
           ) : (
             t("board.summaryNone", { count: active.length })
@@ -99,7 +99,10 @@ export function BoardPage() {
               <span className={col.key === me ? "font-semibold text-ink" : "font-semibold"}>{col.title}</span>
               {col.subtitle && <span className="text-sm text-muted">{col.subtitle}</span>}
               {col.disabled && (
-                <span className="rounded bg-sunken px-1.5 py-px text-xs text-danger" title={t("board.deactivatedTitle")}>
+                <span
+                  className="rounded border-[1.5px] border-danger bg-danger px-1.5 py-px text-xs font-bold text-on-status"
+                  title={t("board.deactivatedTitle")}
+                >
                   {t("board.deactivated")}
                 </span>
               )}
@@ -129,23 +132,28 @@ function Card({ ws, issue, me, moved }: { ws: string; issue: BoardIssue; me: str
     <Link
       to="/w/$ws/issues/$id"
       params={{ ws, id: String(issue.id) }}
-      className={`block rounded-md border bg-surface px-3 py-2.5 hover:border-accent ${
-        forMe ? "border-line border-l-4 border-l-wait" : "border-line"
-      } ${moved ? "handoff" : ""} ${done ? "opacity-75" : ""}`}
+      className={`block rounded-md border bg-surface px-3 py-2.5 hover:border-accent hover:shadow-hard ${
+        forMe ? "border-line border-l-4 border-l-wait-mark" : "border-line"
+      } ${moved ? "handoff" : ""}`}
     >
       <div className="flex items-center gap-2 text-sm text-muted">
         <span>#{issue.id}</span>
         <StatusTag status={issue.status} label={statusLabel(issue.status, issue.status_label)} />
-        {issue.escalated && <span className="text-xs text-danger">{t("board.escalated")}</span>}
+        {issue.escalated && (
+          <span className="rounded border-[1.5px] border-danger bg-danger px-1.5 py-px text-xs font-bold text-on-status">
+            {t("board.escalated")}
+          </span>
+        )}
         {issue.target_service && <span className="ml-auto truncate">{issue.target_service}</span>}
       </div>
-      <p className="mt-1 leading-snug text-ink">{issue.title}</p>
+      {/* 已结束的卡片只淡化标题和底部信息，状态标签不淡化 */}
+      <p className={`mt-1 leading-snug text-ink ${done ? "opacity-75" : ""}`}>{issue.title}</p>
       {!done && (
-        <p className={`mt-1 text-sm ${forMe ? "text-wait" : "text-muted"}`}>
+        <p className={`mt-1 text-sm ${forMe ? "font-semibold text-wait" : "text-muted"}`}>
           {needsText(t, issue, forMe)}
         </p>
       )}
-      <div className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+      <div className={`mt-2 flex items-center gap-1.5 text-xs text-muted ${done ? "opacity-75" : ""}`}>
         <ToolMark tool={issue.source_tool} withLabel={false} />
         <span>{issue.source}</span>
         {issue.owner && issue.owner !== issue.source && (
