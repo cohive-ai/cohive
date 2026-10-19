@@ -19,6 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
+| TOOLS 调研 opencode 与 DeepSeek 编程工具适配 | 会话自建（从最新 main，只提交报告） | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08` | — | 已派 | 先查清“DeepSeek harness”指什么；逐项核对 MCP、工具确认、斜杠命令或技能、钩子、指令文件、各形态差别、许可证与网络；能装的实测（自建实例，不连测试服、不用真实令牌、不注册不填密钥）；报告 `docs/research/2026-10-19-coding-tools-opencode-deepseek.md` 含适配方案与待 lee 决定项 |
 | IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
