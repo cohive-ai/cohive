@@ -8,7 +8,14 @@
     "displayName": "显示名",
     "notSet": "未设置",
     "role": "身份",
-    "serverAdmin": "服务器管理员"
+    "serverAdmin": "服务器管理员",
+    "editDisplayName": "修改",
+    "displayNamePlaceholder": "留空则显示登录名 {{name}}",
+    "displayNameHint": "同事在看板、成员列表和群消息里看到的名字，最多 64 个字。不能和你所在工作空间里其他成员的登录名或显示名相同。",
+    "displayNameSaved": "显示名已保存。",
+    "displayNameCleared": "显示名已清空，各处将显示登录名 {{name}}。",
+    "save": "保存",
+    "cancel": "取消"
   },
   "workspaces": {
     "title": "我的工作空间",

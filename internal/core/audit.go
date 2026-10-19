@@ -265,7 +265,11 @@ var actions = map[string]actionInfo{
 				fields = append(fields, detailLabel(l, k))
 			}
 		}
-		return l.T("audit.verb.account_update", i18n.D{"Target": e.TargetName, "Fields": strings.Join(fields, l.T("audit.sep.item"))})
+		key := "audit.verb.account_update"
+		if b(e, "self") {
+			key = "audit.verb.account_update_self"
+		}
+		return l.T(key, i18n.D{"Target": e.TargetName, "Fields": strings.Join(fields, l.T("audit.sep.item"))})
 	}},
 	ActTelegramUnlink: {CatAccount, func(l i18n.Lang, e store.AdminEvent) string {
 		if b(e, "self") {

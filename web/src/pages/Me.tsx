@@ -8,7 +8,7 @@ import { DeviceTokens, Notice } from "../components";
 import { absoluteTime, roleLabel, workspaceLabel } from "../format";
 import i18n, { followBrowserLanguage, languages, setLanguage } from "../i18n";
 import { readThemePref, setThemePref, type ThemePref } from "../theme";
-import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
+import { btn, ConfirmButton, CopyField, ErrorText, errMsg, inputClass, Section, SuccessText } from "../ui";
 import { initCommands, installCommands, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
 import { CodeLink } from "./ChatCode";
@@ -30,7 +30,9 @@ export function MePage() {
           <dt className="text-muted">{t("basic.username")}</dt>
           <dd className="font-mono">{m.account.name}</dd>
           <dt className="text-muted">{t("basic.displayName")}</dt>
-          <dd>{m.account.display_name || <span className="text-muted">{t("basic.notSet")}</span>}</dd>
+          <dd>
+            <DisplayNameEditor me={m} />
+          </dd>
           {m.account.server_admin && (
             <>
               <dt className="text-muted">{t("basic.role")}</dt>
@@ -86,6 +88,84 @@ export function MePage() {
         <Appearance />
       </Section>
     </div>
+  );
+}
+
+// 显示名同事都能看到的位置（页头、看板、成员列表、问题单、群消息）都按它显示，保存后刷新这些缓存，不用整页刷新
+const displayNameQueries = [["me"], ["board"], ["issues"], ["issue"], ["admin"], ["server", "accounts"], ["events"]];
+
+// 显示名：本人可改可清空（清空后各处显示登录名）。不能和所在工作空间里其他成员的登录名或显示名相同，由服务器检查
+function DisplayNameEditor({ me }: { me: Me }) {
+  const { t } = useTranslation("me");
+  const qc = useQueryClient();
+  const current = me.account.display_name ?? "";
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(current);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState("");
+
+  const start = () => {
+    setValue(current);
+    setError("");
+    setOk("");
+    setEditing(true);
+  };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    setOk("");
+    try {
+      const res = await api.setMyDisplayName(value.trim());
+      setEditing(false);
+      setOk(res.display_name ? t("basic.displayNameSaved") : t("basic.displayNameCleared", { name: me.account.name }));
+      await Promise.all(displayNameQueries.map((queryKey) => qc.invalidateQueries({ queryKey })));
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {current ? <span>{current}</span> : <span className="text-muted">{t("basic.notSet")}</span>}
+          <button type="button" className="text-sm text-accent hover:underline" onClick={start}>
+            {t("basic.editDisplayName")}
+          </button>
+        </div>
+        {ok && <SuccessText>{ok}</SuccessText>}
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={save} className="max-w-sm">
+      <input
+        aria-label={t("basic.displayName")}
+        value={value}
+        maxLength={64}
+        autoFocus
+        disabled={busy}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={t("basic.displayNamePlaceholder", { name: me.account.name })}
+        className={inputClass}
+      />
+      <p className="mt-1 text-xs text-muted">{t("basic.displayNameHint")}</p>
+      <div className="mt-2 flex gap-2">
+        <button type="submit" className={btn.primary} disabled={busy}>
+          {t("basic.save")}
+        </button>
+        <button type="button" className={btn.secondary} disabled={busy} onClick={() => setEditing(false)}>
+          {t("basic.cancel")}
+        </button>
+      </div>
+      <ErrorText>{error}</ErrorText>
+    </form>
   );
 }
 

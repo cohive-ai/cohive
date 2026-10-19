@@ -8,7 +8,14 @@
     "displayName": "Display name",
     "notSet": "Not set",
     "role": "Role",
-    "serverAdmin": "Server admin"
+    "serverAdmin": "Server admin",
+    "editDisplayName": "Edit",
+    "displayNamePlaceholder": "Leave empty to show your username {{name}}",
+    "displayNameHint": "The name teammates see on the board, in member lists and in chat messages. Up to 64 characters. It can't match another member's username or display name in your workspaces.",
+    "displayNameSaved": "Display name saved.",
+    "displayNameCleared": "Display name cleared. Your username {{name}} will be shown instead.",
+    "save": "Save",
+    "cancel": "Cancel"
   },
   "workspaces": {
     "title": "My workspaces",

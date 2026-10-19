@@ -127,6 +127,23 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		writeJSON(w, http.StatusOK, map[string]any{"language": lang, "effective": i18n.Pick(lang)})
 	})
 
+	// 本人改昵称：只认网页会话（密码登录与 cohive web 免密登录），编程工具令牌一律拒绝，
+	// 免得智能体在用户不知情时改掉别人在群消息里看到的名字。空串表示清除，各处回退显示登录名。
+	handle(mux, "POST /api/v1/me/display-name", aSession, func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			DisplayName string `json:"display_name"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		d, err := svc.SetMyDisplayName(r.Context(), core.WebActor(caller(r).Account), in.DisplayName)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"display_name": d})
+	})
+
 	handle(mux, "POST /api/v1/auth/password", aSession, func(w http.ResponseWriter, r *http.Request) {
 		// 只能在网页上改：令牌在终端和编程工具里，不能拿它给没设过密码的账号直接设密码
 		var in struct {

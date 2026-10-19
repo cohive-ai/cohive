@@ -282,6 +282,10 @@ func webCases() []webCase {
 				"new_password": "member-password-2"}, "")
 			return code
 		}, core.ActPasswordChange, core.ViaWeb, "", "lee-claude"},
+		{"POST /api/v1/me/display-name", "本人改昵称", func(t *testing.T, w *auditWeb) int {
+			code, _ := w.member.do("POST", "/api/v1/me/display-name", map[string]any{"display_name": "Claude Lee"}, "")
+			return code
+		}, core.ActAccountUpdate, core.ViaWeb, "", "lee-claude"},
 		{"POST /api/v1/invites/{code}/accept", "已有账号接受个人邀请", func(t *testing.T, w *auditWeb) int {
 			if _, err := w.f.svc.CreateWorkspace(ctx, core.WebActor(w.codex), "ops", ""); err != nil {
 				t.Fatal(err)
