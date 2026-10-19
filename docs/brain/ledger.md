@@ -21,7 +21,6 @@
 |---|---|---|---|---|---|
 | TOOLS 调研 opencode 与 DeepSeek 编程工具适配 | 会话自建（从最新 main，只提交报告） | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08` | — | 已派 | 先查清“DeepSeek harness”指什么；逐项核对 MCP、工具确认、斜杠命令或技能、钩子、指令文件、各形态差别、许可证与网络；能装的实测（自建实例，不连测试服、不用真实令牌、不注册不填密钥）；报告 `docs/research/2026-10-19-coding-tools-opencode-deepseek.md` 含适配方案与待 lee 决定项 |
 | BRAND-1 落地页与标志入库 | 会话自建（从最新 main） | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | — | 已派 | 接手 Open Design 交接（以第二版黑金为准）：标志进 docs/brand/，落地页进 site/，字体自托管附 OFL，README 顶部换深浅自适应标志，内容与 README 核对，贡献者区接口失败降级；不部署、不配域名；交回 `docs/brain/inbox/BRAND-1.md` 含部署选项 |
-| IM-DT | 已合入 main `ce7c34e`（已验收 = `c8327a2`） | im-research / `local_92d8a142-f47f-4bef-b689-a8502b7ab245`（保留，处理实测反馈） | `c8327a2` | 待 guanyu（cohive-internal #6 首轮实测：做指南第 1–6 步，凭据私下交 lee，lee 配到测试服并建工作空间 dingtalk-test 后由他绑群验收；#5 接手后续开发维护，服务 dingtalk 负责人 guanyu） | 部署指南 `docs/guides/dingtalk.md` 文末 11 条“请实测并反馈”；反馈写回 #6 或另起单给服务 dingtalk；需改代码的仍可交回 im-research；guanyu 的仓库写权限待 lee 开通 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
@@ -31,6 +30,7 @@
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
+- P3 钉钉未核实项（国际版是否支持互动卡片与 Stream、卡片回调是否计入额度、模板导入导出、带参数打开单聊）遇到再起单，服务 dingtalk 负责人 guanyu；#5（接手钉钉维护）guanyu 尚未接单 —— 来源 #6 关闭
 - P1 UI-1 产品网页配色对齐品牌（lee 定 A 并要求浅色主题微调）：换标志与网站图标；主按钮、选中等强调色改品牌金（浅色下用加深的金保证对比度）；深色主题改黑金；浅色主题整体微调向品牌靠拢（中性色、边框、强调色协调），仍以耐看易读为先；状态色语义不变且与金色区分；BRAND-1 合入后交同一会话 brand-landing 做 —— 来源 lee 2026-10-19
 - P3 已作废的单加“复制为新草稿”；操作记录列表写明命令行作废以哪个管理员（--as）名义 —— 来源 ISSUE-12 建议
 - P3 T-6 前端测试偶发失败：ISSUE-13 实施方在 make build 的 vitest 阶段失败一次（用例名未留住），随后连跑两次通过；主脑复跑两次通过。再出现时记下用例名 —— 来源 ISSUE-13
@@ -55,4 +55,4 @@
 - 旧库：`cohive`（M4 数据，群编号 `<旧测试群编号>`，停用不删）、`cohive_m5`（旧版第六号，停用）。
 - 待清理：主脑临时目录里的旧启动脚本 `test-restart.sh` 与 `test-data/` 已不再使用。
 - 机器人：同一个机器人令牌同时只能有一个程序收消息，测试服与本机调试不要同时跑。
-- 已归档：M5 实施会话、doc-1、m5b、m6-a。、m6c（M6-c、M6-d 均已合入）、m6e（M6-e 至 M6-e3 均已合入）、im6（IM-6 已合入）、ops-launchd（OPS-1 已合入）、oss（OSS-1、OSS-2 已合入）、stab（稳定性修复已合入）。ops-migrate（测试服迁移已完成）、issue-13（#13 已合入）。待归档会话：无。
+- 已归档：M5 实施会话、doc-1、m5b、m6-a。、m6c（M6-c、M6-d 均已合入）、m6e（M6-e 至 M6-e3 均已合入）、im6（IM-6 已合入）、ops-launchd（OPS-1 已合入）、oss（OSS-1、OSS-2 已合入）、stab（稳定性修复已合入）。ops-migrate（测试服迁移已完成）、issue-13（#13 已合入）。im-research（钉钉接入、N-1 至 N-4、DEP-1、DEP-1b、DOC-2、#12 均已合入，钉钉实测通过）。待归档会话：无。
