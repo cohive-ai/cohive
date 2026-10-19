@@ -19,6 +19,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
+| IM-2 调研飞书、Slack、Discord 接入 | 会话自建（从最新 main，只提交报告） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a` | — | 已派 | 在旧飞书调研基础上补全；逐平台核对应用形态、长连接或回调、@ 与消息更新、审批按钮回调与身份、群绑定与账号连接、私聊、限流、网络地区、SDK；不注册不建应用；报告 `docs/research/2026-10-19-im-feishu-slack-discord.md` 含顺序建议与待 lee 决定项 |
 | TOOLS 调研 opencode 与 DeepSeek 编程工具适配 | 会话自建（从最新 main，只提交报告） | tools-research / `local_606cb1e7-ccd5-49ce-bc28-07a9cbe48d08` | — | 已派 | 先查清“DeepSeek harness”指什么；逐项核对 MCP、工具确认、斜杠命令或技能、钩子、指令文件、各形态差别、许可证与网络；能装的实测（自建实例，不连测试服、不用真实令牌、不注册不填密钥）；报告 `docs/research/2026-10-19-coding-tools-opencode-deepseek.md` 含适配方案与待 lee 决定项 |
 | BRAND-1 落地页与标志入库 | 会话自建（从最新 main） | brand-landing / `local_bfcb5ba9-e78a-4fdc-a1f0-4263653c42d6` | — | 已派 | 接手 Open Design 交接（以第二版黑金为准）：标志进 docs/brand/，落地页进 site/，字体自托管附 OFL，README 顶部换深浅自适应标志，内容与 README 核对，贡献者区接口失败降级；不部署、不配域名；交回 `docs/brain/inbox/BRAND-1.md` 含部署选项 |
 
