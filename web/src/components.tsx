@@ -45,10 +45,12 @@ const statusTone: Record<string, string> = {
   CANCELLED: "border-line-strong text-muted line-through",
 };
 
-export function StatusTag({ status, label }: { status: string; label: string }) {
+// compact：看板卡片和问题单列表里用，字号小一档、不留上下内边距，标签比所在行矮，不挤占上下的空隙
+export function StatusTag({ status, label, compact = false }: { status: string; label: string; compact?: boolean }) {
+  const size = compact ? "px-1 text-2xs" : "px-1.5 py-px text-xs";
   return (
     <span
-      className={`inline-block rounded border-[1.5px] px-1.5 py-px text-xs font-bold whitespace-nowrap ${statusTone[status] ?? "border-transparent"}`}
+      className={`inline-block rounded border-[1.5px] font-bold whitespace-nowrap ${size} ${statusTone[status] ?? "border-transparent"}`}
     >
       {label}
     </span>

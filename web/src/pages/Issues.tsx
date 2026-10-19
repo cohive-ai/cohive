@@ -81,7 +81,7 @@ export function IssuesPage() {
                     </Link>
                     {/* 窄屏时把其余列合成一行带说明的摘要 */}
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted sm:hidden">
-                      <StatusTag status={is.status} label={statusLabel(is.status, is.status_label)} />
+                      <StatusTag compact status={is.status} label={statusLabel(is.status, is.status_label)} />
                       <span className="inline-flex items-center gap-1">
                         <ToolMark tool={is.source_tool} withLabel={false} />
                         {t("list.reportedBy", { name: is.source })}
@@ -92,7 +92,7 @@ export function IssuesPage() {
                     </div>
                   </td>
                   <td className="hidden px-3 py-2 sm:table-cell">
-                    <StatusTag status={is.status} label={statusLabel(is.status, is.status_label)} />
+                    <StatusTag compact status={is.status} label={statusLabel(is.status, is.status_label)} />
                   </td>
                   <td className="hidden px-3 py-2 text-muted sm:table-cell">{is.target_service || t("unset")}</td>
                   <td className="hidden px-3 py-2 sm:table-cell">

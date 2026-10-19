@@ -122,6 +122,9 @@
   --radius-lg: var(--radius-panel);
   --shadow-hard: var(--hard-shadow);
   --shadow-focus: var(--focus-ring);
+  /* 卡片和列表行里的状态标签用的小一档字号：加粗加边框后仍和所在行留出空隙 */
+  --text-2xs: 0.7rem;
+  --text-2xs--line-height: 0.875rem;
   /* 只用系统字体：看板必须能在断网的内网里打开 */
   --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
     "Noto Sans CJK SC", "Segoe UI", sans-serif;

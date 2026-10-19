@@ -138,9 +138,9 @@ function Card({ ws, issue, me, moved }: { ws: string; issue: BoardIssue; me: str
     >
       <div className="flex items-center gap-2 text-sm text-muted">
         <span>#{issue.id}</span>
-        <StatusTag status={issue.status} label={statusLabel(issue.status, issue.status_label)} />
+        <StatusTag compact status={issue.status} label={statusLabel(issue.status, issue.status_label)} />
         {issue.escalated && (
-          <span className="rounded border-[1.5px] border-danger bg-danger px-1.5 py-px text-xs font-bold text-on-status">
+          <span className="rounded border-[1.5px] border-danger bg-danger px-1 text-2xs font-bold text-on-status">
             {t("board.escalated")}
           </span>
         )}
@@ -149,7 +149,7 @@ function Card({ ws, issue, me, moved }: { ws: string; issue: BoardIssue; me: str
       {/* 已结束的卡片只淡化标题和底部信息，状态标签不淡化 */}
       <p className={`mt-1 leading-snug text-ink ${done ? "opacity-75" : ""}`}>{issue.title}</p>
       {!done && (
-        <p className={`mt-1 text-sm ${forMe ? "font-semibold text-wait" : "text-muted"}`}>
+        <p className={`mt-1 text-sm ${forMe ? "text-wait" : "text-muted"}`}>
           {needsText(t, issue, forMe)}
         </p>
       )}
