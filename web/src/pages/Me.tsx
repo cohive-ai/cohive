@@ -7,6 +7,7 @@ import { api, ApiError, codeProviders, type Me } from "../api";
 import { DeviceTokens, Notice } from "../components";
 import { absoluteTime, roleLabel, workspaceLabel } from "../format";
 import i18n, { followBrowserLanguage, languages, setLanguage } from "../i18n";
+import { readThemePref, setThemePref, type ThemePref } from "../theme";
 import { btn, ConfirmButton, CopyField, ErrorText, errMsg, Section } from "../ui";
 import { initCommands, installCommands, isTelegramLink, revokeDeviceMessage, shouldRetryPoll } from "../rules";
 import { ChangePasswordForm } from "./Password";
@@ -80,6 +81,10 @@ export function MePage() {
       <Section title={t("language.title")} description={t("language.description")}>
         <AccountLanguage me={m} />
       </Section>
+
+      <Section title={t("appearance.title")} description={t("appearance.description")}>
+        <Appearance />
+      </Section>
     </div>
   );
 }
@@ -127,6 +132,28 @@ function AccountLanguage({ me }: { me: Me }) {
       </select>
       <ErrorText>{error}</ErrorText>
     </div>
+  );
+}
+
+// 外观：浅色、深色或跟随系统。存在本机浏览器而不是账号上，见 theme.ts
+function Appearance() {
+  const { t } = useTranslation("me");
+  const [pref, setPref] = useState<ThemePref>(readThemePref);
+  return (
+    <select
+      aria-label={t("appearance.label")}
+      className="rounded border border-line-strong bg-surface px-2 py-1 text-sm text-ink"
+      value={pref}
+      onChange={(e) => {
+        const v = e.target.value as ThemePref;
+        setThemePref(v);
+        setPref(v);
+      }}
+    >
+      <option value="system">{t("appearance.system")}</option>
+      <option value="light">{t("appearance.light")}</option>
+      <option value="dark">{t("appearance.dark")}</option>
+    </select>
   );
 }
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/cohive-ai/cohive/internal/notify"
 	"github.com/cohive-ai/cohive/internal/server"
 	"github.com/cohive-ai/cohive/internal/store"
+	"github.com/cohive-ai/cohive/internal/theme"
 	"github.com/cohive-ai/cohive/web"
 )
 
@@ -111,7 +113,11 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 	if m := dist.Manifest; m != nil && m.Version != buildinfo.Version {
 		fmt.Fprintf(out, "  Warning: CLI bundle version %s does not match server version %s; rebuild with make build\n", m.Version, buildinfo.Version)
 	}
-	opts := server.Options{AllowedHosts: hosts, CLI: dist}
+	css, err := customTheme(out)
+	if err != nil {
+		return err
+	}
+	opts := server.Options{AllowedHosts: hosts, CLI: dist, Theme: css}
 	opts.API.TrustedProxies = proxies
 	// 群通知与机器人：设置了 Telegram 机器人令牌或钉钉应用凭据才启用（可以同时启用）；
 	// 都没设置时待发记录会保留，设置后重启即可补发
@@ -217,6 +223,46 @@ func serve(ctx context.Context, out io.Writer, args []string) error {
 		defer cancel()
 		return srv.Shutdown(shutdownCtx)
 	}
+}
+
+// customTheme 读取服务器管理员的自定义主题：COHIVE_THEME_FILE 指定的文件；没设时用数据目录下的 theme.css（有才用）。
+// 主题文件只能由能改服务器配置或数据目录的人放，网页上没有上传入口。
+// 明确指定的文件读不到时拒绝启动；文件里有被拒绝的写法时不加载、照常启动，看板用默认主题。
+func customTheme(out io.Writer) ([]byte, error) {
+	path := os.Getenv("COHIVE_THEME_FILE")
+	explicit := path != ""
+	if !explicit {
+		path = filepath.Join(dataDir(), "theme.css")
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+	}
+	spec, err := theme.LoadSpec()
+	if err != nil {
+		return nil, err
+	}
+	def, err := theme.Defaults()
+	if err != nil {
+		return nil, err
+	}
+	l, err := theme.Load(spec, def, path)
+	if err != nil {
+		if explicit {
+			return nil, fmt.Errorf("COHIVE_THEME_FILE: %w", logErr(err))
+		}
+		fmt.Fprintf(out, "  Custom theme: not loaded (%v)\n", logErr(err))
+		return nil, nil
+	}
+	if len(l.Parsed.Rejected) > 0 {
+		fmt.Fprintf(out, "  Custom theme: %s NOT loaded, %d disallowed part(s); the board uses the default theme. Run: cohive-server theme check %s\n",
+			path, len(l.Parsed.Rejected), path)
+		return nil, nil
+	}
+	fmt.Fprintf(out, "  Custom theme: %s (%d light, %d dark variables)\n", path, len(l.Parsed.Theme.Light), len(l.Parsed.Theme.Dark))
+	if n, f := len(l.Parsed.Unknown), len(l.Failed()); n > 0 || f > 0 {
+		fmt.Fprintf(out, "  Warning: custom theme has %d unknown variable(s) (ignored) and %d contrast check(s) below the minimum. Run: cohive-server theme check %s\n", n, f, path)
+	}
+	return l.CSS, nil
 }
 
 // dataDir 返回服务器数据目录（COHIVE_DATA_DIR，缺省为当前目录下的 data），保存初始管理员密码等文件。

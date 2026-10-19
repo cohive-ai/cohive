@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
-import css from "./styles.css?raw";
+import css from "./theme.css?raw";
+import spec from "../theme-spec.json";
+import vectors from "../theme-cases.json";
 
-// 颜色令牌的对比度检查：文字与它所在的背景至少达到 WCAG AA（正文 4.5:1）
+// 默认主题的对比度检查。变量清单与对比度规则在 web/theme-spec.json，
+// cohive-server theme check（internal/theme）读同一份；web/theme-cases.json 是两边都要跑出相同结论的用例。
 
-function block(selector: string): Record<string, string> {
+type Vars = Record<string, string>;
+
+function block(selector: string): Vars {
   const start = css.indexOf(selector + " {");
   if (start < 0) throw new Error(`missing block ${selector}`);
   const body = css.slice(css.indexOf("{", start) + 1, css.indexOf("}", start));
-  const vars: Record<string, string> = {};
+  const vars: Vars = {};
   for (const m of body.matchAll(/--([a-z-]+):\s*(#[0-9a-f]{6});/gi)) vars[m[1]] = m[2].toLowerCase();
   return vars;
 }
@@ -29,49 +34,47 @@ const light = block(":root");
 const dark = block(':root[data-theme="dark"]');
 const darkAuto = block(':root:not([data-theme="light"])');
 
-// 文字令牌 × 它会出现的背景（文字至少 4.5:1）
-const onPage = ["ink", "muted", "accent", "teal", "wait", "danger"];
-const pages = ["bg", "surface", "sunken"];
-const pairs: [string, string][] = [
-  ...onPage.flatMap((fg) => pages.map((bg) => [fg, bg] as [string, string])),
-  // 实色状态标签：待验证与已重开、已接单与修复中、待接单、已关闭与有效、已退回与已停用
-  ["accent-ink", "wait-mark"],
-  ["surface", "ink"],
-  ["on-status", "teal"],
-  ["on-status", "danger"],
-  // 浅底标签、荧光笔底与提示框
-  ["wait", "wait-soft"],
-  ["teal", "teal-soft"],
-  ["ink", "teal-soft"],
-  ["ink", "wait-soft"],
-  ["ink", "accent-soft"],
-  ["accent", "accent-soft"],
-  // 主按钮
-  ["accent-ink", "accent-fill"],
+type Pair = { fg: string; bg: string };
+const lists: [string, Pair[], number][] = [
+  ["text", spec.text, spec.minText],
+  ["graphics", spec.graphics, spec.minGraphic],
 ];
 
-// 图形（非文字）至少 3:1：输入框与次按钮的边框、工具图标。工具图标放在卡片和信息栏的白底上
-const graphics: [string, string][] = [
-  ["line-strong", "surface"],
-  ["tool-claude", "surface"],
-  ["tool-codex", "surface"],
-  ["tool-other", "surface"],
-];
+// 按 CSS 层叠算出某一模式下的变量：浅色块的覆盖也作用于默认深色块没定义的变量
+function resolve(mode: "light" | "dark", lightOver: Vars, darkOver: Vars): Vars {
+  if (mode === "light") return { ...light, ...lightOver };
+  const fromLight = Object.fromEntries(Object.entries(lightOver).filter(([k]) => !(k in dark)));
+  return { ...light, ...fromLight, ...dark, ...darkOver };
+}
+
+function failing(lightOver: Vars, darkOver: Vars): string[] {
+  const out: string[] = [];
+  for (const mode of ["light", "dark"] as const) {
+    const vars = resolve(mode, lightOver, darkOver);
+    for (const [name, pairs, min] of lists) {
+      for (const p of pairs) {
+        if (contrast(vars[p.fg], vars[p.bg]) < min) out.push(`${mode}:${name}:${p.fg}/${p.bg}`);
+      }
+    }
+  }
+  return out;
+}
 
 describe.each([
   ["light", light],
   ["dark", dark],
-])("%s theme", (_, vars) => {
-  it.each(pairs)("text %s on %s is at least 4.5:1", (fg, bg) => {
-    expect(vars[fg], fg).toBeDefined();
-    expect(vars[bg], bg).toBeDefined();
-    expect(contrast(vars[fg], vars[bg])).toBeGreaterThanOrEqual(4.5);
-  });
-  it.each(graphics)("graphic %s on %s is at least 3:1", (fg, bg) => {
-    expect(vars[fg], fg).toBeDefined();
-    expect(vars[bg], bg).toBeDefined();
-    expect(contrast(vars[fg], vars[bg])).toBeGreaterThanOrEqual(3);
-  });
+])("default %s theme", (_, vars) => {
+  for (const [name, pairs, min] of lists) {
+    it.each(pairs.map((p) => [p.fg, p.bg]))(`${name} %s on %s reaches the minimum`, (fg, bg) => {
+      expect(vars[fg], fg).toBeDefined();
+      expect(vars[bg], bg).toBeDefined();
+      expect(contrast(vars[fg], vars[bg])).toBeGreaterThanOrEqual(min);
+    });
+  }
+});
+
+it.each(vectors.cases.map((c) => [c.name, c] as const))("shared case: %s", (_, c) => {
+  expect(failing(c.light as Vars, c.dark as Vars)).toEqual(c.failing);
 });
 
 it("the dark theme is the same whether chosen by the system or by data-theme", () => {
@@ -82,4 +85,11 @@ it("dark overrides every light color except the fixed brand yellow", () => {
   const { "brand-yellow": yellow, ...rest } = light;
   expect(yellow).toBe("#ffcc00");
   expect(Object.keys(dark).sort()).toEqual(Object.keys(rest).sort());
+});
+
+it("the spec lists exactly the variables the default theme defines", () => {
+  const all = [...css.matchAll(/^\s*--([a-z-]+):/gm)].map((m) => m[1]);
+  expect(spec.tokens.map((t) => t.name).sort()).toEqual([...new Set(all)].sort());
+  const colors = spec.tokens.filter((t) => t.kind === "color").map((t) => t.name);
+  expect(colors.sort()).toEqual(Object.keys(light).sort());
 });

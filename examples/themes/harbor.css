@@ -1,0 +1,52 @@
+/*
+ * Harbor: an example custom theme for Cohive (a blue accent instead of the brand yellow).
+ * Only CSS variables of the default theme are allowed; see docs/guides/theming.en.md.
+ *
+ *   cohive-server theme check examples/themes/harbor.css
+ *   COHIVE_THEME_FILE=/path/to/harbor.css cohive-server serve
+ */
+
+/* Light theme (also the base for anything the dark block does not set) */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --sunken: #e6ebf1;
+  --ink: #0f1b2d;
+  --muted: #4d5b6e;
+  --line: #d5dce6;
+  --line-strong: #7d8a9c;
+
+  /* Interactive things: links and current items in navy, the primary button in blue */
+  --accent: #0b4f8a;
+  --accent-soft: #e3eefb;
+  --accent-fill: #1f6feb;
+  --accent-ink: #ffffff;
+
+  /* "Your turn": a blue bar and tag, navy text on a pale blue highlighter */
+  --wait: #0b2e59;
+  --wait-soft: #dbeafe;
+  --wait-mark: #1f6feb;
+
+  /* Softer corners and no hard shadow; the focus ring keeps its default (accent-fill) */
+  --radius-control: 4px;
+  --radius-panel: 8px;
+  --hard-shadow: none;
+}
+
+/* Dark theme */
+:root[data-theme="dark"] {
+  --bg: #0d1420;
+  --surface: #152031;
+  --sunken: #0a101a;
+  --ink: #e8eef7;
+  --muted: #9aa8bb;
+  --line: #24324a;
+  --line-strong: #5d6f8a;
+  --accent: #9cc8ff;
+  --accent-soft: #14294a;
+  --accent-fill: #4c8dff;
+  --accent-ink: #0b0b0c;
+  --wait: #9cc8ff;
+  --wait-soft: #10294d;
+  --wait-mark: #4c8dff;
+}

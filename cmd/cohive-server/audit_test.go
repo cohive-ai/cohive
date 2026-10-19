@@ -113,6 +113,7 @@ var notAdminCommands = map[string]string{
 	"notify retry":   "把发送失败的通知重新排队，不改变任何人的权限",
 	"audit list":     "只读：查看管理操作记录",
 	"server show":    "只读：查看对外地址",
+	"theme check":    "只读：检查主题文件，不改任何设置（主题要改文件、重启才生效）",
 }
 
 // 服务器命令行里每条写命令都留记录，入口为服务器命令行、操作人为空。

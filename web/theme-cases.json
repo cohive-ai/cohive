@@ -1,0 +1,106 @@
+{
+  "about": "Shared test vectors: web/src/contrast.test.ts and internal/theme must report exactly these failing checks. Ids are mode:list:fg/bg. Overrides in light also apply to dark for variables the default dark block does not define.",
+  "cases": [
+    {
+      "name": "default theme passes",
+      "light": {},
+      "dark": {},
+      "failing": []
+    },
+    {
+      "name": "pale light text fails only in light",
+      "light": {
+        "ink": "#8a8a8a"
+      },
+      "dark": {},
+      "failing": [
+        "light:text:ink/bg",
+        "light:text:ink/surface",
+        "light:text:ink/sunken",
+        "light:text:surface/ink",
+        "light:text:ink/teal-soft",
+        "light:text:ink/wait-soft",
+        "light:text:ink/accent-soft"
+      ]
+    },
+    {
+      "name": "dark muted too dim",
+      "light": {},
+      "dark": {
+        "muted": "#4a4a50"
+      },
+      "failing": [
+        "dark:text:muted/bg",
+        "dark:text:muted/surface",
+        "dark:text:muted/sunken"
+      ]
+    },
+    {
+      "name": "yellow used as text on white",
+      "light": {
+        "accent": "#ffcc00"
+      },
+      "dark": {},
+      "failing": [
+        "light:text:accent/bg",
+        "light:text:accent/surface",
+        "light:text:accent/sunken",
+        "light:text:accent/accent-soft"
+      ]
+    },
+    {
+      "name": "low-contrast input border",
+      "light": {
+        "line-strong": "#c8c8c8"
+      },
+      "dark": {
+        "line-strong": "#3a3a40"
+      },
+      "failing": [
+        "light:graphics:line-strong/surface",
+        "dark:graphics:line-strong/surface"
+      ]
+    },
+    {
+      "name": "tool icon too light",
+      "light": {
+        "tool-claude": "#f0b8a0"
+      },
+      "dark": {},
+      "failing": [
+        "light:graphics:tool-claude/surface"
+      ]
+    },
+    {
+      "name": "blue brand that passes",
+      "light": {
+        "accent": "#0b4f8a",
+        "accent-fill": "#1f6feb",
+        "accent-ink": "#ffffff",
+        "wait-mark": "#1f6feb",
+        "wait-soft": "#dbeafe",
+        "wait": "#0b2e59"
+      },
+      "dark": {
+        "accent": "#9cc8ff",
+        "accent-fill": "#4c8dff",
+        "accent-ink": "#0b0b0c",
+        "wait-mark": "#4c8dff",
+        "wait-soft": "#10294d",
+        "wait": "#9cc8ff"
+      },
+      "failing": []
+    },
+    {
+      "name": "white button text on light yellow",
+      "light": {
+        "accent-ink": "#ffffff"
+      },
+      "dark": {},
+      "failing": [
+        "light:text:accent-ink/wait-mark",
+        "light:text:accent-ink/accent-fill"
+      ]
+    }
+  ]
+}

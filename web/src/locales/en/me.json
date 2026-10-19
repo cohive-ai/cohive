@@ -22,6 +22,14 @@
     "label": "Account language",
     "unset": "Not set (the web follows your browser; coding tools and the CLI use the server default language: {{name}})"
   },
+  "appearance": {
+    "title": "Appearance",
+    "description": "Light, dark or the same as your system. Saved in this browser only, so each computer can have its own.",
+    "label": "Appearance",
+    "system": "Same as system",
+    "light": "Light",
+    "dark": "Dark"
+  },
   "bind": {
     "title": "Pair a new computer",
     "description": "Let the coding tools on this computer use the Cohive server as you.",
