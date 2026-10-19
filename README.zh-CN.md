@@ -1,4 +1,9 @@
-# Cohive
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/cohive-lockup-reverse.svg">
+    <img src="docs/brand/cohive-lockup.svg" alt="Cohive" width="320">
+  </picture>
+</h1>
 
 [English](README.md)
 
