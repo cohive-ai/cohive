@@ -9,6 +9,7 @@ import (
 	"github.com/cohive-ai/cohive/internal/core"
 	"github.com/cohive-ai/cohive/internal/i18n"
 	"github.com/cohive-ai/cohive/internal/store"
+	"github.com/cohive-ai/cohive/internal/testutil"
 )
 
 // 本人改昵称：可改可清；与同空间其他在册成员的登录名或昵称撞名（不区分大小写、忽略首尾空白）时拒绝，
@@ -152,5 +153,73 @@ func TestSetMyDisplayName(t *testing.T) {
 	ms, _, err := e.svc.FindMembers(ctx, e.b, "sunny")
 	if err != nil || len(ms) != 1 || ms[0].Name != "lee-claude" || !ms[0].Exact {
 		t.Fatalf("找人应读到新昵称：%+v %v", ms, err)
+	}
+}
+
+// 停用的账号不能改显示名（网页会话在停用时已吊销，这里是业务层自己的一道判断）。
+func TestSetMyDisplayNameDisabled(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	q := e.svc.Pool
+	if _, err := q.Exec(ctx, `UPDATE accounts SET disabled_at = now() WHERE id = $1`, e.a.AccountID); err != nil {
+		t.Fatal(err)
+	}
+	me, _ := store.AccountByID(ctx, q, e.a.AccountID)
+	if _, err := e.svc.SetMyDisplayName(ctx, core.WebActor(me), "Ghost"); !errors.Is(err, store.ErrAccountDisabled) {
+		t.Fatalf("停用账号应被拒：%v", err)
+	}
+	if a, _ := store.AccountByID(ctx, q, me.ID); a.DisplayName != "" {
+		t.Fatalf("不应改动：%q", a.DisplayName)
+	}
+}
+
+// 两人同时改成同一个显示名：只能有一个成功，另一个拿到撞名。
+// 用表锁把两个事务都卡在写操作记录之前（此时两边都已做完撞名检查、写了显示名），再一起放行：
+// 没有全局锁时两边都已通过检查、都会成功；有全局锁时后一个停在锁上，等前一个提交后再检查，看到撞名。
+func TestSetMyDisplayNameConcurrent(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	q := e.svc.Pool
+	a, _ := store.AccountByID(ctx, q, e.a.AccountID)
+	b, _ := store.AccountByID(ctx, q, e.b.AccountID)
+
+	gate, err := q.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Rollback(ctx)
+	if _, err := gate.Exec(ctx, `LOCK TABLE admin_events IN EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	errs := make(chan error, 2)
+	for _, acc := range []store.Account{a, b} {
+		go func() {
+			_, err := e.svc.SetMyDisplayName(ctx, core.WebActor(acc), "Same Name")
+			errs <- err
+		}()
+	}
+	testutil.WaitLockWaiters(t, q, 2) // 两个事务都停在锁上
+	if err := gate.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var ok, taken int
+	for range 2 {
+		err := <-errs
+		var te *core.DisplayNameTakenError
+		switch {
+		case err == nil:
+			ok++
+		case errors.As(err, &te) && te.Clash == store.ClashDisplayName:
+			taken++
+		default:
+			t.Fatalf("意外的报错：%v", err)
+		}
+	}
+	if ok != 1 || taken != 1 {
+		t.Fatalf("应一个成功一个撞名：成功 %d，撞名 %d", ok, taken)
+	}
+	var n int
+	if err := q.QueryRow(ctx, `SELECT count(*) FROM accounts WHERE display_name = 'Same Name'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("库里应只有一人叫这个名字：%d %v", n, err)
 	}
 }
