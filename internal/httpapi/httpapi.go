@@ -343,6 +343,7 @@ func writeError(w http.ResponseWriter, err error) {
 	var sec *core.SecretError
 	var te *issue.TransitionError
 	var mce *core.MemberChoiceError
+	var dte *core.DisplayNameTakenError
 	switch {
 	case errors.As(err, &sec):
 		// 只含字段、行号与规则，不含密钥
@@ -375,6 +376,10 @@ func writeError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, errBody(w, "no_device", err))
 	case errors.Is(err, store.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, errBody(w, "not_found", err))
+	case errors.As(err, &dte):
+		body := errBody(w, core.CodeDisplayNameTaken, err)
+		body["clash"] = dte.Clash
+		writeJSON(w, http.StatusConflict, body)
 	case errors.As(err, &mce):
 		writeJSON(w, http.StatusBadRequest, errBody(w, mce.ErrorCode(), err))
 	case errors.As(err, &ie):

@@ -247,3 +247,36 @@ func IsActiveMemberOf(ctx context.Context, q DBTX, accountID, wsID int64) (bool,
 		AND status = 'active')`, accountID, wsID).Scan(&ok)
 	return ok, err
 }
+
+// 昵称撞名的类别
+const (
+	ClashName        = "name"         // 与别人的登录名相同
+	ClashDisplayName = "display_name" // 与别人的昵称相同
+)
+
+// DisplayNameClash 检查 display 是否与账号所在任一工作空间里其他在册、账号未停用成员的登录名或昵称相同
+// （不区分大小写、忽略首尾空白）。返回撞上的类别（ClashName 或 ClashDisplayName），没撞返回空串；两样都撞时报登录名。
+func DisplayNameClash(ctx context.Context, q DBTX, accountID int64, display string) (string, error) {
+	var byName, byDisplay bool
+	err := q.QueryRow(ctx, `SELECT coalesce(bool_or(lower(a.name) = lower(btrim($2, E' \t\r\n\v\f'))), false),
+		coalesce(bool_or(a.display_name <> '' AND lower(btrim(a.display_name, E' \t\r\n\v\f')) = lower(btrim($2, E' \t\r\n\v\f'))), false)
+		FROM members me JOIN members m ON m.workspace_id = me.workspace_id JOIN accounts a ON a.id = m.account_id
+		WHERE me.account_id = $1 AND me.status = 'active' AND m.status = 'active'
+		  AND a.id <> $1 AND a.disabled_at IS NULL`, accountID, display).Scan(&byName, &byDisplay)
+	switch {
+	case err != nil:
+		return "", err
+	case byName:
+		return ClashName, nil
+	case byDisplay:
+		return ClashDisplayName, nil
+	}
+	return "", nil
+}
+
+// LockDisplayNames 在事务内取一把全局的事务级咨询锁，让本人改昵称的操作互相排队，
+// 避免两人同时改成同一个昵称时都通过撞名检查。只在事务开头、锁任何行之前调用。
+func LockDisplayNames(ctx context.Context, q DBTX) error {
+	_, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('cohive.display_name'))`)
+	return err
+}

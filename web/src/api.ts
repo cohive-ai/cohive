@@ -520,6 +520,8 @@ export const api = {
   me: () => request<Me>("/api/v1/me"),
   // 设置账号语言；空串表示清除（编程工具、命令行回到服务器缺省语言）
   setMyLanguage: (language: string) => post("/api/v1/me/language", { language }),
+  setMyDisplayName: (display_name: string) =>
+    post<{ display_name: string }>("/api/v1/me/display-name", { display_name }),
   login: (body: { name: string; password: string }) => post<LoginResult>("/api/v1/auth/login", body, false),
   logout: () => post("/api/v1/auth/logout", undefined, false),
   changePassword: (body: { old_password: string; new_password: string }) =>

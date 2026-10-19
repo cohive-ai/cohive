@@ -90,6 +90,7 @@
   "audit.verb.account_server_admin_revoke": "revoked server admin from {{.Target}}",
   "audit.verb.account_reset_password": "reset the password of {{.Target}}",
   "audit.verb.account_update": "updated the profile of {{.Target}}: {{.Fields}}",
+  "audit.verb.account_update_self": "updated their own profile: {{.Fields}}",
   "audit.verb.account_telegram_unlink_self": "disconnected their own Telegram account",
   "audit.verb.account_telegram_unlink": "disconnected the Telegram account of {{.Target}}",
   "audit.verb.account_telegram_link": "connected their own Telegram account",

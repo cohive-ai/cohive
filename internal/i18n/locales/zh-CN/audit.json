@@ -87,6 +87,7 @@
   "audit.verb.account_server_admin_revoke": "撤销了 {{.Target}} 的服务器管理员",
   "audit.verb.account_reset_password": "重置了 {{.Target}} 的密码",
   "audit.verb.account_update": "修改了 {{.Target}} 的{{.Fields}}",
+  "audit.verb.account_update_self": "修改了自己的{{.Fields}}",
   "audit.verb.account_telegram_unlink_self": "断开了自己的 Telegram 连接",
   "audit.verb.account_telegram_unlink": "断开了 {{.Target}} 的 Telegram 连接",
   "audit.verb.account_telegram_link": "连接了自己的 Telegram 账号",
