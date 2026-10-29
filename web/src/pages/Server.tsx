@@ -8,7 +8,7 @@ import { api, type CodeProvider, type ServerAccount, type ServerSettings, type S
 const linkedTo = (a: ServerAccount, p: CodeProvider) => (a.chat_linked ? a.chat_linked.includes(p) : p === "dingtalk" && !!a.dingtalk_linked);
 import { NeedPasswordLogin, Notice } from "../components";
 import { absoluteTime, memberNamePattern, roleLabel, workspaceName } from "../format";
-import { btn, Callout, ConfirmButton, ErrorText, errMsg, Field, inputClass, Section, SuccessText } from "../ui";
+import { btn, Callout, ConfirmButton, Dialog, ErrorText, errMsg, Field, inputClass, Section, SuccessText } from "../ui";
 import { adminNeedsPasswordLogin, joinNames } from "../rules";
 import { PendingDeviceRow } from "./Admin";
 import { EventLog } from "./EventLog";
@@ -78,29 +78,55 @@ export function ServerPage() {
   );
 }
 
-function WorkspacesTab({ self }: { self: string }) {
+type WsFilter = "all" | "active" | "archived";
+
+export function WorkspacesTab({ self }: { self: string }) {
   const { t } = useTranslation("server");
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["server", "workspaces"], queryFn: api.serverWorkspaces });
+  const [filter, setFilter] = useState<WsFilter>("all");
+  const [done, setDone] = useState("");
+  const items = (q.data?.items ?? []).filter(
+    (w) => filter === "all" || (filter === "archived" ? !!w.archived : !w.archived),
+  );
 
   return (
     <div className="space-y-6">
       <NewWorkspaceForm self={self} />
       <section>
-        <h2 className="mb-2 font-semibold">{t("workspaces.all")}</h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">{t("workspaces.all")}</h2>
+          <div role="group" aria-label={t("workspaces.filter.label")} className="flex gap-1">
+            {(["all", "active", "archived"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={filter === f}
+                onClick={() => setFilter(f)}
+                className={`${btn.secondary} ${filter === f ? "font-semibold" : "text-muted"}`}
+              >
+                {t(`workspaces.filter.${f}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <SuccessText>{done}</SuccessText>
         {q.isPending ? (
           <Notice>{t("loading")}</Notice>
         ) : q.isError ? (
           <Notice tone="danger">{t("loadFailed", { message: q.error.message })}</Notice>
         ) : q.data.items.length === 0 ? (
           <Notice>{t("workspaces.empty")}</Notice>
+        ) : items.length === 0 ? (
+          <Notice>{t("workspaces.filterEmpty")}</Notice>
         ) : (
           <ul className={listClass}>
-            {q.data.items.map((w) => (
+            {items.map((w) => (
               <WorkspaceRow
                 key={w.name}
                 w={w}
-                onDeleted={async () => {
+                onPurged={async (issues) => {
+                  setDone(t("workspaces.purged", { name: w.name, issues }));
                   await qc.invalidateQueries({ queryKey: ["server"] });
                   await qc.invalidateQueries({ queryKey: ["me"] });
                 }}
@@ -113,7 +139,7 @@ function WorkspacesTab({ self }: { self: string }) {
   );
 }
 
-function WorkspaceRow({ w, onDeleted }: { w: ServerWorkspace; onDeleted: () => Promise<void> }) {
+function WorkspaceRow({ w, onPurged }: { w: ServerWorkspace; onPurged: (issues: number) => Promise<void> }) {
   const { t } = useTranslation("server");
   const admins = w.admins ?? [];
   return (
@@ -122,6 +148,7 @@ function WorkspaceRow({ w, onDeleted }: { w: ServerWorkspace; onDeleted: () => P
         <p className="flex flex-wrap items-center gap-x-2">
           <span className="font-medium">{workspaceName(w)}</span>
           {workspaceName(w) !== w.name && <span className="font-mono text-xs text-muted">{w.name}</span>}
+          {w.archived && <span className={`${tag} bg-sunken text-muted`}>{t("workspaces.archived")}</span>}
           {w.i_am_member && <span className={`${tag} bg-teal-soft text-teal`}>{t("workspaces.member")}</span>}
           <span className={`${tag} ${w.telegram_bound ? "bg-sunken text-muted" : "bg-wait-soft text-wait"}`}>
             {w.telegram_bound ? t("workspaces.bound") : t("workspaces.unbound")}
@@ -131,7 +158,7 @@ function WorkspaceRow({ w, onDeleted }: { w: ServerWorkspace; onDeleted: () => P
           {[
             t("workspaces.members", { count: w.members }),
             t("workspaces.admins", { names: admins.length ? joinNames(admins) : t("workspaces.noAdmins") }),
-            t("workspaces.openIssues", { count: w.open_issues }),
+            t("workspaces.openIssues", { count: w.unfinished_issues ?? w.open_issues }),
             t("workspaces.created", { time: absoluteTime(w.created_at) }),
           ].join(" · ")}
         </p>
@@ -145,23 +172,84 @@ function WorkspaceRow({ w, onDeleted }: { w: ServerWorkspace; onDeleted: () => P
         <Link to="/w/$ws/admin" params={{ ws: w.name }} className={btn.secondary}>
           {t("workspaces.manage")}
         </Link>
-        <ConfirmButton
-          label={t("workspaces.delete")}
-          title={t("workspaces.deleteTitle", { name: w.name })}
-          message={
-            <>
-              <p>{t("workspaces.deleteMessage1")}</p>
-              <p className="mt-2">{t("workspaces.deleteMessage2")}</p>
-            </>
-          }
-          confirmLabel={t("workspaces.deleteConfirm")}
-          action={async () => {
-            await api.deleteWorkspace(w.name);
-            await onDeleted();
-          }}
-        />
+        <PurgeButton w={w} onPurged={onPurged} />
       </div>
     </li>
+  );
+}
+
+// 彻底删除：要求输入工作空间路径，完全一致才能提交；还有未结束的问题单时禁用
+function PurgeButton({ w, onPurged }: { w: ServerWorkspace; onPurged: (issues: number) => Promise<void> }) {
+  const { t } = useTranslation("server");
+  const { t: tc } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const unfinished = w.unfinished_issues ?? 0;
+  const blocked = unfinished > 0;
+  const close = () => {
+    if (busy) return;
+    setOpen(false);
+    setTyped("");
+    setError("");
+  };
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await api.purgeWorkspace(w.name, typed);
+      setOpen(false);
+      setTyped("");
+      await onPurged(res?.issues ?? 0);
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <button
+        type="button"
+        disabled={blocked}
+        title={blocked ? t("workspaces.purgeBlocked", { count: unfinished }) : undefined}
+        onClick={() => setOpen(true)}
+        className={btn.danger}
+      >
+        {t("workspaces.purge")}
+      </button>
+      {blocked && <span className="self-center text-xs text-danger">{t("workspaces.purgeBlocked", { count: unfinished })}</span>}
+      <Dialog open={open} onClose={close} title={t("workspaces.purgeTitle", { name: w.name })} dismissible={!busy}>
+        <div className="space-y-2 text-sm text-muted">
+          <p>{t("workspaces.purgeMessage1", { issues: w.issues ?? 0 })}</p>
+          <p>{t("workspaces.purgeMessage2")}</p>
+        </div>
+        <div className="mt-3">
+          <Field label={t("workspaces.purgeInput", { name: w.name })} htmlFor={`purge-${w.name}`}>
+            <input
+              id={`purge-${w.name}`}
+              autoCapitalize="none"
+              autoComplete="off"
+              spellCheck={false}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              disabled={busy}
+              className={`${inputClass} font-mono`}
+            />
+          </Field>
+        </div>
+        <ErrorText>{error}</ErrorText>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={close} disabled={busy} className={btn.secondary}>
+            {tc("ui.cancel")}
+          </button>
+          <button type="button" onClick={run} disabled={busy || typed !== w.name} className={btn.dangerSolid}>
+            {busy ? tc("ui.processing") : t("workspaces.purgeConfirm")}
+          </button>
+        </div>
+      </Dialog>
+    </>
   );
 }
 

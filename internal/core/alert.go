@@ -59,6 +59,13 @@ type AlertsResult struct {
 // 否则：编号大于 after 的提醒（另加最近写入的，调用方去重），游标为其中最大的编号。
 func (s *Service) Alerts(ctx context.Context, who store.Identity, after *int64) (AlertsResult, error) {
 	var out AlertsResult
+	// 已归档的工作空间不再有会话提醒与待办摘要；游标原样返回，取消归档后接着提醒
+	if archived, err := s.workspaceArchived(ctx, who.WorkspaceID); err != nil || archived {
+		if after != nil {
+			out.Cursor = *after
+		}
+		return out, err
+	}
 	if after == nil {
 		l := i18n.FromContext(ctx)
 		list, err := store.ListInbox(ctx, s.Pool, who.MemberID)

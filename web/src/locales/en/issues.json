@@ -6,7 +6,8 @@
     "adminHint": "You are a server admin. You can add yourself as a member on the <link>admin page</link> and then view it.",
     "yours": "Your workspaces:",
     "loadBoardFailed": "Failed to load the board: {{message}}",
-    "loadIssuesFailed": "Failed to load issues: {{message}}"
+    "loadIssuesFailed": "Failed to load issues: {{message}}",
+    "archivedBanner": "This workspace is archived and is read-only."
   },
   "board": {
     "loading": "Loading the board…",

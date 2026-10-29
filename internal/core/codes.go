@@ -188,6 +188,9 @@ func (s *Service) StartChatBind(ctx context.Context, act Actor, wsID int64, prov
 	}
 	var out store.ChatBindRequest
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := canAdmin(ctx, tx, act.Account, wsID); err != nil {
 			return err
 		}
@@ -228,6 +231,24 @@ func (s *Service) CompleteChatBind(ctx context.Context, provider, chatID, title,
 	var label string
 	var result error
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		// 守卫要先于锁绑定请求：先不加锁地读出是哪个工作空间。已归档就把这条请求标为失败，群里会收到原因
+		peek, err := store.ChatBindByCode(ctx, tx, provider, code)
+		if errors.Is(err, store.ErrNotFound) {
+			result = ErrBindCodeGone
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		// 后面的 bindChat 要排他锁住工作空间，所以这里一步到位用排他锁，免得两个共享锁持有者互相等着升级
+		if _, err := lockWritable(ctx, tx, peek.WorkspaceID); err != nil {
+			var ae *ArchivedError
+			if errors.As(err, &ae) && peek.Status == store.BindPending {
+				result = err
+				return store.FinishChatBindRequest(ctx, tx, peek.ID, store.BindFailed, err.Error())
+			}
+			return err
+		}
 		r, err := store.ChatBindByCodeForUpdate(ctx, tx, provider, code)
 		if errors.Is(err, store.ErrNotFound) {
 			result = ErrBindCodeGone
@@ -299,6 +320,9 @@ func (s *Service) BindChat(ctx context.Context, act Actor, wsID int64, provider,
 		return inputErr("core.err.chat_id_required")
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := lockWritable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := canAdmin(ctx, tx, act.Account, wsID); err != nil {
 			return err
 		}
@@ -314,6 +338,9 @@ func (s *Service) BindChat(ctx context.Context, act Actor, wsID int64, provider,
 // UnbindChat 由工作空间管理员解除工作空间绑定的某种通讯工具的群。
 func (s *Service) UnbindChat(ctx context.Context, act Actor, wsID int64, provider string) error {
 	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := lockWritable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := canAdmin(ctx, tx, act.Account, wsID); err != nil {
 			return err
 		}

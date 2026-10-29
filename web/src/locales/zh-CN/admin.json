@@ -225,6 +225,24 @@
     },
     "saved": "已保存。",
     "save": "保存",
-    "saving": "正在保存…"
+    "saving": "正在保存…",
+    "archivedBadge": "已归档",
+    "readOnly": "此工作空间已归档，设置只读。取消归档后才能修改。",
+    "archive": {
+      "title": "归档",
+      "description": "归档后工作空间变为只读，不再出现在切换器里，也不再催办；数据保留，随时可以取消归档。",
+      "status": "已于 {{time}} 归档。",
+      "button": "归档工作空间",
+      "confirmTitle": "归档工作空间 {{name}}？",
+      "openIssues": "还有 {{count}} 张未结束的问题单",
+      "openIssuesCheck": "我知道还有 {{count}} 张未结束的问题单，仍要归档",
+      "plain": "归档后成员只能查看，不能再发单或操作问题单。",
+      "confirm": "确认归档",
+      "unarchive": "取消归档",
+      "unarchiveTitle": "取消归档 {{name}}？",
+      "unarchiveMessage": "取消后工作空间恢复可写，并重新出现在切换器里。",
+      "unarchiveConfirm": "确认取消归档",
+      "recount": "未结束的问题单数已变为 {{count}} 张，请重新确认。"
+    }
   }
 }

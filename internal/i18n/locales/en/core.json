@@ -159,6 +159,20 @@
   "core.board.needs_closed": "Closed",
   "core.err.cancel_reason_required": "A reason is required to cancel an issue. The other party will see it in the activity.",
   "core.err.cancel_status": "Issue #{{.ID}} is {{.Status}} and already has an outcome; it cannot be cancelled",
+  "core.err.workspace_archived": "Workspace {{.Name}} is archived: it is read-only and cannot be changed",
+  "core.err.workspace_already_archived": "Workspace {{.Name}} is already archived",
+  "core.err.workspace_not_archived": "Workspace {{.Name}} is not archived",
+  "core.err.archive_needs_actor": "Archiving must be done by a signed-in admin on the web",
+  "core.err.open_issues_unconfirmed": {
+    "one": "The workspace has {{.Count}} unfinished issue. Confirm that number to archive it",
+    "other": "The workspace has {{.Count}} unfinished issues. Confirm that number to archive it"
+  },
+  "core.err.purge_confirm_mismatch": "The name you typed does not match the workspace path {{.Name}}",
+  "core.err.workspace_has_unfinished": {
+    "one": "Workspace {{.Name}} still has {{.Count}} unfinished issue. Finish or cancel it before deleting permanently",
+    "other": "Workspace {{.Name}} still has {{.Count}} unfinished issues. Finish or cancel them before deleting permanently"
+  },
+  "core.archive.skip_reason": "Workspace archived",
   "core.err.delete_not_draft": "Issue #{{.ID}} is not your draft and cannot be deleted; submitted issues can only be cancelled",
   "core.board.needs_cancelled": "Cancelled"
 }

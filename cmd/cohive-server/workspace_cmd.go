@@ -115,6 +115,25 @@ func workspaceCmd(ctx context.Context, out io.Writer, pool *pgxpool.Pool, sub st
 		}
 		fmt.Fprintln(out, i18n.T("server.workspace.deleted", i18n.D{"Name": name}))
 		return nil
+	case "purge":
+		var name, confirm string
+		if err := parse("workspace purge", args, func(fs *flag.FlagSet) {
+			fs.StringVar(&name, "name", "", i18n.T("server.flag.ws_name"))
+			fs.StringVar(&confirm, "confirm", "", i18n.T("server.flag.ws_confirm"))
+		}); err != nil {
+			return err
+		}
+		if err := required("name", name); err != nil {
+			return err
+		}
+		res, err := (&core.Service{Pool: pool}).PurgeWorkspace(ctx, core.ServerCLI(), name, confirm)
+		if errors.Is(err, store.ErrNotFound) {
+			return i18n.Errorf("server.workspace.not_found", i18n.D{"Name": strconv.Quote(name)})
+		} else if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, i18n.T("server.workspace.purged", i18n.D{"Name": name, "Issues": res.Issues, "Drafts": res.Drafts}))
+		return nil
 	case "list":
 		if _, err := store.DefaultWorkspace(ctx, pool); err != nil {
 			return err

@@ -177,6 +177,13 @@ func (s *Service) DecideDeviceAuth(ctx context.Context, act Actor, wsID, id int6
 	actor := act.Account
 	var d DeviceDecision
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		// 从某个工作空间的管理页、本群按钮批准：这个工作空间归档了就不能批（设备申请本身与工作空间无关，
+		// 服务器管理页 wsID 为 0 时不受影响；批准后归档的工作空间不发令牌，见 PollDeviceAuth）
+		if wsID != 0 {
+			if err := writable(ctx, tx, wsID); err != nil {
+				return err
+			}
+		}
 		a, err := store.GetDeviceAuth(ctx, tx, id, true)
 		if err != nil {
 			return err
@@ -329,6 +336,9 @@ func (s *Service) PollDeviceAuth(ctx context.Context, id int64, secret string) (
 		}
 		out = DeviceDelivery{Status: store.AuthApproved, Account: acc.Name, DeviceID: *a.DeviceID, DeviceSecret: devSecret}
 		for _, m := range ms {
+			if m.Archived { // 归档的工作空间只读：不签发令牌（取消归档后用设备密钥补签，见 IssueWorkspaceTokens）
+				continue
+			}
 			wt, err := issueTokens(ctx, tx, m, *a.DeviceID, a.Tools)
 			if err != nil {
 				return err
@@ -371,6 +381,14 @@ func (s *Service) IssueWorkspaceTokens(ctx context.Context, dev store.Device, wo
 	}
 	var out WorkspaceTokens
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		// 守卫要先于锁账号：先不加锁地按名字找工作空间；找不到的留给下面报不是成员
+		if peek, err := store.WorkspaceByName(ctx, tx, workspace); err == nil {
+			if err := writable(ctx, tx, peek.ID); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
 		// 加锁顺序：账号 → 设备 → 成员资格（与停用、移出一致）
 		acc, err := store.LockAccount(ctx, tx, dev.AccountID)
 		if err != nil {

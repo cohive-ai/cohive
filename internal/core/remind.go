@@ -107,6 +107,9 @@ func (s *Service) SetRemindHours(ctx context.Context, act Actor, wsID int64, ope
 		return err
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := lockWritable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := canAdmin(ctx, tx, act.Account, wsID); err != nil {
 			return err
 		}

@@ -42,6 +42,7 @@ type cliCase struct {
 var cliCases = []cliCase{
 	{"workspace add", nil, []string{"workspace", "add", "--name", "ops", "--admin", "lee"}, core.ActWorkspaceCreate, "ops"},
 	{"workspace remove", [][]string{{"workspace", "add", "--name", "ops"}}, []string{"workspace", "remove", "--name", "ops"}, core.ActWorkspaceDelete, "ops"},
+	{"workspace purge", [][]string{{"workspace", "add", "--name", "ops"}}, []string{"workspace", "purge", "--name", "ops", "--confirm", "ops"}, core.ActWorkspacePurge, "ops"},
 	{"workspace set", nil, []string{"workspace", "set", "--name", "default", "--display", "默认组"}, core.ActWorkspaceDisplayName, "default"},
 	{"server set", nil, []string{"server", "set", "--external-url", "https://c.example.com"}, core.ActServerSettings, ""},
 	{"workspace notify", nil, []string{"workspace", "notify", "--workspace", "default", "--telegram-chat", "-1009"}, core.ActWorkspaceSettings, "default"},

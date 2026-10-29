@@ -26,7 +26,7 @@ func DueReminders(ctx context.Context, q DBTX, limit int) ([]DueReminder, error)
 		FROM issues i
 		JOIN workspaces w ON w.id = i.workspace_id
 		CROSS JOIN LATERAL (SELECT CASE i.status WHEN 'OPEN' THEN w.remind_open_hours ELSE w.remind_verify_hours END AS h) x
-		WHERE i.status IN ('OPEN', 'READY_FOR_VERIFICATION') AND i.remind_level < 2 AND x.h > 0
+		WHERE i.status IN ('OPEN', 'READY_FOR_VERIFICATION') AND i.remind_level < 2 AND x.h > 0 AND w.archived_at IS NULL
 			AND now() >= i.status_since + make_interval(hours => x.h * (i.remind_level + 1))
 		ORDER BY i.status_since, i.id
 		LIMIT $1

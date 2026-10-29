@@ -142,6 +142,8 @@ type WorkspaceSummary struct {
 	Admins        []string
 	OpenIssues    int
 	TelegramBound bool
+	Issues        int // 全部问题单数（含草稿）
+	Unfinished    int // 未结束的问题单数（非草稿，且不是已关闭、已退回、已作废）
 }
 
 // ListWorkspaceSummaries 列出全部工作空间及其在册成员数、管理员、未结束问题单数。
@@ -150,7 +152,9 @@ func ListWorkspaceSummaries(ctx context.Context, q DBTX) ([]WorkspaceSummary, er
 		(SELECT count(*) FROM members m WHERE m.workspace_id = w.id AND m.status = 'active'),
 		coalesce((SELECT array_agg(a.name ORDER BY a.name) FROM members m JOIN accounts a ON a.id = m.account_id
 			WHERE m.workspace_id = w.id AND m.status = 'active' AND m.role = 'admin'), '{}'),
-		(SELECT count(*) FROM issues i WHERE i.workspace_id = w.id AND i.status NOT IN ('DRAFT', 'CLOSED', 'DECLINED'))
+		(SELECT count(*) FROM issues i WHERE i.workspace_id = w.id AND i.status NOT IN ('DRAFT', 'CLOSED', 'DECLINED')),
+		(SELECT count(*) FROM issues i WHERE i.workspace_id = w.id),
+		(SELECT count(*) FROM issues i WHERE i.workspace_id = w.id AND i.status NOT IN ('DRAFT', 'CLOSED', 'DECLINED', 'CANCELLED'))
 		FROM workspaces w ORDER BY w.name`)
 	if err != nil {
 		return nil, err
@@ -160,7 +164,8 @@ func ListWorkspaceSummaries(ctx context.Context, q DBTX) ([]WorkspaceSummary, er
 	for rows.Next() {
 		var s WorkspaceSummary
 		if err := rows.Scan(&s.ID, &s.Name, &s.DisplayName, &s.Notify.Channel, &s.Notify.Target, &s.Notify.ShowTitle,
-			&s.Notify.ShowBrief, &s.Remind.OpenHours, &s.Remind.VerifyHours, &s.Language, &s.CreatedAt, &s.Members, &s.Admins, &s.OpenIssues); err != nil {
+			&s.Notify.ShowBrief, &s.Remind.OpenHours, &s.Remind.VerifyHours, &s.Language, &s.ArchivedAt, &s.ArchivedBy, &s.CreatedAt, &s.Members, &s.Admins, &s.OpenIssues,
+			&s.Issues, &s.Unfinished); err != nil {
 			return nil, err
 		}
 		s.TelegramBound = s.Notify.Target != "" // 绑了群（任一种通讯工具）；接口字段名沿用 telegram_bound
@@ -201,4 +206,52 @@ func DeleteEmptyWorkspace(ctx context.Context, q DBTX, wsID int64) error {
 		}
 	}
 	return execOne(ctx, q, `DELETE FROM workspaces WHERE id = $1`, wsID)
+}
+
+// CountUnfinishedIssues 返回工作空间未结束的问题单数：非草稿，且不是已关闭、已退回、已作废。
+// 归档要求带上这个数确认，彻底删除要求它为 0。
+func CountUnfinishedIssues(ctx context.Context, q DBTX, wsID int64) (int, error) {
+	var n int
+	err := q.QueryRow(ctx, `SELECT count(*) FROM issues WHERE workspace_id = $1
+		AND status NOT IN ('DRAFT', 'CLOSED', 'DECLINED', 'CANCELLED')`, wsID).Scan(&n)
+	return n, err
+}
+
+// CountDraftIssues 返回工作空间的草稿数。
+func CountDraftIssues(ctx context.Context, q DBTX, wsID int64) (int, error) {
+	var n int
+	err := q.QueryRow(ctx, `SELECT count(*) FROM issues WHERE workspace_id = $1 AND status = 'DRAFT'`, wsID).Scan(&n)
+	return n, err
+}
+
+// DeleteWorkspaceIssues 删除工作空间的全部问题单（含草稿）及其附属行（事件、幂等记录、会话内提醒、群通知）。
+// 只用于彻底删除工作空间；管理操作记录（admin_events）不动。调用方须已锁住工作空间并确认没有未结束的单。
+func DeleteWorkspaceIssues(ctx context.Context, q DBTX, wsID int64) error {
+	for _, sql := range []string{
+		`DELETE FROM idempotency WHERE issue_id IN (SELECT id FROM issues WHERE workspace_id = $1)`,
+		`DELETE FROM issue_events WHERE issue_id IN (SELECT id FROM issues WHERE workspace_id = $1)`,
+		`DELETE FROM member_alerts WHERE workspace_id = $1`,
+		`DELETE FROM notifications WHERE workspace_id = $1`,
+		`DELETE FROM issues WHERE workspace_id = $1`,
+	} {
+		if _, err := q.Exec(ctx, sql, wsID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SkipPendingNotifications 把工作空间待发的群通知全部标为不再发送，返回条数（归档时调用）。
+func SkipPendingNotifications(ctx context.Context, q DBTX, wsID int64, reason string) (int64, error) {
+	tag, err := q.Exec(ctx, `UPDATE notifications SET status = 'skipped', last_error = $2
+		WHERE workspace_id = $1 AND status = 'pending'`, wsID, reason)
+	return tag.RowsAffected(), err
+}
+
+// RestartRemindClock 让工作空间里待接单、待验证的问题单从现在起重新计时催办（取消归档时用）：
+// 归档期间不催办，恢复后若按老的进入状态时间算，会一下子冒出一批催办。不改版本号与更新时间。
+func RestartRemindClock(ctx context.Context, q DBTX, wsID int64) error {
+	_, err := q.Exec(ctx, `UPDATE issues SET status_since = now(), remind_level = 0
+		WHERE workspace_id = $1 AND status IN ('OPEN', 'READY_FOR_VERIFICATION')`, wsID)
+	return err
 }

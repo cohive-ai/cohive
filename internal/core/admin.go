@@ -52,6 +52,9 @@ func (s *Service) SetRole(ctx context.Context, act Actor, wsID, memberID int64, 
 		if (wsID != 0 && m.WorkspaceID != wsID) || m.Status != store.MemberActive {
 			return i18n.Wrap(store.ErrNotFound, "core.err.member_id", i18n.D{"ID": memberID})
 		}
+		if err := writable(ctx, tx, m.WorkspaceID); err != nil { // 上面只是不加锁的读；守卫是第一个加锁语句
+			return err
+		}
 		// 锁住本工作空间的全部管理员行：两名管理员同时互相降级时排队执行，后一个会看到前一个的结果
 		if err := store.LockAdmins(ctx, tx, m.WorkspaceID); err != nil {
 			return err
@@ -134,6 +137,9 @@ func (s *Service) UpdateWorkspace(ctx context.Context, act Actor, wsID int64, in
 		cfg.Channel = "telegram"
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := lockWritable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := canAdmin(ctx, tx, actor, wsID); err != nil {
 			return err
 		}
@@ -269,6 +275,9 @@ func (s *Service) SetWorkspaceDisplayName(ctx context.Context, act Actor, wsID i
 		return err
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := lockWritable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := canAdmin(ctx, tx, act.Account, wsID); err != nil {
 			return err
 		}
@@ -291,6 +300,14 @@ func (s *Service) AdminWorkspace(ctx context.Context, actor *store.Account, wsID
 		return store.Workspace{}, err
 	}
 	return store.GetWorkspace(ctx, s.Pool, wsID)
+}
+
+// UnfinishedIssues 由管理员读取工作空间未结束的问题单数（归档时要带上这个数确认）。
+func (s *Service) UnfinishedIssues(ctx context.Context, actor *store.Account, wsID int64) (int, error) {
+	if err := canAdmin(ctx, s.Pool, actor, wsID); err != nil {
+		return 0, err
+	}
+	return store.CountUnfinishedIssues(ctx, s.Pool, wsID)
 }
 
 // WorkspaceByName 按名字返回工作空间。
@@ -379,6 +396,9 @@ func (s *Service) AddMember(ctx context.Context, act Actor, wsID int64, accountN
 	}
 	var out store.Member
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := canAdmin(ctx, tx, actor, wsID); err != nil {
 			return err
 		}
@@ -427,6 +447,9 @@ func (s *Service) AddMemberCLI(ctx context.Context, act Actor, wsID int64, name,
 	var out store.Member
 	created := false
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := requireServerAdmin(ctx, tx, act.Account); err != nil {
 			return err
 		}
@@ -526,6 +549,9 @@ func (s *Service) GetHandover(ctx context.Context, actor *store.Account, wsID, m
 func (s *Service) ApplyHandover(ctx context.Context, act Actor, wsID, memberID int64, plan HandoverPlan, remove bool) error {
 	actor := act.Account
 	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		// 按包说明的加锁顺序：先按编号升序锁齐清单里的问题单，再锁管理员行与成员行。
 		// 负责人接单等动作先锁问题单、写事件时再引用成员行；这里若先锁成员行再等问题单，就会与之互等。
 		ids := make([]int64, 0, len(plan.Issues))

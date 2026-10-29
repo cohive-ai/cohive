@@ -241,6 +241,9 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 	}
 	var out store.Issue
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, who.WorkspaceID); err != nil {
+			return err
+		}
 		is := store.Issue{
 			WorkspaceID: who.WorkspaceID, SourceMemberID: who.MemberID, SourceTool: who.Tool,
 			TargetService: in.TargetService, Severity: sev, Title: in.Title, Brief: brief, Summary: in.Summary,
@@ -309,6 +312,9 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 	}
 	var out store.Issue
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, who.WorkspaceID); err != nil {
+			return err
+		}
 		is, err := store.GetIssueForUpdate(ctx, tx, in.IssueID)
 		if errors.Is(err, store.ErrNotFound) || (err == nil && !visible(who, is)) {
 			return notFoundIssue(in.IssueID)
@@ -454,6 +460,10 @@ func needsMe(l i18n.Lang, who store.Identity, is store.Issue) string {
 
 // Inbox 返回需要操作者处理的问题单。
 func (s *Service) Inbox(ctx context.Context, who store.Identity) ([]InboxItem, error) {
+	// 已归档的工作空间没有“待我处理”：归档后不催办、不提醒，收件箱也是空的
+	if archived, err := s.workspaceArchived(ctx, who.WorkspaceID); err != nil || archived {
+		return []InboxItem{}, err
+	}
 	list, err := store.ListInbox(ctx, s.Pool, who.MemberID)
 	if err != nil {
 		return nil, err

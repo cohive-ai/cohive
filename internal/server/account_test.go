@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -70,7 +71,8 @@ type fakeAnnouncer struct {
 	signups int
 	devices int
 	joined  int
-	self    int // 其中本人加入（不 @）的次数
+	self    int      // 其中本人加入（不 @）的次数
+	archive []string // 归档、取消归档的告知，形如 "archive:12:lee"
 }
 
 func (f *fakeAnnouncer) AnnounceSignup(context.Context, store.Signup) error {
@@ -98,6 +100,17 @@ func (f *fakeAnnouncer) AnnounceSelfJoined(context.Context, store.Member) error 
 	defer f.mu.Unlock()
 	f.joined++
 	f.self++
+	return nil
+}
+
+func (f *fakeAnnouncer) AnnounceArchived(_ context.Context, wsID int64, archived bool, actor string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	kind := "unarchive"
+	if archived {
+		kind = "archive"
+	}
+	f.archive = append(f.archive, fmt.Sprintf("%s:%d:%s", kind, wsID, actor))
 	return nil
 }
 

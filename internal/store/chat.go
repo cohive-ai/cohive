@@ -196,6 +196,12 @@ func ChatBindByCodeForUpdate(ctx context.Context, q DBTX, provider, code string)
 		WHERE provider = $1 AND code = $2 FOR UPDATE`, provider, code))
 }
 
+// ChatBindByCode 按绑定码读取群绑定请求（不加锁；先看是哪个工作空间，再按加锁顺序处理）。
+func ChatBindByCode(ctx context.Context, q DBTX, provider, code string) (ChatBindRequest, error) {
+	return scanChatBind(q.QueryRow(ctx, `SELECT `+chatBindColumns+` FROM chat_bind_requests
+		WHERE provider = $1 AND code = $2`, provider, code))
+}
+
 // GetChatBindRequest 读取某工作空间的群绑定请求。
 func GetChatBindRequest(ctx context.Context, q DBTX, wsID, id int64) (ChatBindRequest, error) {
 	return scanChatBind(q.QueryRow(ctx, `SELECT `+chatBindColumns+` FROM chat_bind_requests WHERE id = $1 AND workspace_id = $2`, id, wsID))

@@ -194,6 +194,9 @@ func (s *Service) CreateInvite(ctx context.Context, act Actor, wsID int64, spec 
 	}
 	var saved store.Invite
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := canAdmin(ctx, tx, actor, wsID); err != nil {
 			return err
 		}
@@ -319,6 +322,19 @@ func usableInvite(ctx context.Context, tx pgx.Tx, code string) (store.Invite, er
 	return inv, nil
 }
 
+// writableByInvite 是凭邀请码加入时的只读守卫：不加锁地读出邀请属于哪个工作空间，再按它做 writable。
+// 邀请不存在时什么都不做，交给后面的 usableInvite 报邀请无效。要放在锁邀请行、锁账号行之前。
+func writableByInvite(ctx context.Context, tx pgx.Tx, code string) error {
+	inv, err := store.InviteByCode(ctx, tx, hashSecret("invite", code), false)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return writable(ctx, tx, inv.WorkspaceID)
+}
+
 // Register 凭邀请注册新账号。登录名全服务器唯一：不能与已有账号或别的新人待审申请重复。
 func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResult, error) {
 	name := strings.TrimSpace(in.Name)
@@ -342,6 +358,9 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 	}
 	var res RegisterResult
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writableByInvite(ctx, tx, code); err != nil {
+			return err
+		}
 		inv, err := usableInvite(ctx, tx, code)
 		if err != nil {
 			return err
@@ -424,6 +443,9 @@ func (s *Service) AcceptInvite(ctx context.Context, acc store.Account, code stri
 	}
 	var res AcceptResult
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writableByInvite(ctx, tx, code); err != nil {
+			return err
+		}
 		a, err := store.LockAccount(ctx, tx, acc.ID)
 		if err != nil {
 			return err
@@ -486,6 +508,14 @@ func (s *Service) DecideSignup(ctx context.Context, act Actor, wsID, id int64, a
 	actor := act.Account
 	var d SignupDecision
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		// 守卫要先于锁申请行：先不加锁地读出申请属于哪个工作空间（彻底删除先锁工作空间再删申请，顺序必须一致）
+		peek, err := store.GetSignup(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := writable(ctx, tx, peek.WorkspaceID); err != nil {
+			return err
+		}
 		sg, err := store.GetSignupForUpdate(ctx, tx, id)
 		if err != nil {
 			return err

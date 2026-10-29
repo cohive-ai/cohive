@@ -92,6 +92,10 @@ Delivery rules:
 - `workspace list` shows the number of pending and failed notifications for each workspace; after fixing the problem, resend failed ones with `notify retry --workspace <name>`.
 - Delivery is at-least-once: if the server crashes right after sending and before recording it, a message may be sent twice.
 
+Archiving and permanent deletion:
+- A workspace admin (or server admin) can archive a workspace under Admin → Workspace. An archived workspace is read-only: it can be viewed but not changed; reminders and group notifications stop, notifications that were queued but not yet sent are skipped, and the bot posts a note in the group. Unarchiving restores it (skipped notifications are not resent, and reminder timers restart at that moment). Archiving requires confirming the current number of unfinished issues (the `confirm_open` parameter); a mismatch is rejected (`open_issues_unconfirmed`).
+- A server admin can permanently delete a workspace under Server admin → Workspaces, or with `cohive-server workspace purge --name <path> --confirm <path>`: its issues (drafts included), activity, memberships, tokens, invites and group bindings are all removed and cannot be recovered. It is refused while any issue is unfinished. The admin audit log is kept, and one "permanently deleted" entry is added. There is no archive command on the command line: that process has no bot and cannot post the note in the group.
+
 ## 4. Let remote members connect (Cloudflare Tunnel example)
 
 How you make the server reachable is up to your team. This uses a Cloudflare Tunnel as the example. There are only two key points:

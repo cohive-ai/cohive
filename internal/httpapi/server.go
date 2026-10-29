@@ -46,7 +46,8 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		items := make([]map[string]any, 0, len(list))
 		for _, ws := range list {
 			items = append(items, map[string]any{"name": ws.Name, "display_name": ws.Label(), "created_at": ws.CreatedAt, "members": ws.Members,
-				"admins": ws.Admins, "open_issues": ws.OpenIssues, "telegram_bound": ws.TelegramBound, "chat_provider": ws.Notify.Channel, "i_am_member": mine[ws.ID]})
+				"admins": ws.Admins, "open_issues": ws.OpenIssues, "telegram_bound": ws.TelegramBound, "chat_provider": ws.Notify.Channel, "i_am_member": mine[ws.ID],
+				"archived": ws.Archived(), "archived_at": ws.ArchivedAt, "issues": ws.Issues, "unfinished_issues": ws.Unfinished})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	})
@@ -72,6 +73,23 @@ func serverRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// 彻底删除：删掉工作空间及其全部问题单、动态，不可恢复；管理操作记录保留。确认名字必须与路径一致，
+	// 还有未结束的问题单时拒绝（409）。草稿一并删除。
+	srv("POST "+p+"/workspaces/{name}/purge", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {
+		var in struct {
+			Confirm string `json:"confirm"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		res, err := svc.PurgeWorkspace(r.Context(), core.WebActor(*actor), r.PathValue("name"), in.Confirm)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"issues": res.Issues, "drafts": res.Drafts})
 	})
 
 	srv("GET "+p+"/accounts", func(w http.ResponseWriter, r *http.Request, actor *store.Account) {

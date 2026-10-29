@@ -124,6 +124,9 @@ const (
 
 	ActServerSettings       = "server.settings"
 	ActWorkspaceDisplayName = "workspace.display_name"
+	ActWorkspaceArchive     = "workspace.archive"
+	ActWorkspaceUnarchive   = "workspace.unarchive"
+	ActWorkspacePurge       = "workspace.purge"
 )
 
 // ReservedActions 是已登记、但还没有业务入口的动作。实现业务时从这里删掉，并补上用例。
@@ -346,6 +349,15 @@ var actions = map[string]actionInfo{
 			return l.T("audit.verb.workspace_display_name_change", i18n.D{"Target": e.TargetName, "From": anyText(m["from"]), "To": anyText(m["to"])})
 		}
 		return l.T("audit.verb.workspace_display_name", i18n.D{"Target": e.TargetName})
+	}},
+	ActWorkspaceArchive: {CatWorkspace, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.workspace_archive", i18n.D{"Target": e.TargetName, "Count": int(num(e, "open_issues"))})
+	}},
+	ActWorkspaceUnarchive: {CatWorkspace, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.workspace_unarchive", i18n.D{"Target": e.TargetName})
+	}},
+	ActWorkspacePurge: {CatWorkspace, func(l i18n.Lang, e store.AdminEvent) string {
+		return l.T("audit.verb.workspace_purge", i18n.D{"Target": e.TargetName, "Count": int(num(e, "issues"))})
 	}},
 	ActAccessDenied: {CatDenied, func(l i18n.Lang, e store.AdminEvent) string {
 		key := "audit.verb.access_denied_api"
@@ -578,7 +590,7 @@ var detailKeys = []string{
 	"expires_at", "self", "account_created", "issues", "services", "tokens_revoked", "devices_revoked",
 	"display_name", "telegram_username", "telegram_user_id", "admin", "public_url", "telegram_chat", "show_title",
 	"remind_open_hours", "remind_verify_hours", "show_brief", "member", "tool", "as", "invite_id",
-	"initial_admin", "backfilled", "time_approx", "credential", "external_url", "language",
+	"initial_admin", "backfilled", "time_approx", "credential", "external_url", "language", "open_issues", "drafts",
 }
 
 // detailLabel 是附加信息键按语言的名称；没有登记的键原样返回。
@@ -600,7 +612,11 @@ func EventDetail(l i18n.Lang, e store.AdminEvent) []DetailItem {
 	sort.Strings(keys)
 	out := make([]DetailItem, 0, len(keys))
 	for _, k := range keys {
-		out = append(out, DetailItem{Label: detailLabel(l, k), Value: detailValue(l, k, e.Detail[k])})
+		label := detailLabel(l, k)
+		if e.Action == ActWorkspacePurge && k == "issues" {
+			label = l.T("audit.detail.purged_issues") // 同一个键在转交里是清单，在彻底删除里是问题单数
+		}
+		out = append(out, DetailItem{Label: label, Value: detailValue(l, k, e.Detail[k])})
 	}
 	return out
 }

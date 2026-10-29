@@ -105,6 +105,9 @@ func (s *Service) IssueToken(ctx context.Context, act Actor, wsID int64, memberN
 	tool = strings.TrimSpace(tool)
 	var out IssuedToken
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := canAdmin(ctx, tx, act.Account, wsID); err != nil {
 			return err
 		}
@@ -156,6 +159,9 @@ func (s *Service) SetServiceOwner(ctx context.Context, act Actor, wsID int64, se
 	service = strings.TrimSpace(service)
 	var m store.Member
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, wsID); err != nil {
+			return err
+		}
 		if err := canAdmin(ctx, tx, act.Account, wsID); err != nil {
 			return err
 		}

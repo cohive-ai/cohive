@@ -240,6 +240,21 @@ func (h *Hub) AnnounceDeviceDecided(ctx context.Context, d core.DeviceDecision) 
 	return h.finish(ctx, "da", d.Auth.ID, deviceResult(d), postRef{})
 }
 
+// AnnounceArchived 在工作空间绑定的群里说一声工作空间被归档（archived 为真）或取消归档：
+// 归档之后不再在群里发这个工作空间的通知，取消归档后恢复。没绑群时不发。语言用工作空间的。
+func (h *Hub) AnnounceArchived(ctx context.Context, wsID int64, archived bool, actorName string) error {
+	ws, ch, chat, err := h.groupOf(ctx, wsID)
+	if err != nil || ch == nil {
+		return err
+	}
+	w := newWriter(ch.Format(), ch.Provider(), i18n.Pick(ws.Language))
+	d := i18n.D{"Workspace": w.esc(ws.Label()), "Who": w.esc(actorName)}
+	if archived {
+		return ch.Send(ctx, chat, w.done(w.lang.T("notify.title.archived"), w.lang.T("notify.archived.text", d)))
+	}
+	return ch.Send(ctx, chat, w.done(w.lang.T("notify.title.unarchived"), w.lang.T("notify.unarchived.text", d)))
+}
+
 // AnnounceJoined 在工作空间群里说一声“X 已加入”，并 @ 他（已连接这个通讯工具时）。用于管理员让人加入。
 func (h *Hub) AnnounceJoined(ctx context.Context, m store.Member) error {
 	return h.announceJoined(ctx, m, true)
@@ -421,7 +436,10 @@ func (h *Hub) denied(ctx context.Context, act core.Actor, ws store.Workspace, pr
 }
 
 func (h *Hub) failToast(l i18n.Lang, err error) string {
+	var archived *core.ArchivedError
 	switch {
+	case errors.As(err, &archived): // 工作空间已归档：说明原因，别让点按钮的人以为是故障
+		return i18n.Message(l, err)
 	case errors.Is(err, core.ErrNotAdmin), errors.Is(err, core.ErrNotManager), errors.Is(err, core.ErrDecided),
 		errors.Is(err, store.ErrAccountDisabled):
 		return i18n.Message(l, err)
