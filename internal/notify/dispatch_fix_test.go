@@ -206,3 +206,22 @@ func TestNotificationScheduleUsesDBClock(t *testing.T) {
 		}
 	}
 }
+
+// 归档与派发并发时漏网的待发通知：派发前核对工作空间，已归档的跳过不发。
+func TestArchivedWorkspaceNotificationSkipped(t *testing.T) {
+	ctx := context.Background()
+	e := newDispatchEnv(t)
+	is := e.submitOne(t)
+	if _, err := e.pool.Exec(ctx, `UPDATE workspaces SET archived_at = now()`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.d.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if e.sender.calls != 0 {
+		t.Fatal("已归档的工作空间不应再发群通知")
+	}
+	if got := statuses(t, e, is.ID); len(got) != 1 || got[0] != "skipped" {
+		t.Fatalf("应标记为跳过：%v", got)
+	}
+}

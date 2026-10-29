@@ -279,6 +279,33 @@ func auditCases() []auditCase {
 			}
 			return f.svc.DeleteWorkspace(ctx, web(f.p.root), "tmp")
 		}, wantEvent{core.ActWorkspaceDelete, core.ViaWeb, "tmp", "workspace", "tmp", "root", nil}},
+		{"归档工作空间", func(t *testing.T, f *afix) error {
+			n, err := store.CountUnfinishedIssues(ctx, f.svc.Pool, f.p.pay)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = f.svc.ArchiveWorkspace(ctx, web(f.p.payAdmin), f.p.pay, n)
+			return err
+		}, wantEvent{core.ActWorkspaceArchive, core.ViaWeb, "pay", "workspace", "pay", "pay-admin", nil}},
+		{"取消归档工作空间", func(t *testing.T, f *afix) error {
+			n, err := store.CountUnfinishedIssues(ctx, f.svc.Pool, f.p.pay)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.svc.ArchiveWorkspace(ctx, web(f.p.payAdmin), f.p.pay, n); err != nil {
+				t.Fatal(err)
+			}
+			_, err = f.svc.UnarchiveWorkspace(ctx, web(f.p.payAdmin), f.p.pay)
+			return err
+		}, wantEvent{core.ActWorkspaceUnarchive, core.ViaWeb, "pay", "workspace", "pay", "pay-admin", nil}},
+		{"彻底删除工作空间", func(t *testing.T, f *afix) error {
+			if _, err := store.CreateWorkspace(ctx, f.svc.Pool, "tmp"); err != nil {
+				t.Fatal(err)
+			}
+			_, err := f.svc.PurgeWorkspace(ctx, web(f.p.root), "tmp", "tmp")
+			return err
+		}, wantEvent{core.ActWorkspacePurge, core.ViaWeb, "tmp", "workspace", "tmp", "root",
+			map[string]any{"issues": 0, "drafts": 0}}},
 		{"改工作空间设置", func(t *testing.T, f *afix) error {
 			return f.svc.UpdateWorkspace(ctx, web(f.p.payAdmin), f.p.pay, core.WorkspaceSettings{
 				TelegramChat: "-1001", ShowTitle: true, ShowBrief: false})

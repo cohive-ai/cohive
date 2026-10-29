@@ -224,6 +224,10 @@ func pickTarget(ctx context.Context, creds *client.Credentials, server, workspac
 			return "", "", err
 		}
 		for _, w := range wss {
+			// 没指定工作空间时不在已归档的里挑；明确指定的仍然认
+			if w.Archived && workspace == "" {
+				continue
+			}
 			names = append(names, w.Name)
 		}
 	} else {

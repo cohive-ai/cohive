@@ -6,7 +6,8 @@
     "adminHint": "你是服务器管理员，可以在<link>管理页</link>把自己加为成员后再查看。",
     "yours": "你所在的工作空间：",
     "loadBoardFailed": "读取看板失败：{{message}}",
-    "loadIssuesFailed": "读取问题单失败：{{message}}"
+    "loadIssuesFailed": "读取问题单失败：{{message}}",
+    "archivedBanner": "此工作空间已归档，只能查看。"
   },
   "board": {
     "loading": "正在读取看板…",

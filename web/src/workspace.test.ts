@@ -75,3 +75,12 @@ it("管理页：本空间管理员或服务器管理员才能进", () => {
   expect(canAdminWorkspace(me(true), "other")).toBe(true);
   expect(canAdminWorkspace(undefined, "ops")).toBe(false);
 });
+
+it("默认工作空间不选已归档的，上次用的已归档时也跳过", () => {
+  const list = [
+    { name: "old", role: "admin", archived: true },
+    { name: "pay", role: "member" },
+  ];
+  expect(pickWorkspace(list, "old")).toBe("pay");
+  expect(pickWorkspace(list.slice(0, 1), null)).toBeNull();
+});

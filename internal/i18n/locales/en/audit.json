@@ -52,6 +52,9 @@
   "audit.action.account_create": "Created account",
   "audit.action.workspace_create": "Created workspace",
   "audit.action.workspace_delete": "Deleted workspace",
+  "audit.action.workspace_archive": "Archived workspace",
+  "audit.action.workspace_unarchive": "Unarchived workspace",
+  "audit.action.workspace_purge": "Permanently deleted workspace",
   "audit.action.workspace_settings": "Updated workspace settings",
   "audit.action.token_issue": "Issued token",
   "audit.action.token_revoke": "Revoked token",
@@ -108,6 +111,15 @@
   "audit.verb.workspace_create": "created workspace {{.Target}}",
   "audit.verb.workspace_create_admin": "created workspace {{.Target}} with first admin {{.Admin}}",
   "audit.verb.workspace_delete": "deleted workspace {{.Target}}",
+  "audit.verb.workspace_archive": {
+    "one": "archived workspace {{.Target}} (with {{.Count}} unfinished issue)",
+    "other": "archived workspace {{.Target}} (with {{.Count}} unfinished issues)"
+  },
+  "audit.verb.workspace_unarchive": "unarchived workspace {{.Target}}",
+  "audit.verb.workspace_purge": {
+    "one": "permanently deleted workspace {{.Target}} (including {{.Count}} issue)",
+    "other": "permanently deleted workspace {{.Target}} (including {{.Count}} issues)"
+  },
   "audit.verb.workspace_settings": "changed settings of workspace {{.Target}}: {{.Fields}}",
   "audit.verb.token_issue": "issued token #{{.ID}} for {{.Member}}'s {{.Tool}}",
   "audit.verb.token_revoke": "revoked token #{{.ID}} of {{.Member}}'s {{.Tool}}",
@@ -214,6 +226,9 @@
   "audit.detail.credential": "Credential",
   "audit.detail.external_url": "External URL",
   "audit.detail.language": "Group message language",
+  "audit.detail.open_issues": "Unfinished issues",
+  "audit.detail.drafts": "Drafts deleted",
+  "audit.detail.purged_issues": "Issues deleted",
   "audit.err.agent_forbidden": "Coding tool tokens cannot perform admin actions ({{.Action}})",
   "audit.err.via_missing": "Admin action is missing its entry point ({{.Via}})",
   "audit.err.action_unregistered": "Unregistered admin action {{.Action}}"

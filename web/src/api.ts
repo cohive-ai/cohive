@@ -151,6 +151,7 @@ export interface WorkspaceRef {
   name: string; // 路径：出现在链接与项目配置里，不可改
   display_name?: string; // 显示名，没设时等于路径
   role: Role | string;
+  archived?: boolean; // 已归档：只读，不出现在切换器里
 }
 
 // 全局账号：一个人一个账号，可以是多个工作空间的成员
@@ -381,6 +382,10 @@ export interface WorkspaceSettings {
   show_title: boolean;
   show_brief: boolean;
   bot_enabled: boolean;
+  // 归档状态；open_issues 是还没结束的问题单数（归档时需要确认）。旧版服务端不返回
+  archived?: boolean;
+  archived_at?: string | null;
+  open_issues?: number;
   // 对外地址是服务器级的：这里只读显示群消息里的链接写法；没设时为空
   external_url_set: boolean;
   issue_link_example: string;
@@ -423,6 +428,10 @@ export interface ServerWorkspace {
   open_issues: number;
   telegram_bound: boolean;
   i_am_member: boolean;
+  archived?: boolean;
+  archived_at?: string | null;
+  issues?: number; // 全部问题单数（含已结束）
+  unfinished_issues?: number; // 未结束的问题单数，大于 0 时不能彻底删除
 }
 
 export interface ServerAccount {
@@ -573,6 +582,8 @@ export const api = {
   revokeInvite: (ws: string, id: number) => post(`${adm(ws)}/invites/${seg(id)}/revoke`),
   workspaceSettings: (ws: string) => request<WorkspaceSettings>(`${adm(ws)}/workspace`),
   saveWorkspaceSettings: (ws: string, body: SaveWorkspaceSettings) => post(`${adm(ws)}/workspace`, body),
+  archiveWorkspace: (ws: string, confirmOpen: number) => post(`${adm(ws)}/archive`, { confirm_open: confirmOpen }),
+  unarchiveWorkspace: (ws: string) => post(`${adm(ws)}/unarchive`),
   workspaceEvents: (ws: string, f: EventFilter) =>
     request<AdminEventPage>(`${adm(ws)}/events${eventQuery({ ...f, workspace: undefined })}`),
 
@@ -580,6 +591,8 @@ export const api = {
   serverWorkspaces: () => request<{ items: ServerWorkspace[] }>(`${srv}/workspaces`),
   createWorkspace: (body: { name: string; display_name?: string; admin?: string }) => post<{ name: string }>(`${srv}/workspaces`, body),
   deleteWorkspace: (name: string) => del(`${srv}/workspaces/${seg(name)}`),
+  purgeWorkspace: (name: string, confirm: string) =>
+    post<{ issues: number; drafts: number }>(`${srv}/workspaces/${seg(name)}/purge`, { confirm }),
   serverAccounts: (q: string) =>
     request<{ items: ServerAccount[] }>(`${srv}/accounts${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   setServerAdmin: (name: string, on: boolean) => post(`${srv}/accounts/${seg(name)}`, { server_admin: on }),

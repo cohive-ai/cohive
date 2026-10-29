@@ -31,7 +31,23 @@
     "deleteTitle": "Delete workspace {{name}}?",
     "deleteMessage1": "You can only delete a workspace that has no issues (drafts included), for example one created with the wrong name.",
     "deleteMessage2": "This also deletes its invites, pending requests, services, memberships and tokens, and chat group binding. Members' accounts and devices aren't affected. This can't be undone.",
-    "deleteConfirm": "Delete"
+    "deleteConfirm": "Delete",
+    "filter": {
+      "label": "Filter by status",
+      "all": "All",
+      "active": "In use",
+      "archived": "Archived"
+    },
+    "filterEmpty": "No workspaces match.",
+    "archived": "Archived",
+    "purge": "Delete permanently",
+    "purgeTitle": "Permanently delete workspace {{name}}?",
+    "purgeMessage1": "This deletes {{issues}} issues with all their activity and notifications, plus invites, memberships, tokens and the chat binding. Admin action records are kept. This cannot be undone.",
+    "purgeMessage2": "Only workspaces with no unfinished issues can be deleted permanently; archive first in most cases.",
+    "purgeInput": "Type the workspace path {{name}} to confirm",
+    "purgeConfirm": "Delete permanently",
+    "purgeBlocked": "{{count}} issues are unfinished; cannot delete permanently",
+    "purged": "Permanently deleted {{name}} ({{issues}} issues)."
   },
   "new": {
     "title": "New workspace",

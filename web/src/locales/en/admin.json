@@ -229,6 +229,24 @@
     },
     "saved": "Saved.",
     "save": "Save",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "archivedBadge": "Archived",
+    "readOnly": "This workspace is archived and its settings are read-only. Unarchive it to make changes.",
+    "archive": {
+      "title": "Archive",
+      "description": "An archived workspace is read-only, hidden from the switcher and gets no reminders. Data is kept and you can unarchive any time.",
+      "status": "Archived on {{time}}.",
+      "button": "Archive workspace",
+      "confirmTitle": "Archive workspace {{name}}?",
+      "openIssues": "{{count}} issues are still unfinished",
+      "openIssuesCheck": "I know {{count}} issues are still unfinished. Archive anyway",
+      "plain": "After archiving, members can only view; no new issues or actions.",
+      "confirm": "Confirm archive",
+      "unarchive": "Unarchive",
+      "unarchiveTitle": "Unarchive {{name}}?",
+      "unarchiveMessage": "The workspace becomes writable again and reappears in the switcher.",
+      "unarchiveConfirm": "Confirm unarchive",
+      "recount": "The number of unfinished issues is now {{count}}. Please confirm again."
+    }
   }
 }

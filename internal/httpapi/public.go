@@ -24,6 +24,8 @@ type Announcer interface {
 	AnnounceJoined(ctx context.Context, m store.Member) error
 	// AnnounceSelfJoined 在本人加入（凭个人邀请注册、接受邀请）后在群里打招呼：操作者是他自己，只写名字不 @。
 	AnnounceSelfJoined(ctx context.Context, m store.Member) error
+	// AnnounceArchived 在工作空间被归档（archived 为真）或取消归档后，在绑定的群里说一声。
+	AnnounceArchived(ctx context.Context, wsID int64, archived bool, actorName string) error
 }
 
 // announce 在后台通知，不拖慢请求；失败只记日志（管理员仍可在网页上看到待审申请）。

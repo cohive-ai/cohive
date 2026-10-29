@@ -62,10 +62,10 @@ func chatJSON(ids []store.ChatIdentity) []map[string]any {
 	return out
 }
 
-func workspaceRefs(ms []store.Membership) []map[string]string {
-	out := make([]map[string]string, 0, len(ms))
+func workspaceRefs(ms []store.Membership) []map[string]any {
+	out := make([]map[string]any, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, map[string]string{"name": m.Workspace, "display_name": m.Label, "role": m.Role})
+		out = append(out, map[string]any{"name": m.Workspace, "display_name": m.Label, "role": m.Role, "archived": m.Archived})
 	}
 	return out
 }
@@ -104,7 +104,7 @@ func accountRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 			out["tool"] = c.Token.Tool
 			for _, m := range ms {
 				if m.WorkspaceID == c.Token.WorkspaceID {
-					out["workspace"] = map[string]string{"name": m.Workspace, "display_name": m.Label, "role": m.Role}
+					out["workspace"] = map[string]any{"name": m.Workspace, "display_name": m.Label, "role": m.Role, "archived": m.Archived}
 				}
 			}
 		}

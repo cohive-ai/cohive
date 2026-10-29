@@ -324,6 +324,9 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 //	handover_required    需要先交接（409，附 handover）
 //	version_conflict     问题单版本已变化或事务被数据库并发中止，需重读后重试（409）
 //	conflict、already_member、join_pending、decided          当前状态不允许该操作（409）
+//	workspace_archived   工作空间已归档，只读，写操作被拒（409）
+//	open_issues_unconfirmed  归档时带的未结束问题单数与实际不符（409，附 open_issues：当前实际数量）
+//	purge_confirm_mismatch   彻底删除时确认的名字与工作空间路径不一致（400）
 //	too_many_requests、login_locked                          限频或登录退避（429）
 //	service_unavailable  协作服务没有启用该功能（503）
 //	internal             内部错误（500）
@@ -344,7 +347,18 @@ func writeError(w http.ResponseWriter, err error) {
 	var te *issue.TransitionError
 	var mce *core.MemberChoiceError
 	var dte *core.DisplayNameTakenError
+	var ae *core.ArchivedError
+	var oe *core.OpenIssuesError
+	var pce *core.PurgeConfirmError
 	switch {
+	case errors.As(err, &ae):
+		writeJSON(w, http.StatusConflict, errBody(w, ae.ErrorCode(), err))
+	case errors.As(err, &oe):
+		body := errBody(w, oe.ErrorCode(), err)
+		body["open_issues"] = oe.Count // 当前实际的未结束数，调用方据此刷新后再确认
+		writeJSON(w, http.StatusConflict, body)
+	case errors.As(err, &pce):
+		writeJSON(w, http.StatusBadRequest, errBody(w, pce.ErrorCode(), err))
 	case errors.As(err, &sec):
 		// 只含字段、行号与规则，不含密钥
 		writeJSON(w, http.StatusBadRequest, errBody(w, "secret_detected", err))

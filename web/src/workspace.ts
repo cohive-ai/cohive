@@ -32,9 +32,9 @@ export function rememberWorkspace(ws: string, storage: Writer | null = defaultSt
   }
 }
 
-// 进入站点时去哪个工作空间：上次用的（仍是成员时），否则列表第一个；一个都没有时返回 null。
+// 进入站点时去哪个工作空间：上次用的（仍是成员且未归档时），否则列表第一个；一个都没有时返回 null。
 export function pickWorkspace(list: WorkspaceRef[] | null | undefined, last: string | null): string | null {
-  const items = list ?? [];
+  const items = (list ?? []).filter((w) => !w.archived);
   if (last && items.some((w) => w.name === last)) return last;
   return items[0]?.name ?? null;
 }

@@ -284,6 +284,9 @@ func topUpTokens(ctx context.Context, out io.Writer, creds *client.Credentials, 
 	}
 	var added []string
 	for _, ws := range wss {
+		if ws.Archived { // 归档的工作空间只读，服务端也不签发令牌
+			continue
+		}
 		var missing []string
 		for _, t := range tools {
 			if _, has := creds.Find(dev.Server, ws.Name, t); !has {

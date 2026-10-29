@@ -24,7 +24,8 @@
     "notMember": "{{name}} (you are not a member)",
     "label": "{{display}} ({{name}})",
     "noneJoined": "You have not joined any workspace yet. Contact an admin.",
-    "createHint": "You are a server admin. You can <create>create a workspace</create>."
+    "createHint": "You are a server admin. You can <create>create a workspace</create>.",
+    "archivedTag": "archived"
   },
   "notFound": "This page does not exist. <home>Back to home</home>",
   "loadError": {

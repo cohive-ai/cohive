@@ -16,12 +16,13 @@ import {
   toolLabel,
   workspaceLabel,
 } from "../format";
-import { WorkspaceLoadError } from "./WorkspaceShell";
+import { useWsArchived, WorkspaceLoadError } from "./WorkspaceShell";
 
 export function IssueDetailPage() {
   const { t } = useTranslation("issues");
   const { ws, id } = useParams({ from: "/layout/w/$ws/issues/$id" });
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  const archived = useWsArchived();
   const detail = useQuery({
     queryKey: ["issue", ws, id],
     queryFn: () => api.issue(ws, Number(id)),
@@ -91,8 +92,8 @@ export function IssueDetailPage() {
         <h1 className="mt-1 text-2xl leading-snug font-semibold">{is.title}</h1>
         {(can_cancel || can_delete) && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {can_cancel && <CancelButton ws={ws} issue={is} />}
-            {can_delete && <DeleteDraftButton ws={ws} id={is.id} />}
+            {can_cancel && <CancelButton ws={ws} issue={is} readOnly={archived} />}
+            {can_delete && <DeleteDraftButton ws={ws} id={is.id} readOnly={archived} />}
           </div>
         )}
       </header>
@@ -191,7 +192,7 @@ function Event({ e }: { e: IssueEvent }) {
 }
 
 // 作废：必须写理由。发起人作废自己还没被接单的单；管理员可以作废任何进行中的单（服务端判定，can_cancel 只决定显不显示）
-function CancelButton({ ws, issue }: { ws: string; issue: Issue }) {
+function CancelButton({ ws, issue, readOnly }: { ws: string; issue: Issue; readOnly: boolean }) {
   const { t } = useTranslation("issues");
   const { t: tc } = useTranslation();
   const qc = useQueryClient();
@@ -227,7 +228,7 @@ function CancelButton({ ws, issue }: { ws: string; issue: Issue }) {
   };
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={btn.danger}>
+      <button type="button" onClick={() => setOpen(true)} disabled={readOnly} className={btn.danger}>
         {t("detail.cancel")}
       </button>
       <Dialog open={open} onClose={close} title={t("detail.cancelTitle", { id: issue.id })} dismissible={!busy}>
@@ -258,7 +259,7 @@ function CancelButton({ ws, issue }: { ws: string; issue: Issue }) {
 }
 
 // 删除自己的草稿：删掉后回到看板
-function DeleteDraftButton({ ws, id }: { ws: string; id: number }) {
+function DeleteDraftButton({ ws, id, readOnly }: { ws: string; id: number; readOnly: boolean }) {
   const { t } = useTranslation("issues");
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -268,6 +269,7 @@ function DeleteDraftButton({ ws, id }: { ws: string; id: number }) {
       title={t("detail.deleteDraftTitle", { id })}
       message={t("detail.deleteDraftMessage")}
       confirmLabel={t("detail.deleteDraftConfirm")}
+      disabled={readOnly}
       action={async () => {
         await api.deleteDraft(ws, id);
         await qc.invalidateQueries({ queryKey: ["board", ws] });

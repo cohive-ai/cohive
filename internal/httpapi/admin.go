@@ -337,13 +337,45 @@ func adminRoutes(mux *http.ServeMux, svc *core.Service, opts Options) {
 		if ext.URL != "" {
 			example = core.WorkspaceLink(ext.URL, ws.Name) + "/issues/" + i18n.FromContext(r.Context()).T("api.issue_number_placeholder")
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"name": ws.Name, "path": ws.Name, "display_name": ws.Label(),
+		open, err := svc.UnfinishedIssues(r.Context(), actor, ws.ID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"name": ws.Name, "path": ws.Name,
+			"archived": ws.Archived(), "archived_at": ws.ArchivedAt, "open_issues": open, "display_name": ws.Label(),
 			"telegram_chat": telegramChat(ws), "show_title": ws.Notify.ShowTitle, "show_brief": ws.Notify.ShowBrief,
 			"bot_enabled": botName(opts) != "", "external_url_set": ext.URL != "", "issue_link_example": example,
 			"chat": workspaceChatJSON(r.Context(), svc, ws), "channels": enabledProviders(opts),
 			"remind_open_hours": ws.Remind.OpenHours, "remind_verify_hours": ws.Remind.VerifyHours,
 			"language": ws.Language, "default_language": i18n.Default(), "languages": languagesJSON()})
 	})
+	// 归档与取消归档：归档后工作空间只读、不催办、不发群通知。confirm_open 必须等于当前未结束的问题单数
+	// （GET .../workspace 的 open_issues），不符返回 409 open_issues_unconfirmed 并附实际数量。成功后在群里告知。
+	adm("POST "+p+"/archive", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
+		var in struct {
+			ConfirmOpen int `json:"confirm_open"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		got, err := svc.ArchiveWorkspace(r.Context(), core.WebActor(*actor), ws.ID, in.ConfirmOpen)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceArchived(ctx, ws.ID, true, actor.Name) })
+		writeJSON(w, http.StatusOK, map[string]any{"archived": true, "archived_at": got.ArchivedAt, "open_issues": in.ConfirmOpen})
+	})
+	adm("POST "+p+"/unarchive", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
+		if _, err := svc.UnarchiveWorkspace(r.Context(), core.WebActor(*actor), ws.ID); err != nil {
+			writeError(w, err)
+			return
+		}
+		announce(opts, func(ctx context.Context, a Announcer) error { return a.AnnounceArchived(ctx, ws.ID, false, actor.Name) })
+		writeJSON(w, http.StatusOK, map[string]any{"archived": false, "archived_at": nil})
+	})
+
 	adm("POST "+p+"/workspace", func(w http.ResponseWriter, r *http.Request, ws store.Workspace, actor *store.Account) {
 		// 旧页面还会带 public_url：对外地址已改为服务器级，忽略它
 		var in struct {

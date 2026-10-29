@@ -158,3 +158,33 @@ func TestWorkspaceSetLanguage(t *testing.T) {
 		t.Fatalf("不认识的语言应报错：%v", err)
 	}
 }
+
+// 彻底删除：--confirm 与路径不一致报错且什么都不删；一致时删除并报出问题单数、草稿数；管理记录保留。
+func TestWorkspacePurge(t *testing.T) {
+	adminEnv(t)
+	mustRun(t, "migrate")
+	mustRun(t, "workspace", "add", "--name", "ops")
+	mustRun(t, "member", "add", "--workspace", "ops", "--name", "ann")
+	if _, err := runCmd(t, "workspace", "purge", "--name", "ops"); err == nil {
+		t.Fatal("没有 --confirm 应报错")
+	}
+	if _, err := runCmd(t, "workspace", "purge", "--name", "ops", "--confirm", "other"); err == nil || !strings.Contains(err.Error(), "ops") {
+		t.Fatalf("确认名字不一致应报错并说明路径：%v", err)
+	}
+	if out := mustRun(t, "workspace", "list"); !strings.Contains(out, "ops") {
+		t.Fatalf("确认不一致时不应删除：%s", out)
+	}
+	if _, err := runCmd(t, "workspace", "purge", "--name", "nope", "--confirm", "nope"); err == nil {
+		t.Fatal("不存在的工作空间应报错")
+	}
+	out := mustRun(t, "workspace", "purge", "--name", "ops", "--confirm", "ops")
+	if !strings.Contains(out, "ops") || !strings.Contains(out, "0") {
+		t.Fatalf("应报出已删除与单数：%s", out)
+	}
+	if out := mustRun(t, "workspace", "list"); strings.Contains(out, "ops") {
+		t.Fatalf("工作空间应已删除：%s", out)
+	}
+	if out := mustRun(t, "audit", "list", "--workspace", "ops"); !strings.Contains(out, "彻底删除") {
+		t.Fatalf("管理记录应保留并记下彻底删除：%s", out)
+	}
+}

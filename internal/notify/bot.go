@@ -329,7 +329,7 @@ func (b *Bot) FinishApproval(ctx context.Context, chat, msgRef string, m Rendere
 	return b.api().EditMessage(ctx, id, msg, m.Text, nil)
 }
 
-// AnnounceSignup 等五个方法实现 httpapi.Announcer，交给 Hub（只配了 Telegram 时使用）。
+// AnnounceSignup 等方法实现 httpapi.Announcer，交给 Hub（只配了 Telegram 时使用）。
 func (b *Bot) AnnounceSignup(ctx context.Context, s store.Signup) error {
 	return b.hub().AnnounceSignup(ctx, s)
 }
@@ -347,6 +347,9 @@ func (b *Bot) AnnounceJoined(ctx context.Context, m store.Member) error {
 }
 func (b *Bot) AnnounceSelfJoined(ctx context.Context, m store.Member) error {
 	return b.hub().AnnounceSelfJoined(ctx, m)
+}
+func (b *Bot) AnnounceArchived(ctx context.Context, wsID int64, archived bool, actorName string) error {
+	return b.hub().AnnounceArchived(ctx, wsID, archived, actorName)
 }
 
 // handleCallback 处理审批按钮：su（注册与加入申请）、da（添加设备），数据形如 su:工作空间:编号:y。

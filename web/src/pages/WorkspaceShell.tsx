@@ -4,12 +4,20 @@ import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { Notice } from "../components";
+import { Callout } from "../ui";
 import { listSeparator, workspaceLabel } from "../format";
 import { canAdminWorkspace, rememberWorkspace } from "../workspace";
 
 // 当前页面所在的工作空间名（来自地址 /w/{工作空间}/...）
 export function useWs(): string {
   return useParams({ from: "/layout/w/$ws" }).ws;
+}
+
+// 当前工作空间是否已归档（只读）。me 还没读到时按未归档
+export function useWsArchived(): boolean {
+  const ws = useWs();
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  return !!me.data?.workspaces.find((w) => w.name === ws)?.archived;
 }
 
 // 工作空间内页面的外壳：记住“上次用的工作空间”（只记自己是成员的），供首页与旧地址跳转使用
@@ -20,7 +28,18 @@ export function WorkspaceShell() {
   useEffect(() => {
     if (member) rememberWorkspace(ws);
   }, [ws, member]);
-  return <Outlet />;
+  const archived = useWsArchived();
+  const { t } = useTranslation("issues");
+  return (
+    <>
+      {archived && (
+        <div className="mb-4">
+          <Callout>{t("workspaceError.archivedBanner")}</Callout>
+        </div>
+      )}
+      <Outlet />
+    </>
+  );
 }
 
 // 看板与问题单读取失败：不是成员（或工作空间不存在）时说明清楚，服务器管理员额外给出去管理页把自己加进来的入口

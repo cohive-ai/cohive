@@ -1134,7 +1134,9 @@ function WorkspaceTab({ ws, serverAdmin }: { ws: string; serverAdmin: boolean })
               : t("workspace.nextStepTelegram")}
         </Callout>
       )}
+      {q.data.archived && <Callout>{t("workspace.readOnly")}</Callout>}
       <WorkspaceForm key={ws} ws={ws} initial={q.data} serverAdmin={serverAdmin} />
+      <ArchiveSection key={`archive-${ws}`} ws={ws} initial={q.data} />
     </div>
   );
 }
@@ -1206,6 +1208,7 @@ export function WorkspaceForm({
   return (
     <Section title={t("workspace.title", { name: initial.display_name || initial.path })}>
       <form onSubmit={submit} className="space-y-4">
+        <fieldset disabled={!!initial.archived} className="min-w-0 space-y-4">
         <Field
           label={t("workspace.displayName")}
           htmlFor="display-name"
@@ -1363,7 +1366,117 @@ export function WorkspaceForm({
         <button type="submit" disabled={busy || !displayOk} className={btn.primary}>
           {busy ? t("workspace.saving") : t("workspace.save")}
         </button>
+        </fieldset>
       </form>
+    </Section>
+  );
+}
+
+// 归档 / 取消归档。归档时若还有未结束的问题单，须勾选确认，提交带上看到的数字；
+// 后端发现数字变了（open_issues_unconfirmed）就用返回的数字刷新，要求重新勾选。
+export function ArchiveSection({ ws, initial }: { ws: string; initial: WorkspaceSettings }) {
+  const { t } = useTranslation("admin");
+  const { t: tc } = useTranslation();
+  const qc = useQueryClient();
+  const archived = !!initial.archived;
+  const [open, setOpen] = useState(false);
+  const [count, setCount] = useState(initial.open_issues ?? 0);
+  const [checked, setChecked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const title = initial.display_name || initial.path;
+  const needCheck = !archived && count > 0;
+
+  const show = () => {
+    setCount(initial.open_issues ?? 0);
+    setChecked(false);
+    setError("");
+    setOpen(true);
+  };
+  const close = () => {
+    if (busy) return;
+    setOpen(false);
+    setError("");
+  };
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      if (archived) await api.unarchiveWorkspace(ws);
+      else await api.archiveWorkspace(ws, count);
+      setOpen(false);
+      await qc.invalidateQueries({ queryKey: ["admin", ws, "workspace"] });
+      await qc.invalidateQueries({ queryKey: ["me"] });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && err.body.code === "open_issues_unconfirmed") {
+        const n = Number(err.body.open_issues);
+        if (Number.isFinite(n)) {
+          setCount(n);
+          setChecked(false);
+          setError(t("workspace.archive.recount", { count: n }));
+          return;
+        }
+      }
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Section title={t("workspace.archive.title")} description={t("workspace.archive.description")}>
+      {archived && initial.archived_at && (
+        <p className="mb-3 text-sm text-muted">{t("workspace.archive.status", { time: absoluteTime(initial.archived_at) })}</p>
+      )}
+      <button type="button" onClick={show} className={archived ? btn.secondary : btn.danger}>
+        {archived ? t("workspace.archive.unarchive") : t("workspace.archive.button")}
+      </button>
+      <Dialog
+        open={open}
+        onClose={close}
+        dismissible={!busy}
+        title={
+          archived
+            ? t("workspace.archive.unarchiveTitle", { name: title })
+            : t("workspace.archive.confirmTitle", { name: title })
+        }
+      >
+        <div className="space-y-3 text-sm text-muted">
+          <p>{archived ? t("workspace.archive.unarchiveMessage") : t("workspace.archive.plain")}</p>
+          {needCheck && (
+            <>
+              <p className="text-danger">{t("workspace.archive.openIssues", { count })}</p>
+              <label className="flex items-start gap-2 text-ink">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => setChecked(e.target.checked)}
+                  className="mt-0.5 accent-[var(--accent)]"
+                />
+                {t("workspace.archive.openIssuesCheck", { count })}
+              </label>
+            </>
+          )}
+        </div>
+        <ErrorText>{error}</ErrorText>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={close} disabled={busy} className={btn.secondary}>
+            {tc("ui.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={run}
+            disabled={busy || (needCheck && !checked)}
+            className={archived ? btn.primary : btn.dangerSolid}
+          >
+            {busy
+              ? tc("ui.processing")
+              : archived
+                ? t("workspace.archive.unarchiveConfirm")
+                : t("workspace.archive.confirm")}
+          </button>
+        </div>
+      </Dialog>
     </Section>
   );
 }

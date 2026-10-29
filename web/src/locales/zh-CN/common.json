@@ -24,7 +24,8 @@
     "notMember": "{{name}}（你不是成员）",
     "label": "{{display}}（{{name}}）",
     "noneJoined": "你还没有加入任何工作空间，请联系管理员。",
-    "createHint": "你是服务器管理员，可以<create>新建工作空间</create>。"
+    "createHint": "你是服务器管理员，可以<create>新建工作空间</create>。",
+    "archivedTag": "已归档"
   },
   "notFound": "这个页面不存在。<home>回到首页</home>",
   "loadError": {

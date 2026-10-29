@@ -29,7 +29,23 @@
     "deleteTitle": "删除工作空间 {{name}}？",
     "deleteMessage1": "只能删除没有任何问题单（含草稿）的工作空间，例如建错了名字。",
     "deleteMessage2": "会一并删除它的邀请、待审申请、服务、成员资格及令牌、群绑定。成员的账号与设备不受影响。删除后不能恢复。",
-    "deleteConfirm": "确认删除"
+    "deleteConfirm": "确认删除",
+    "filter": {
+      "label": "按状态筛选",
+      "all": "全部",
+      "active": "使用中",
+      "archived": "已归档"
+    },
+    "filterEmpty": "没有符合条件的工作空间。",
+    "archived": "已归档",
+    "purge": "彻底删除",
+    "purgeTitle": "彻底删除工作空间 {{name}}？",
+    "purgeMessage1": "将删除 {{issues}} 张问题单及其全部动态、通知，以及它的邀请、成员资格、令牌、群绑定。管理操作记录保留。删除后不能恢复。",
+    "purgeMessage2": "只有没有未结束问题单的工作空间才能彻底删除；通常先归档再删除。",
+    "purgeInput": "输入工作空间路径 {{name}} 以确认",
+    "purgeConfirm": "彻底删除",
+    "purgeBlocked": "还有 {{count}} 张未结束，不能彻底删除",
+    "purged": "已彻底删除 {{name}}（{{issues}} 张问题单）。"
   },
   "new": {
     "title": "新建工作空间",

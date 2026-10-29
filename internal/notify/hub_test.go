@@ -154,3 +154,26 @@ func TestSelfJoinedNoMention(t *testing.T) {
 		t.Fatalf("管理员让人加入时 @，本人加入时只写名字：%q", api.texts)
 	}
 }
+
+// 归档、取消归档后在绑定的群里说一声（工作空间语言）；没绑群时不发。
+func TestAnnounceArchived(t *testing.T) {
+	ctx := context.Background()
+	ws := store.Workspace{ID: 3, Name: "pay", DisplayName: "支付组", Notify: store.NotifyConfig{Channel: store.ProviderTelegram, Target: "-1001"}}
+	c := &fakeCore{workspace: ws}
+	api := &fakeAPI{}
+	bot := &notify.Bot{Core: c, API: api}
+	if err := bot.AnnounceArchived(ctx, 3, true, "lee"); err != nil {
+		t.Fatal(err)
+	}
+	if err := bot.AnnounceArchived(ctx, 3, false, "lee"); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.texts) != 2 || !strings.Contains(api.texts[0], "支付组 已被 lee 归档") || !strings.Contains(api.texts[0], "不再在本群发通知") ||
+		!strings.Contains(api.texts[1], "支付组 已被 lee 取消归档") {
+		t.Fatalf("应各告知一次：%q", api.texts)
+	}
+	c.workspace = store.Workspace{ID: 3, Name: "pay"}
+	if err := bot.AnnounceArchived(ctx, 3, true, "lee"); err != nil || len(api.texts) != 2 {
+		t.Fatalf("没绑群不应发：%v %q", err, api.texts)
+	}
+}

@@ -99,7 +99,7 @@ export function Layout() {
             <BrandMark className="h-6 w-6" />
             <BrandWordmark className="h-3.5 w-auto" />
           </Link>
-          {workspaces.length > 0 || current ? (
+          {workspaces.some((w) => !w.archived) || current ? (
             <WorkspaceSwitcher workspaces={workspaces} current={current} onChange={switchTo} />
           ) : null}
           <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -158,7 +158,7 @@ export function Layout() {
 }
 
 // 顶栏的工作空间切换：列出所在的工作空间并标出角色
-function WorkspaceSwitcher({
+export function WorkspaceSwitcher({
   workspaces,
   current,
   onChange,
@@ -168,6 +168,8 @@ function WorkspaceSwitcher({
   onChange: (ws: string) => void;
 }) {
   const { t } = useTranslation();
+  // 已归档的不出现在切换器里；当前正看着的那个除外（直接链接进来时仍要显示）
+  const shown = workspaces.filter((w) => !w.archived || w.name === current);
   const known = !current || workspaces.some((w) => w.name === current);
   return (
     <label className="flex items-center gap-1 text-sm">
@@ -183,9 +185,10 @@ function WorkspaceSwitcher({
           </option>
         )}
         {!known && current && <option value={current}>{t("workspace.notMember", { name: current })}</option>}
-        {workspaces.map((w) => (
+        {shown.map((w) => (
           <option key={w.name} value={w.name}>
             {workspaceLabel(w)} · {roleLabel(w.role)}
+            {w.archived ? ` · ${t("workspace.archivedTag")}` : ""}
           </option>
         ))}
       </select>

@@ -13,7 +13,13 @@ type Workspace struct {
 	Notify      NotifyConfig
 	Remind      RemindConfig
 	Language    string // 群通知与群里机器人回复的语言代码；空表示跟随服务器缺省语言
+	// 归档：ArchivedAt 非空即为已归档，只读，不催办、不发群通知；取消归档后恢复（见 core.ArchiveWorkspace）。
+	ArchivedAt *time.Time
+	ArchivedBy *int64 // 执行归档的账号
 }
+
+// Archived 返回工作空间是否已归档。
+func (w Workspace) Archived() bool { return w.ArchivedAt != nil }
 
 // RemindConfig 是超时催办的时长（小时），0 表示关闭。
 type RemindConfig struct {
@@ -48,12 +54,13 @@ type NotifyConfig struct {
 const workspaceColumns = `w.id, w.name, w.display_name,
 	coalesce((SELECT wc.provider FROM workspace_chats wc WHERE wc.workspace_id = w.id ORDER BY wc.id LIMIT 1), ''),
 	coalesce((SELECT wc.chat_id FROM workspace_chats wc WHERE wc.workspace_id = w.id ORDER BY wc.id LIMIT 1), ''),
-	w.notify_show_title, w.notify_show_brief, w.remind_open_hours, w.remind_verify_hours, coalesce(w.language, '')`
+	w.notify_show_title, w.notify_show_brief, w.remind_open_hours, w.remind_verify_hours, coalesce(w.language, ''),
+	w.archived_at, w.archived_by`
 
 func scanWorkspace(row interface{ Scan(...any) error }) (Workspace, error) {
 	var w Workspace
 	err := row.Scan(&w.ID, &w.Name, &w.DisplayName, &w.Notify.Channel, &w.Notify.Target, &w.Notify.ShowTitle, &w.Notify.ShowBrief,
-		&w.Remind.OpenHours, &w.Remind.VerifyHours, &w.Language)
+		&w.Remind.OpenHours, &w.Remind.VerifyHours, &w.Language, &w.ArchivedAt, &w.ArchivedBy)
 	return w, notFound(err)
 }
 
@@ -167,4 +174,18 @@ func GetServerSettings(ctx context.Context, q DBTX, forUpdate bool) (ServerSetti
 // SetExternalURL 写对外地址。
 func SetExternalURL(ctx context.Context, q DBTX, url string, by *int64) error {
 	return execOne(ctx, q, `UPDATE server_settings SET external_url = $1, updated_at = now(), updated_by = $2`, url, by)
+}
+
+// WorkspaceForShare 在事务内以共享锁读取工作空间行（FOR SHARE）：与归档、彻底删除的排他锁（LockWorkspace）互斥，
+// 与其他写操作的共享锁并行。写操作用它做只读守卫（core.writable），必须是事务里最早的加锁语句。
+func WorkspaceForShare(ctx context.Context, q DBTX, wsID int64) (Workspace, error) {
+	return scanWorkspace(q.QueryRow(ctx, `SELECT `+workspaceColumns+` FROM workspaces w WHERE w.id = $1 FOR SHARE OF w`, wsID))
+}
+
+// SetWorkspaceArchived 归档（by 非空）或取消归档（by 为空）。
+func SetWorkspaceArchived(ctx context.Context, q DBTX, wsID int64, by *int64) error {
+	if by == nil {
+		return execOne(ctx, q, `UPDATE workspaces SET archived_at = NULL, archived_by = NULL WHERE id = $1`, wsID)
+	}
+	return execOne(ctx, q, `UPDATE workspaces SET archived_at = now(), archived_by = $2 WHERE id = $1`, wsID, *by)
 }

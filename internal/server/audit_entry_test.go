@@ -207,6 +207,24 @@ func webCases() []webCase {
 			code, _ := w.admin.do("POST", "/api/v1/server/workspaces", map[string]any{"name": "ops"}, "")
 			return code
 		}, core.ActWorkspaceCreate, core.ViaWeb, "ops", "lee-codex"},
+		{"POST /api/v1/w/{ws}/admin/archive", "归档工作空间", func(t *testing.T, w *auditWeb) int {
+			code, _ := w.admin.do("POST", wa+"/archive", map[string]any{"confirm_open": 0}, "")
+			return code
+		}, core.ActWorkspaceArchive, core.ViaWeb, "default", "lee-codex"},
+		{"POST /api/v1/w/{ws}/admin/unarchive", "取消归档工作空间", func(t *testing.T, w *auditWeb) int {
+			if code, _ := w.admin.do("POST", wa+"/archive", map[string]any{"confirm_open": 0}, ""); code != 200 {
+				t.Fatalf("准备：归档失败 %d", code)
+			}
+			code, _ := w.admin.do("POST", wa+"/unarchive", map[string]any{}, "")
+			return code
+		}, core.ActWorkspaceUnarchive, core.ViaWeb, "default", "lee-codex"},
+		{"POST /api/v1/server/workspaces/{name}/purge", "彻底删除工作空间", func(t *testing.T, w *auditWeb) int {
+			if _, err := store.CreateWorkspace(ctx, w.f.svc.Pool, "tmp"); err != nil {
+				t.Fatal(err)
+			}
+			code, _ := w.admin.do("POST", "/api/v1/server/workspaces/tmp/purge", map[string]any{"confirm": "tmp"}, "")
+			return code
+		}, core.ActWorkspacePurge, core.ViaWeb, "tmp", "lee-codex"},
 		{"DELETE /api/v1/server/workspaces/{name}", "删工作空间", func(t *testing.T, w *auditWeb) int {
 			if _, err := store.CreateWorkspace(ctx, w.f.svc.Pool, "tmp"); err != nil {
 				t.Fatal(err)

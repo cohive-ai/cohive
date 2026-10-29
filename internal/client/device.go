@@ -48,8 +48,9 @@ type DevicePoll struct {
 
 // WorkspaceRef 是账号所在的一个工作空间。
 type WorkspaceRef struct {
-	Name string `json:"name"`
-	Role string `json:"role"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	Archived bool   `json:"archived"` // 已归档（只读）：不补签令牌，初始化时不作为默认工作空间
 }
 
 // ErrDeviceGone 表示服务端已找不到这次授权。

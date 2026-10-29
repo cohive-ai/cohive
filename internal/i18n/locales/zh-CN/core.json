@@ -150,6 +150,14 @@
   "core.board.needs_closed": "已关闭",
   "core.err.cancel_reason_required": "作废必须写明理由，对方和动态里都会看到",
   "core.err.cancel_status": "问题单 #{{.ID}} 当前是“{{.Status}}”，已经有了结论，不能作废",
+  "core.err.workspace_archived": "工作空间 {{.Name}} 已归档，只能查看，不能修改",
+  "core.err.workspace_already_archived": "工作空间 {{.Name}} 已经归档了",
+  "core.err.workspace_not_archived": "工作空间 {{.Name}} 没有归档",
+  "core.err.archive_needs_actor": "归档只能由网页上登录的管理员操作",
+  "core.err.open_issues_unconfirmed": "工作空间还有 {{.Count}} 张未结束的问题单，请确认这个数量后再归档",
+  "core.err.purge_confirm_mismatch": "确认名字与工作空间路径 {{.Name}} 不一致",
+  "core.err.workspace_has_unfinished": "工作空间 {{.Name}} 还有 {{.Count}} 张未结束的问题单，处理完或作废后才能彻底删除",
+  "core.archive.skip_reason": "工作空间已归档",
   "core.err.delete_not_draft": "问题单 #{{.ID}} 不是你的草稿，不能删除；已发出的单只能作废",
   "core.board.needs_cancelled": "已作废"
 }

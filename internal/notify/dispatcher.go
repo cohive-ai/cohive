@@ -138,6 +138,9 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 	if err != nil {
 		return err
 	}
+	if ws.Archived() { // 归档时已把待发的跳过，这里兜底：归档与派发并发时漏网的也不发
+		return store.MarkNotificationSkipped(ctx, tx, n.ID, i18n.T("notify.dispatch.archived"))
+	}
 	if ws.Notify.Channel == "" {
 		return store.MarkNotificationFailed(ctx, tx, n.ID, i18n.T("notify.dispatch.disabled"))
 	}

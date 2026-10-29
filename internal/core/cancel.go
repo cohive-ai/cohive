@@ -38,6 +38,9 @@ func (s *Service) CancelIssue(ctx context.Context, act Actor, who store.Identity
 	}
 	var out store.Issue
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, who.WorkspaceID); err != nil {
+			return err
+		}
 		is, err := store.GetIssueForUpdate(ctx, tx, in.IssueID)
 		if errors.Is(err, store.ErrNotFound) || (err == nil && !visible(who, is)) {
 			return notFoundIssue(in.IssueID)
@@ -109,6 +112,9 @@ func (s *Service) CanCancel(ctx context.Context, account *store.Account, who sto
 // DeleteDraft 删除自己的草稿：草稿只有发起人看得见，删掉不留痕、不通知。已发出的单不能删，只能作废。
 func (s *Service) DeleteDraft(ctx context.Context, who store.Identity, id int64) error {
 	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := writable(ctx, tx, who.WorkspaceID); err != nil {
+			return err
+		}
 		is, err := store.GetIssueForUpdate(ctx, tx, id)
 		if errors.Is(err, store.ErrNotFound) || (err == nil && !visible(who, is)) {
 			return notFoundIssue(id)
