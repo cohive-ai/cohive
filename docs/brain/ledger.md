@@ -20,7 +20,6 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| T-6 网页测试负载下偶发失败 | 会话待 lee 启动（提议卡片） | t6-flaky / Sonnet 会话（未启动） | — | 待用户（点卡片启动） | 负载下复现、改正确的等待方式不用固定等待、负载下 20 轮全过；交回 `docs/brain/inbox/T-6.md` |
 | IM2-1 Slack 接入 | 已合入 main `129bce2`（已验收 = `0ef06c8`） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，处理实测反馈，之后做飞书与 Lark） | `0ef06c8` | 待用户（lee 建免费 Slack 工作区、按 deploy/slack-app-manifest.yaml 建应用，两个令牌亲手写进 pm-dev1 的 deploy/.env 后跑 upgrade.sh，再绑频道、连账号，按 docs/guides/slack.md 第 7 节验收） | 真环境确认：Socket 确认时限、只在消息块里的 @ 是否提醒、免费版改旧消息 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
@@ -55,4 +54,4 @@
 - 测试账号：admin（服务器管理员）、tester-a、tester-b（已停用）等；密码文件仍在本机 `~/.local/share/cohive-server/data/`（权限 600，测试凭据）。工作空间：default、proj-b、proj-c、lee、cohive-internal。
 - 待清理：主脑临时目录里的旧启动脚本 `test-restart.sh` 与 `test-data/` 已不再使用。
 - 机器人：同一个机器人令牌同时只能有一个程序收消息，测试服与本机调试不要同时跑。
-- 已归档：M5 实施会话、doc-1、m5b、m6-a。、m6c（M6-c、M6-d 均已合入）、m6e（M6-e 至 M6-e3 均已合入）、im6（IM-6 已合入）、ops-launchd（OPS-1 已合入）、oss（OSS-1、OSS-2 已合入）、stab（稳定性修复已合入）。ops-migrate（测试服迁移已完成）、issue-13（#13 已合入）。im-research（钉钉接入、N-1 至 N-4、DEP-1、DEP-1b、DOC-2、#12 均已合入，钉钉实测通过）。tools-research（TOOLS 调研与 opencode 适配已合入）。brand-landing（BRAND-1、UI-1、THEME-1 已合入）。issue-15（#15 已合入）。ws-archive（WS-1 已合入）。待归档会话：无。
+- 已归档：M5 实施会话、doc-1、m5b、m6-a。、m6c（M6-c、M6-d 均已合入）、m6e（M6-e 至 M6-e3 均已合入）、im6（IM-6 已合入）、ops-launchd（OPS-1 已合入）、oss（OSS-1、OSS-2 已合入）、stab（稳定性修复已合入）。ops-migrate（测试服迁移已完成）、issue-13（#13 已合入）。im-research（钉钉接入、N-1 至 N-4、DEP-1、DEP-1b、DOC-2、#12 均已合入，钉钉实测通过）。tools-research（TOOLS 调研与 opencode 适配已合入）。brand-landing（BRAND-1、UI-1、THEME-1 已合入）。issue-15（#15 已合入）。ws-archive（WS-1 已合入）。t-6（T-6 已合入）。待归档会话：无。
