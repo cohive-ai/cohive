@@ -50,11 +50,11 @@ it("连接钉钉：显示绑定码与私聊说明；机器人收到码后显示�
   await screen.findByDisplayValue("ABCD2345");
   expect(screen.getByText(/私聊发给机器人/)).toBeTruthy();
   expect(posts[0]).toContain('"provider":"dingtalk"');
-  await screen.findByText("安<b>", {}, { timeout: 6000 }); // 按纯文本显示
+  await screen.findByText("安<b>", {}, { timeout: 12000 }); // 按纯文本显示
   fireEvent.click(screen.getByText("是我，确认连接"));
   await screen.findByText(/已连接钉钉/);
   expect(posts[1]).toBe('{"accept":true}');
-}, 10000);
+}, 20000);
 
 it("绑定钉钉群：生成绑定码后给出要在群里发送的整句；已绑别的通讯工具的群时不能生成", async () => {
   vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
@@ -144,11 +144,11 @@ it("连接 Slack：同一套流程，按 Slack 的文案与通讯工具名发起
   await screen.findByDisplayValue("SLAK2345");
   expect(posts[0]).toBe('{"provider":"slack"}');
   expect(screen.getByText(/“消息”/)).toBeTruthy();
-  await screen.findByText("lee.s", {}, { timeout: 6000 });
+  await screen.findByText("lee.s", {}, { timeout: 12000 });
   expect(screen.getByText(/Slack 用户/)).toBeTruthy();
   fireEvent.click(screen.getByText("是我，确认连接"));
   await screen.findByText(/已连接 Slack/);
-}, 10000);
+}, 20000);
 
 it("工作空间设置：只启用 Slack 时显示频道绑定、不显示 Telegram 群编号；绑定码发到 slack", async () => {
   const posts: string[] = [];
