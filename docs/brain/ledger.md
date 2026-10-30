@@ -20,6 +20,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
+| CC-1 抄送、关注与留言 @ | 会话自建（从最新 main） | cc-watchers / `local_3c8a2bd8-915f-4839-9a92-f8d27f429b9b` | — | 已派 | 关注者接进 fanout，群里与原收件人同一条消息里 @；发单抄送、自行关注；关注者可留言；留言 @ 只通知该条、只认登录名；归档后不能关注；Opus 编排 + Sonnet 实现；交回 `docs/brain/inbox/CC-1.md` |
 | IM2-1 Slack 接入 | 已合入 main `129bce2`（已验收 = `0ef06c8`） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，处理实测反馈，之后做飞书与 Lark） | `0ef06c8` | 待用户（lee 建免费 Slack 工作区、按 deploy/slack-app-manifest.yaml 建应用，两个令牌亲手写进 pm-dev1 的 deploy/.env 后跑 upgrade.sh，再绑频道、连账号，按 docs/guides/slack.md 第 7 节验收） | 真环境确认：Socket 确认时限、只在消息块里的 @ 是否提醒、免费版改旧消息 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
