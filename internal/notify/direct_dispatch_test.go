@@ -264,6 +264,11 @@ func TestDirectPermanentErrorFails(t *testing.T) {
 	if d.Status != "failed" || e.tg.calls != 1 || !strings.Contains(d.LastError, "blocked") {
 		t.Fatalf("永久性错误应 failed 且只试一次：%+v calls=%d", d, e.tg.calls)
 	}
+	// 私聊失败不影响会话提醒：写入时已备好，投递后仍在、未读
+	var n int
+	if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM member_alerts WHERE member_id = $1 AND issue_id = $2 AND kind = 'watching'`, e.w.ID, is.ID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("私聊失败后会话提醒仍在：%d %v", n, err)
+	}
 }
 
 // 普通错误：最多试 3 次，用尽 failed。
