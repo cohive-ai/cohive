@@ -153,6 +153,46 @@ func (s *Slack) PostMessage(ctx context.Context, m slackMessage) (string, error)
 	return out.TS, nil
 }
 
+// OpenDM 打开（或取回）机器人与某人的私聊，返回私聊频道编号（需要 im:write）。
+// 缺权限、用户不存在或已停用、对方是机器人都是配置或对象问题，重试也没用，归为不值得重试，
+// 不能归为通道整体不可用（否则每条私聊都会触发一次重试）。
+func (s *Slack) OpenDM(ctx context.Context, user string) (string, error) {
+	var out struct {
+		Channel struct {
+			ID string `json:"id"`
+		} `json:"channel"`
+	}
+	err := s.call(ctx, "conversations.open", s.BotToken, map[string]any{"users": user}, &out)
+	var down *ChannelDownError
+	if errors.As(err, &down) {
+		switch {
+		case strings.Contains(down.Msg, ": missing_scope"):
+			return "", &PermanentError{Msg: "Slack app lacks the im:write scope, so it cannot open direct messages: add im:write to the app's bot scopes as described in the deployment guide, then reinstall the app"}
+		case strings.Contains(down.Msg, ": not_allowed_token_type"), strings.Contains(down.Msg, ": no_permission"):
+			return "", &PermanentError{Msg: "Slack refused to open a direct message (" + down.Msg + "): check that the bot token is allowed to use conversations.open and that the app has the im:write scope"}
+		}
+	}
+	if err != nil {
+		var p *PermanentError
+		if errors.As(err, &p) {
+			return "", err
+		}
+		// 用户不存在、已停用、对方是机器人等：对这个人没法私聊
+		if strings.Contains(err.Error(), "conversations.open failed: ") {
+			for _, code := range []string{"user_not_found", "user_disabled", "cannot_dm_bot", "users_list_not_supplied", "invalid_users", "user_not_visible", "not_allowed"} {
+				if strings.HasSuffix(err.Error(), ": "+code) {
+					return "", &PermanentError{Msg: err.Error()}
+				}
+			}
+		}
+		return "", err
+	}
+	if out.Channel.ID == "" {
+		return "", errors.New("Slack conversations.open returned no channel")
+	}
+	return out.Channel.ID, nil
+}
+
 // UpdateMessage 改一条机器人自己发的消息。
 func (s *Slack) UpdateMessage(ctx context.Context, m slackMessage) error {
 	return s.call(ctx, "chat.update", s.BotToken, m, nil)

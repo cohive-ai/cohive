@@ -27,7 +27,17 @@ func Render(base string, ws store.Workspace, is store.Issue, n store.Notificatio
 // 末尾的问题单链接为“对外地址 + /w/路径/issues/编号”；没设对外地址时不带链接。people 按成员资格编号给出。
 // 消息发到工作空间的群里，语言跟随工作空间（没设时用服务器缺省语言）。
 func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.Issue, n store.Notification, people map[int64]Person) Rendered {
-	l := i18n.Pick(ws.Language)
+	return renderMessage(f, provider, base, ws, is, n, people, i18n.Pick(ws.Language), false)
+}
+
+// RenderDirect 生成发给一个人的私聊消息（关注者、留言里被 @ 的人）：语言用收件人的 l，所有人都只写名字、不 @，
+// 第一行是“为什么通知你”，后面是服务 / 经由行、标题与简述（照工作空间开关）、查看指引与问题单链接。留言正文从不发。
+// 群消息的首行写的是“谁该动手”，私聊没有原收件人，不再重复那一行（事件名已在原因行与 Title 里）。
+func RenderDirect(f Formatter, provider, base string, ws store.Workspace, is store.Issue, n store.Notification, people map[int64]Person, l i18n.Lang) Rendered {
+	return renderMessage(f, provider, base, ws, is, n, people, l, true)
+}
+
+func renderMessage(f Formatter, provider, base string, ws store.Workspace, is store.Issue, n store.Notification, people map[int64]Person, l i18n.Lang, direct bool) Rendered {
 	w := newWriter(f, provider, l)
 	esc := w.esc
 	// 不 @ 操作者本人，只写名字（2026-10-18 lee 定）：自己发单给自己、发起人与负责人是同一人等情况。
@@ -41,7 +51,7 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 		if !ok {
 			return l.T("notify.unknown_member")
 		}
-		if id == self {
+		if id == self || direct {
 			return esc(p.Name)
 		}
 		return w.mention(p, esc(p.Name), false)
@@ -121,18 +131,19 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 		head = l.T("notify.head.default", d(nil))
 	}
 
-	// 关注者与留言里被 @ 的人：原收件人（谁该动手）的首行照旧，后面追加“仅告知”的人；没有原收件人时单独成首行
-	if len(n.Recipients) == 0 && (len(n.Watchers) > 0 || len(n.Mentions) > 0) {
-		head = l.T("notify.head.watchers_only", i18n.D{"ID": is.ID, "Actor": actor, "Event": esc(eventTitle(l, n.Event))})
-	}
-	if len(n.Mentions) > 0 {
-		head += l.T("notify.cc.mentions", i18n.D{"Who": mentions(n.Mentions)})
-	}
-	if len(n.Watchers) > 0 {
-		head += l.T("notify.cc.watchers", i18n.D{"Who": mentions(n.Watchers)})
-	}
-
 	lines := []string{head}
+	if direct { // 原因行写明哪张单、发生了什么、谁做的（超时催办是系统发起的，不写操作者）；经由行换成发起人与负责人
+		key := "notify.direct.watching"
+		switch {
+		case len(n.Mentions) > 0:
+			key = "notify.direct.mentioned"
+		case core.SystemEvent(n.Event):
+			key = "notify.direct.watching_system"
+		}
+		lines = []string{l.T(key, i18n.D{"ID": is.ID, "Actor": actor, "Event": esc(eventTitle(l, n.Event))})}
+		src := is.SourceMemberID
+		via = l.T("notify.direct.parties", i18n.D{"Source": nameOf(&src), "Owner": nameOf(is.OwnerID)})
+	}
 	var meta []string
 	if is.TargetService != "" {
 		meta = append(meta, l.T("notify.meta.service", i18n.D{"Value": esc(is.TargetService)}))
@@ -149,7 +160,7 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 	if ws.Notify.ShowBrief && is.Brief != "" {
 		lines = append(lines, l.T("notify.line.brief", i18n.D{"Value": esc(is.Brief)}))
 	}
-	if core.InfoEvent(n.Event) { // 告知型：对方不必动手，只是可以去看
+	if direct || core.InfoEvent(n.Event) { // 私聊一律是告知性质；群里告知型：对方不必动手，只是可以去看
 		lines = append(lines, l.T("notify.action.view", i18n.D{"ID": is.ID}))
 	} else {
 		lines = append(lines, l.T("notify.action.handle", i18n.D{"ID": is.ID}))

@@ -23,8 +23,10 @@ type SlackChannel struct {
 
 	socket *slackSocket
 	mu     sync.Mutex
-	self   slackSelf       // 机器人自己的用户编号与工作区，每次连接时查一次
-	seen   map[string]bool // 处理过的事件编号（Slack 没收到确认时会重发）
+	self   slackSelf // 机器人自己的用户编号与工作区，每次连接时查一次
+	dmMu   sync.Mutex
+	dms    map[string]string // 用户编号 → 私聊频道编号（已打开过的私聊）
+	seen   map[string]bool   // 处理过的事件编号（Slack 没收到确认时会重发）
 	order  []string
 }
 
@@ -82,6 +84,27 @@ func (s *SlackChannel) me() slackSelf {
 // Send 往频道里发一条通知。
 func (s *SlackChannel) Send(ctx context.Context, chat string, m Rendered) error {
 	_, err := s.API.PostMessage(ctx, slackMessage{Channel: chat, Text: m.Text, Blocks: []any{slackSection(m.Text)}})
+	return err
+}
+
+// SendDirect 私聊一个人：先打开私聊拿到频道编号（按用户编号缓存），再把消息发到该频道。
+func (s *SlackChannel) SendDirect(ctx context.Context, to store.ChatIdentity, m Rendered) error {
+	s.dmMu.Lock()
+	ch := s.dms[to.UserID]
+	s.dmMu.Unlock()
+	if ch == "" {
+		var err error
+		if ch, err = s.API.OpenDM(ctx, to.UserID); err != nil {
+			return err
+		}
+		s.dmMu.Lock()
+		if s.dms == nil {
+			s.dms = map[string]string{}
+		}
+		s.dms[to.UserID] = ch
+		s.dmMu.Unlock()
+	}
+	_, err := s.API.PostMessage(ctx, slackMessage{Channel: ch, Text: m.Text, Blocks: []any{slackSection(m.Text)}})
 	return err
 }
 

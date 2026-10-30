@@ -238,6 +238,32 @@ func (d *DingTalk) GroupMarkdown(ctx context.Context, chatID, title, text string
 	return d.call(ctx, "send group message", http.MethodPost, "/v1.0/robot/groupMessages/send", in, nil)
 }
 
+// DirectMarkdown 以机器人身份给一个人单聊发 Markdown 消息（机器人单聊批量发送接口，只发给一个人）。
+// 用户编号无效或不在应用可用范围内是不值得重试的错误；被流控时让调用方稍后重试。
+func (d *DingTalk) DirectMarkdown(ctx context.Context, userID, title, text string) error {
+	text = dtCardMention.ReplaceAllString(text, "$1")
+	param, _ := json.Marshal(map[string]string{"title": title, "text": text})
+	in := map[string]any{"robotCode": d.robotCode(), "userIds": []string{userID}, "msgKey": "sampleMarkdown", "msgParam": string(param)}
+	var out struct {
+		InvalidStaffIDList        []string `json:"invalidStaffIdList"`
+		FlowControlledStaffIDList []string `json:"flowControlledStaffIdList"`
+	}
+	if err := d.call(ctx, "send direct message", http.MethodPost, "/v1.0/robot/oToMessages/batchSend", in, &out); err != nil {
+		return err
+	}
+	for _, id := range out.InvalidStaffIDList {
+		if id == userID {
+			return &PermanentError{Msg: "DingTalk direct message rejected: user ID is invalid or the user is outside the app's availability scope (" + userID + ")"}
+		}
+	}
+	for _, id := range out.FlowControlledStaffIDList {
+		if id == userID {
+			return &RetryAfterError{Seconds: 60}
+		}
+	}
+	return nil
+}
+
 // webhookHostOK 判断回调里带的会话 Webhook 是否指向钉钉（或测试时配置的接口地址），防止被引到别处。
 func (d *DingTalk) webhookHostOK(raw string) bool {
 	u, err := url.Parse(raw)

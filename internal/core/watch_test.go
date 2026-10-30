@@ -61,7 +61,19 @@ func memberNamesOf(ms []store.Member) []string {
 	return out
 }
 
+// notifsOf 返回问题单的群通知（私聊通知另见 directsOf）。
 func notifsOf(t *testing.T, e env, id int64) []store.Notification {
+	t.Helper()
+	var out []store.Notification
+	for _, n := range allNotifs(t, e, id) {
+		if n.DirectMemberID == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func allNotifs(t *testing.T, e env, id int64) []store.Notification {
 	t.Helper()
 	list, err := store.ListNotificationsForIssue(context.Background(), e.svc.Pool, id)
 	if err != nil {
@@ -70,7 +82,58 @@ func notifsOf(t *testing.T, e env, id int64) []store.Notification {
 	return list
 }
 
-// lastNotif 返回最新一条群通知；先断言自 before 条以来恰好新增了一条（关注者不另起一行）。
+// directsOf 返回问题单的私聊通知（关注者、被 @ 的人各一条）。
+func directsOf(t *testing.T, e env, id int64) []store.Notification {
+	t.Helper()
+	var out []store.Notification
+	for _, n := range allNotifs(t, e, id) {
+		if n.DirectMemberID != nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// directTo 是发给某个成员的私聊。
+func directTo(list []store.Notification, member int64) []store.Notification {
+	var out []store.Notification
+	for _, n := range list {
+		if n.DirectMemberID != nil && *n.DirectMemberID == member {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// lastDirect 返回最新一条私聊；先断言自 before 条以来恰好新增了一条。
+func lastDirect(t *testing.T, e env, id int64, before int) store.Notification {
+	t.Helper()
+	list := directsOf(t, e, id)
+	if len(list) != before+1 {
+		t.Fatalf("应新增恰好一条私聊：原有 %d，现有 %d", before, len(list))
+	}
+	return list[len(list)-1]
+}
+
+// wantWatching 断言私聊是发给 member 的“关注”通知（Recipients 空、Mentions 空）。
+func wantWatching(t *testing.T, n store.Notification, member int64, event string) {
+	t.Helper()
+	if n.DirectMemberID == nil || *n.DirectMemberID != member || n.Event != event || len(n.Recipients) != 0 ||
+		!sameList(n.Watchers, []int64{member}) || len(n.Mentions) != 0 {
+		t.Fatalf("应为发给 %d 的关注私聊（%s）：%+v", member, event, n)
+	}
+}
+
+// wantMentioned 断言私聊是发给 member 的“被 @”通知。
+func wantMentioned(t *testing.T, n store.Notification, member int64, event string) {
+	t.Helper()
+	if n.DirectMemberID == nil || *n.DirectMemberID != member || n.Event != event || len(n.Recipients) != 0 ||
+		!sameList(n.Mentions, []int64{member}) || len(n.Watchers) != 0 {
+		t.Fatalf("应为发给 %d 的被 @ 私聊（%s）：%+v", member, event, n)
+	}
+}
+
+// lastNotif 返回最新一条群通知；先断言自 before 条以来恰好新增了一条。
 func lastNotif(t *testing.T, e env, id int64, before int) store.Notification {
 	t.Helper()
 	list := notifsOf(t, e, id)
@@ -151,7 +214,7 @@ func TestCCOnDraft(t *testing.T) {
 	}
 }
 
-// 发出时抄送：进 submit 动态；抄送的人和负责人同在一条群消息里（关注者挂在主通知上）；
+// 发出时抄送：进 submit 动态；负责人在群里，抄送的人收私聊；
 // 非发出动作带 CC 报参数错。
 func TestCCOnSubmit(t *testing.T) {
 	ctx := context.Background()
@@ -167,8 +230,13 @@ func TestCCOnSubmit(t *testing.T) {
 	}
 	list := notifsOf(t, e.env, is.ID)
 	if len(list) != 1 || list[0].Event != core.EventAssigned || !sameList(list[0].Recipients, []int64{e.b.MemberID}) ||
-		!sameList(list[0].Watchers, []int64{e.w.MemberID}) || len(list[0].Mentions) != 0 {
-		t.Fatalf("发出只有一条群通知：收件人 b，关注者 w：%+v", list)
+		len(list[0].Watchers) != 0 || len(list[0].Mentions) != 0 {
+		t.Fatalf("发出只有一条群通知：收件人 b，不带关注者：%+v", list)
+	}
+	if ds := directsOf(t, e.env, is.ID); len(ds) != 1 {
+		t.Fatalf("发出只有关注者 w 一条私聊（原收件人 b、操作者 a 没有）：%+v", ds)
+	} else {
+		wantWatching(t, ds[0], e.w.MemberID, core.EventAssigned)
 	}
 	if got := alertsFor(t, e.env, is.ID, e.w.MemberID); len(got) != 1 || got[0] != (alertFull{e.w.MemberID, core.AlertWatching, core.EventAssigned, e.a.MemberID}) {
 		t.Fatalf("关注者的会话提醒应为 watching、about=assigned：%v", got)
@@ -192,22 +260,25 @@ func TestCCOnSubmit(t *testing.T) {
 	}
 }
 
-// 关注者在整个闭环里每一步都收到告知，和原收件人在同一条群消息里，不另起一行。
+// 关注者在整个闭环里每一步都收到一条私聊，群通知里不带关注者。
 func TestWatchersAlongTheLoop(t *testing.T) {
 	ctx := context.Background()
 	e := newWatchEnv(t)
 	w := []int64{e.w.MemberID}
 	is := e.submit(t, "lee-watch")
 	n := len(notifsOf(t, e.env, is.ID)) // 1
+	dn := len(directsOf(t, e.env, is.ID))
 
 	step := func(name string, who store.Identity, act func() store.Issue, to []int64, event string) {
 		t.Helper()
 		act()
 		got := lastNotif(t, e.env, is.ID, n)
 		n++
-		if got.Event != event || !sameList(got.Recipients, to) || !sameList(got.Watchers, w) {
-			t.Fatalf("%s：应为 %s 收件人 %v 关注者 %v，得到 %s %v %v", name, event, to, w, got.Event, got.Recipients, got.Watchers)
+		if got.Event != event || !sameList(got.Recipients, to) || len(got.Watchers) != 0 {
+			t.Fatalf("%s：应为 %s 收件人 %v 且群通知不带关注者，得到 %s %v %v", name, event, to, got.Event, got.Recipients, got.Watchers)
 		}
+		wantWatching(t, lastDirect(t, e.env, is.ID, dn), w[0], event)
+		dn++
 		_ = who
 	}
 	cur := is
@@ -233,7 +304,7 @@ func TestWatchersAlongTheLoop(t *testing.T) {
 	_ = ctx
 }
 
-// 退回、转交、作废：关注者同样收到；转交时关注者挂在“交给你”那条主通知上，告知发起人的那条不带。
+// 退回、转交、作废：关注者同样收到私聊；转交时按“交给你”的主事件收，告知发起人的那条不另发。
 func TestWatchersOnDeclineTransferCancel(t *testing.T) {
 	ctx := context.Background()
 	e := newWatchEnv(t)
@@ -241,15 +312,18 @@ func TestWatchersOnDeclineTransferCancel(t *testing.T) {
 
 	is := e.submit(t, "lee-watch")
 	n := len(notifsOf(t, e.env, is.ID))
+	dn := len(directsOf(t, e.env, is.ID))
 	if _, err := e.svc.Act(ctx, e.b, core.ActInput{IssueID: is.ID, Action: issue.ActDecline, ExpectedVersion: is.Version, Note: "不归我"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := lastNotif(t, e.env, is.ID, n); got.Event != core.EventDeclined || !sameList(got.Recipients, []int64{e.a.MemberID}) || !sameList(got.Watchers, w) {
+	if got := lastNotif(t, e.env, is.ID, n); got.Event != core.EventDeclined || !sameList(got.Recipients, []int64{e.a.MemberID}) || len(got.Watchers) != 0 {
 		t.Fatalf("退回：%+v", got)
 	}
+	wantWatching(t, lastDirect(t, e.env, is.ID, dn), w[0], core.EventDeclined)
 
 	is = e.submit(t, "lee-watch")
 	n = len(notifsOf(t, e.env, is.ID))
+	dn = len(directsOf(t, e.env, is.ID))
 	if _, err := e.svc.Act(ctx, e.b, core.ActInput{IssueID: is.ID, Action: issue.ActTransfer, ExpectedVersion: is.Version, Assignee: "lee-other", Note: "给 o"}); err != nil {
 		t.Fatal(err)
 	}
@@ -257,33 +331,38 @@ func TestWatchersOnDeclineTransferCancel(t *testing.T) {
 	if len(list) != n+2 {
 		t.Fatalf("转交两条通知（交给你、告知发起人）：%d", len(list)-n)
 	}
-	if x := list[n]; x.Event != core.EventAssigned || !sameList(x.Recipients, []int64{e.o.MemberID}) || !sameList(x.Watchers, w) {
-		t.Fatalf("转交的主通知带关注者：%+v", x)
+	if x := list[n]; x.Event != core.EventAssigned || !sameList(x.Recipients, []int64{e.o.MemberID}) || len(x.Watchers) != 0 {
+		t.Fatalf("转交的主通知：%+v", x)
 	}
 	if x := list[n+1]; x.Event != core.EventTransferred || len(x.Watchers) != 0 {
-		t.Fatalf("告知发起人那条不带关注者：%+v", x)
+		t.Fatalf("告知发起人那条：%+v", x)
 	}
+	wantWatching(t, lastDirect(t, e.env, is.ID, dn), w[0], core.EventAssigned)
 
 	// 发起人作废
 	is = e.submit(t, "lee-watch")
 	n = len(notifsOf(t, e.env, is.ID))
+	dn = len(directsOf(t, e.env, is.ID))
 	if _, err := e.svc.Act(ctx, e.a, core.ActInput{IssueID: is.ID, Action: issue.ActCancel, ExpectedVersion: is.Version, Note: "重复"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := lastNotif(t, e.env, is.ID, n); got.Event != core.EventCancelled || !sameList(got.Recipients, []int64{e.b.MemberID}) || !sameList(got.Watchers, w) {
+	if got := lastNotif(t, e.env, is.ID, n); got.Event != core.EventCancelled || !sameList(got.Recipients, []int64{e.b.MemberID}) || len(got.Watchers) != 0 {
 		t.Fatalf("作废（发起人）：%+v", got)
 	}
+	wantWatching(t, lastDirect(t, e.env, is.ID, dn), w[0], core.EventCancelled)
 
 	// 管理员作废：管理员是操作者，双方收到，关注者在列
 	is = e.submit(t, "lee-watch")
 	n = len(notifsOf(t, e.env, is.ID))
+	dn = len(directsOf(t, e.env, is.ID))
 	act, who := e.web(t, e.c)
 	if _, err := e.svc.CancelIssue(ctx, act, who, core.CancelInput{IssueID: is.ID, ExpectedVersion: is.Version, Reason: "管理员作废"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := lastNotif(t, e.env, is.ID, n); got.Event != core.EventCancelled || !sameList(got.Watchers, w) || len(got.Recipients) != 2 {
+	if got := lastNotif(t, e.env, is.ID, n); got.Event != core.EventCancelled || len(got.Watchers) != 0 || len(got.Recipients) != 2 {
 		t.Fatalf("作废（管理员）：%+v", got)
 	}
+	wantWatching(t, lastDirect(t, e.env, is.ID, dn), w[0], core.EventCancelled)
 }
 
 // 操作者本人是关注者：不在 Watchers、不收提醒；原收件人本人也是关注者时不重复。
@@ -294,8 +373,14 @@ func TestWatcherActorNotNotified(t *testing.T) {
 	is := e.submit(t, "lee-codex", "lee-watch")
 	acc := e.act(t, e.b, is, issue.ActAccept)
 	n := lastNotif(t, e.env, is.ID, 1)
-	if n.Event != core.EventAccepted || !sameList(n.Recipients, []int64{e.a.MemberID}) || !sameList(n.Watchers, []int64{e.w.MemberID}) {
-		t.Fatalf("操作者 b 自己是关注者：Watchers 里不应有 b：%+v", n)
+	if n.Event != core.EventAccepted || !sameList(n.Recipients, []int64{e.a.MemberID}) || len(n.Watchers) != 0 {
+		t.Fatalf("接单的群通知：%+v", n)
+	}
+	if len(directTo(directsOf(t, e.env, is.ID), e.b.MemberID)) != 0 {
+		t.Fatal("操作者 b 自己是关注者：不发私聊")
+	}
+	if ds := directsOf(t, e.env, is.ID); len(ds) != 2 { // 发出时 b 以外的 w 一条（b 是原收件人）；接单时 w 一条
+		t.Fatalf("w 两条私聊：%+v", ds)
 	}
 	for _, a := range alertsFor(t, e.env, is.ID, e.b.MemberID) {
 		if a.kind == core.AlertWatching {
@@ -309,8 +394,13 @@ func TestWatcherActorNotNotified(t *testing.T) {
 	e.comment(t, e.a, is.ID, "补充")
 	last := notifsOf(t, e.env, is.ID)
 	got := last[len(last)-1]
-	if !sameList(got.Recipients, []int64{e.b.MemberID}) || !sameList(got.Watchers, []int64{e.w.MemberID}) {
-		t.Fatalf("留言：收件人 b，关注者只有 w：%+v", got)
+	if !sameList(got.Recipients, []int64{e.b.MemberID}) || len(got.Watchers) != 0 {
+		t.Fatalf("留言：群里收件人 b：%+v", got)
+	}
+	ds := directsOf(t, e.env, is.ID)
+	wantWatching(t, ds[len(ds)-1], e.w.MemberID, core.EventCommented)
+	if len(directTo(ds, e.a.MemberID)) != 0 || len(directTo(ds, e.b.MemberID)) != 0 {
+		t.Fatalf("操作者 a、原收件人 b 都没有私聊：%+v", ds)
 	}
 	// b 本来就是原收件人，不会再以关注者收一遍
 	if al := alertsFor(t, e.env, is.ID, e.b.MemberID); len(al) == 0 || al[len(al)-1].kind != core.AlertCommented {
@@ -319,7 +409,7 @@ func TestWatcherActorNotNotified(t *testing.T) {
 	_ = acc
 }
 
-// 没有任何原收件人（自己发给自己的单）时留言：新建一条只有关注者的通知。
+// 没有任何原收件人（自己发给自己的单）时留言：不写群通知，只给关注者发私聊。
 func TestWatchersOnlyNotice(t *testing.T) {
 	ctx := context.Background()
 	e := newWatchEnv(t)
@@ -332,15 +422,17 @@ func TestWatchersOnlyNotice(t *testing.T) {
 	e.comment(t, e.a, is.ID, "自言自语")
 	list := notifsOf(t, e.env, is.ID)
 	got := list[len(list)-1]
-	if got.Event != core.EventCommented || len(got.Recipients) != 0 || !sameList(got.Watchers, []int64{e.w.MemberID}) {
-		t.Fatalf("没有原收件人时只通知关注者：%+v", got)
+	if got.Event == core.EventCommented {
+		t.Fatalf("没有原收件人时不写群通知：%+v", got)
 	}
+	ds := directsOf(t, e.env, is.ID)
+	wantWatching(t, ds[len(ds)-1], e.w.MemberID, core.EventCommented)
 	if al := alertsFor(t, e.env, is.ID, e.w.MemberID); al[len(al)-1] != (alertFull{e.w.MemberID, core.AlertWatching, core.EventCommented, e.a.MemberID}) {
 		t.Fatalf("关注者的提醒 about=commented：%v", al)
 	}
 }
 
-// 改派：关注者挂在主通知上。
+// 改派：关注者按主通知的事件收一条私聊。
 func TestWatchersOnReassign(t *testing.T) {
 	ctx := context.Background()
 	h := newHandover(t)
@@ -361,14 +453,19 @@ func TestWatchersOnReassign(t *testing.T) {
 		t.Fatal(err)
 	}
 	list := notifsOf(t, h.p.e, h.asOwner.ID)[before:]
-	if len(list) < 2 || list[0].Event != core.EventAssigned || !sameList(list[0].Recipients, []int64{cara.ID}) || !sameList(list[0].Watchers, []int64{dave.ID}) {
-		t.Fatalf("改派的主通知带关注者：%+v", list)
+	if len(list) < 2 || list[0].Event != core.EventAssigned || !sameList(list[0].Recipients, []int64{cara.ID}) {
+		t.Fatalf("改派的主通知：%+v", list)
 	}
-	for _, x := range list[1:] {
+	for _, x := range list {
 		if len(x.Watchers) != 0 {
-			t.Fatalf("只有主通知带关注者：%+v", x)
+			t.Fatalf("群通知都不带关注者：%+v", x)
 		}
 	}
+	ds := directTo(directsOf(t, h.p.e, h.asOwner.ID), dave.ID)
+	if len(ds) != 1 {
+		t.Fatalf("关注者 dave 一条私聊：%+v", ds)
+	}
+	wantWatching(t, ds[0], dave.ID, core.EventAssigned)
 	found := false
 	for _, a := range alertsFor(t, h.p.e, h.asOwner.ID, dave.ID) {
 		found = found || (a.kind == core.AlertWatching && a.about == core.EventAssigned)
@@ -389,12 +486,22 @@ func TestWatchersOnOverdueAdmin(t *testing.T) {
 	if got := lastNotif(t, e.env, is.ID, before); got.Event != core.EventOverdue || len(got.Watchers) != 0 {
 		t.Fatalf("第 1 档不带关注者：%+v", got)
 	}
+	dn := len(directsOf(t, e.env, is.ID)) // 发出时的 1 条，第 1 档不增加
+	if dn != 1 {
+		t.Fatalf("第 1 档不发关注者私聊：%d", dn)
+	}
 	ago(t, e.env, is.ID, 8)
 	runReminders(t, e.env)
 	list := notifsOf(t, e.env, is.ID)
 	got := list[len(list)-1]
-	if got.Event != core.EventOverdueAdmin || !sameList(got.Watchers, []int64{e.w.MemberID}) {
-		t.Fatalf("第 2 档带关注者：%+v", got)
+	if got.Event != core.EventOverdueAdmin || len(got.Watchers) != 0 {
+		t.Fatalf("第 2 档群通知不带关注者：%+v", got)
+	}
+	if d := lastDirect(t, e.env, is.ID, dn); true {
+		wantWatching(t, d, e.w.MemberID, core.EventOverdueAdmin)
+		if d.ActorTool != "cohive" {
+			t.Fatalf("催办私聊的操作人占位：%+v", d)
+		}
 	}
 	al := alertsFor(t, e.env, is.ID, e.w.MemberID)
 	if len(al) != 2 || al[1].kind != core.AlertWatching || al[1].about != core.EventOverdueAdmin {
@@ -625,9 +732,9 @@ func TestInactiveWatchersSkipped(t *testing.T) {
 		t.Fatalf("移出与停用的不算关注者：%v", got)
 	}
 	acc := e.act(t, e.b, is, issue.ActAccept)
-	got := lastNotif(t, e.env, is.ID, 1)
-	if len(got.Watchers) != 0 {
-		t.Fatalf("不再通知已移出 / 停用的关注者：%+v", got)
+	lastNotif(t, e.env, is.ID, 1)
+	if ds := directsOf(t, e.env, is.ID); len(ds) != 2 { // 只有发出时（尚在册）的两条
+		t.Fatalf("不再给已移出 / 停用的关注者写私聊：%+v", ds)
 	}
 	for _, m := range []int64{e.w.MemberID, e.o.MemberID} {
 		if al := alertsFor(t, e.env, is.ID, m); len(al) != 1 { // 只有发出时（尚在册）收到的那一条
@@ -658,8 +765,13 @@ func TestCommentMentions(t *testing.T) {
 	}
 
 	n, info := comment(e.a, "请 @Lee-Watch 看一下")
-	if !sameList(n.Recipients, []int64{e.b.MemberID}) || !sameList(n.Mentions, []int64{e.w.MemberID}) || len(n.Watchers) != 0 || len(info.UnknownMentions) != 0 {
-		t.Fatalf("@登录名（大小写不敏感）：%+v %+v", n, info)
+	if !sameList(n.Recipients, []int64{e.b.MemberID}) || len(n.Mentions) != 0 || len(n.Watchers) != 0 || len(info.UnknownMentions) != 0 {
+		t.Fatalf("@登录名（大小写不敏感）：群通知不带被 @ 的人：%+v %+v", n, info)
+	}
+	if ds := directsOf(t, e.env, is.ID); len(ds) != 1 {
+		t.Fatalf("被 @ 的 w 一条私聊：%+v", ds)
+	} else {
+		wantMentioned(t, ds[0], e.w.MemberID, core.EventCommented)
 	}
 	if al := alertsFor(t, e.env, is.ID, e.w.MemberID); len(al) != 1 || al[0] != (alertFull{e.w.MemberID, core.AlertMentioned, core.EventCommented, e.a.MemberID}) {
 		t.Fatalf("被 @ 的人收到 mentioned 提醒：%v", al)
@@ -669,39 +781,41 @@ func TestCommentMentions(t *testing.T) {
 	}
 	// 只就这一条：下一条留言不再通知 w
 	n, _ = comment(e.a, "没人被提到")
-	if len(n.Mentions) != 0 || len(n.Watchers) != 0 {
+	if len(n.Mentions) != 0 || len(n.Watchers) != 0 || len(directsOf(t, e.env, is.ID)) != 1 {
 		t.Fatalf("@ 只就那一条：%+v", n)
 	}
 
 	// 未识别：昵称、不存在；邮箱不算；自己不算；重复去重、保留写法与顺序
 	n, info = comment(e.a, "@Otto @nobody 联系 foo@lee-other.com，@lee-claude 自己 @Nobody @zzz")
-	if len(n.Mentions) != 0 || strings.Join(info.UnknownMentions, ",") != "@Otto,@nobody,@zzz" {
+	if len(directsOf(t, e.env, is.ID)) != 1 || strings.Join(info.UnknownMentions, ",") != "@Otto,@nobody,@zzz" {
 		t.Fatalf("没识别的 @：%+v %+v", n, info)
 	}
 	// 中文昵称不通知、原样列出；登录名后面紧接中文正文时只取登录名
 	n, info = comment(e.a, "@关羽 你看下，@lee-other看一下")
-	if !sameList(n.Mentions, []int64{e.o.MemberID}) || strings.Join(info.UnknownMentions, ",") != "@关羽" {
-		t.Fatalf("中文昵称与紧接正文：%+v %+v", n, info)
+	if ds := directTo(directsOf(t, e.env, is.ID), e.o.MemberID); len(ds) != 1 || strings.Join(info.UnknownMentions, ",") != "@关羽" {
+		t.Fatalf("中文昵称与紧接正文：%+v %+v", ds, info)
 	}
 	// 邮箱形式、点号后的 @ 都不算
 	if _, info = comment(e.a, "mail a@b.com x.@lee-other"); len(info.UnknownMentions) != 0 {
 		t.Fatalf("邮箱不算 @：%v", info)
 	}
-	if n2, _ := comment(e.a, "(@lee-other)"); !sameList(n2.Mentions, []int64{e.o.MemberID}) {
-		t.Fatalf("括号后的 @ 算：%+v", n2)
+	comment(e.a, "(@lee-other)")
+	if ds := directTo(directsOf(t, e.env, is.ID), e.o.MemberID); len(ds) != 2 {
+		t.Fatalf("括号后的 @ 算：%+v", ds)
 	}
 
 	// 重名：登录名同时是别人的昵称 → 不通知
 	if err := store.SetAccountDisplayName(ctx, e.svc.Pool, e.o.AccountID, "lee-watch"); err != nil {
 		t.Fatal(err)
 	}
+	dn := len(directsOf(t, e.env, is.ID))
 	n, info = comment(e.a, "@lee-watch")
-	if len(n.Mentions) != 0 || strings.Join(info.UnknownMentions, ",") != "@lee-watch" {
+	if len(directsOf(t, e.env, is.ID)) != dn || strings.Join(info.UnknownMentions, ",") != "@lee-watch" {
 		t.Fatalf("重名不通知：%+v %+v", n, info)
 	}
 }
 
-// 被 @ 的关注者只在 mentions 里，不重复在 watchers；被 @ 的原收件人不重复；草稿上的留言不通知也不 @。
+// 被 @ 的关注者只按被 @ 收一条私聊，不再按关注重复收；被 @ 的原收件人不重复；草稿上的留言不通知也不 @。
 func TestMentionedWatcherAndDraft(t *testing.T) {
 	ctx := context.Background()
 	e := newWatchEnv(t)
@@ -711,9 +825,15 @@ func TestMentionedWatcherAndDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	n := lastNotif(t, e.env, is.ID, before)
-	if !sameList(n.Recipients, []int64{e.b.MemberID}) || !sameList(n.Mentions, []int64{e.w.MemberID}) || !sameList(n.Watchers, []int64{e.o.MemberID}) {
-		t.Fatalf("被 @ 的关注者只按被 @ 收；被 @ 的原收件人不重复：%+v", n)
+	if !sameList(n.Recipients, []int64{e.b.MemberID}) || len(n.Mentions) != 0 || len(n.Watchers) != 0 {
+		t.Fatalf("群通知只有原收件人：%+v", n)
 	}
+	ds := directsOf(t, e.env, is.ID)[2:] // 发出时 w、o 各一条
+	if len(ds) != 2 {
+		t.Fatalf("留言后 w（被 @）、o（关注）各一条私聊，原收件人 b 没有：%+v", ds)
+	}
+	wantMentioned(t, directTo(ds, e.w.MemberID)[0], e.w.MemberID, core.EventCommented)
+	wantWatching(t, directTo(ds, e.o.MemberID)[0], e.o.MemberID, core.EventCommented)
 	var kinds []string
 	for _, a := range alertsFor(t, e.env, is.ID, e.w.MemberID) {
 		kinds = append(kinds, a.kind)
@@ -766,4 +886,33 @@ func TestDeleteDraftAndPurgeWithWatchers(t *testing.T) {
 	if err := e.svc.Pool.QueryRow(ctx, `SELECT count(*) FROM issue_watchers`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("关注者应已清空：%d %v", n, err)
 	}
+}
+
+// 工作空间没绑群：没有群通知行，关注者与被 @ 的人照样有私聊行，会话提醒照写。
+func TestDirectRowsWithoutGroup(t *testing.T) {
+	ctx := context.Background()
+	e := newWatchEnv(t)
+	if err := store.SetWorkspaceNotify(ctx, e.svc.Pool, e.a.WorkspaceID, store.NotifyConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	is := e.submit(t, "lee-watch")
+	if n := notifsOf(t, e.env, is.ID); len(n) != 0 {
+		t.Fatalf("没绑群不写群通知：%+v", n)
+	}
+	ds := directsOf(t, e.env, is.ID)
+	if len(ds) != 1 {
+		t.Fatalf("关注者一条私聊：%+v", ds)
+	}
+	wantWatching(t, ds[0], e.w.MemberID, core.EventAssigned)
+	if al := alertsFor(t, e.env, is.ID, e.w.MemberID); len(al) != 1 || al[0].kind != core.AlertWatching {
+		t.Fatalf("会话提醒照写：%v", al)
+	}
+	if al := alertsFor(t, e.env, is.ID, e.b.MemberID); len(al) != 1 {
+		t.Fatalf("原收件人的会话提醒照写：%v", al)
+	}
+	// 留言 @ 别人：被 @ 的人也有私聊
+	if _, err := e.svc.Act(ctx, e.a, core.ActInput{IssueID: is.ID, Action: issue.ActComment, Note: "@lee-other 看看"}); err != nil {
+		t.Fatal(err)
+	}
+	wantMentioned(t, directTo(directsOf(t, e.env, is.ID), e.o.MemberID)[0], e.o.MemberID, core.EventCommented)
 }

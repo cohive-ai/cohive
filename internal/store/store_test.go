@@ -266,3 +266,46 @@ func TestIdempotencyRecord(t *testing.T) {
 		t.Fatalf("应查到 #%d 的 submit，得到 %+v %v %v", is.ID, got, ok, err)
 	}
 }
+
+// 私聊通知：DirectMemberID 读写正确；统计与失败重排只管群通知。
+func TestDirectNotificationRoundTripAndRequeue(t *testing.T) {
+	ctx := context.Background()
+	pool, ws := setup(t)
+	a := mustMember(t, pool, ws, "a")
+	b := mustMember(t, pool, ws, "b")
+	is := newIssue(ws, a.ID, &b.ID, issue.StatusOpen)
+	if err := store.InsertIssue(ctx, pool, is); err != nil {
+		t.Fatal(err)
+	}
+	base := store.Notification{WorkspaceID: ws, IssueID: is.ID, Event: "assigned", ActorMemberID: a.ID, ActorTool: "codex", IssueStatus: "OPEN"}
+	group := base
+	group.Recipients = []int64{b.ID}
+	direct := base
+	direct.DirectMemberID = &b.ID
+	direct.Watchers = []int64{b.ID}
+	for _, n := range []store.Notification{group, direct} {
+		if err := store.InsertNotification(ctx, pool, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, err := store.ListNotificationsForIssue(ctx, pool, is.ID)
+	if err != nil || len(list) != 2 {
+		t.Fatalf("两条通知：%v %v", list, err)
+	}
+	if list[0].DirectMemberID != nil || list[1].DirectMemberID == nil || *list[1].DirectMemberID != b.ID || len(list[1].Watchers) != 1 {
+		t.Fatalf("DirectMemberID 读写：%+v", list)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE notifications SET status = 'failed'`); err != nil {
+		t.Fatal(err)
+	}
+	if p, f, err := store.CountNotifications(ctx, pool, ws); err != nil || p != 0 || f != 1 {
+		t.Fatalf("只统计群通知：%d %d %v", p, f, err)
+	}
+	if n, err := store.RequeueFailedNotifications(ctx, pool, ws); err != nil || n != 1 {
+		t.Fatalf("只重排群通知：%d %v", n, err)
+	}
+	list, _ = store.ListNotificationsForIssue(ctx, pool, is.ID)
+	if list[0].Status != "pending" || list[1].Status != "failed" {
+		t.Fatalf("私聊失败不重排：%+v", list)
+	}
+}

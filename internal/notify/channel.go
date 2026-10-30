@@ -42,6 +42,9 @@ var (
 	_ StatusReporter = (*Bot)(nil)
 	_ StatusReporter = (*DingTalkChannel)(nil)
 	_ StatusReporter = (*SlackChannel)(nil)
+	_ DirectSender   = (*Bot)(nil)
+	_ DirectSender   = (*DingTalkChannel)(nil)
+	_ DirectSender   = (*SlackChannel)(nil)
 )
 
 // Formatter 是一种通讯工具的消息格式。
