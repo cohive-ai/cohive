@@ -55,7 +55,7 @@ func TestTransitionErrorLocalized(t *testing.T) {
 		{"状态不对", issue.StatusDraft, issue.ActClose, source, "only available when the issue is Ready for verification"},
 		{"角色不对", issue.StatusOpen, issue.ActAccept, source, "only the owner can do this"},
 		{"草稿评论", issue.StatusDraft, issue.ActComment, owner, "only the reporter can edit a draft"},
-		{"评论角色", issue.StatusFixing, issue.ActComment, nil, "only the reporter or the owner can comment"},
+		{"评论角色", issue.StatusFixing, issue.ActComment, nil, "only the reporter, the owner or a watcher can comment"},
 		{"未知动作", issue.StatusOpen, "bogus", owner, "unknown action"},
 	}
 	for _, c := range cases {

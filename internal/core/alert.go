@@ -23,6 +23,8 @@ const (
 	AlertCommented   = EventCommented   // 有新留言
 	AlertReassigned  = EventReassigned  // 管理员改派了你相关的单
 	AlertCancelled   = EventCancelled   // 你相关的单被作废
+	AlertWatching    = "watching"       // 你关注的单有动静（告知性质，about 记原事件名）
+	AlertMentioned   = "mentioned"      // 有人在留言里 @ 了你（about 记原事件名）
 )
 
 const (
@@ -37,6 +39,7 @@ type AlertItem struct {
 	ID      int64
 	IssueID int64
 	Kind    string
+	About   string // kind 为 watching / mentioned 时是原事件名
 	Actor   string // 登录名
 	At      time.Time
 }
@@ -91,7 +94,7 @@ func (s *Service) Alerts(ctx context.Context, who store.Identity, after *int64) 
 		}
 		for _, a := range recent {
 			if a.ID <= out.Cursor && a.WorkspaceID == who.WorkspaceID {
-				out.Items = append(out.Items, AlertItem{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, Actor: alertActor(a), At: a.CreatedAt})
+				out.Items = append(out.Items, AlertItem{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, About: a.About, Actor: alertActor(a), At: a.CreatedAt})
 			}
 		}
 		return out, nil
@@ -108,7 +111,7 @@ func (s *Service) Alerts(ctx context.Context, who store.Identity, after *int64) 
 		if a.WorkspaceID != who.WorkspaceID {
 			continue
 		}
-		out.Items = append(out.Items, AlertItem{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, Actor: alertActor(a), At: a.CreatedAt})
+		out.Items = append(out.Items, AlertItem{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, About: a.About, Actor: alertActor(a), At: a.CreatedAt})
 		if a.ID > out.Cursor {
 			out.Cursor = a.ID
 		}
@@ -118,7 +121,7 @@ func (s *Service) Alerts(ctx context.Context, who store.Identity, after *int64) 
 
 // alertActor 是提醒里的“谁”。超时催办是服务端发起的，记的操作人只是占位（当事人自己），不对外给出。
 func alertActor(a store.Alert) string {
-	if a.Kind == AlertOverdue {
+	if a.Kind == AlertOverdue || (a.Kind == AlertWatching && SystemEvent(a.About)) {
 		return ""
 	}
 	return a.ActorName

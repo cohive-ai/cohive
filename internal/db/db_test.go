@@ -34,7 +34,7 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
-	if applied != 15 {
-		t.Fatalf("应登记 15 个迁移，实际 %d", applied)
+	if applied != 16 {
+		t.Fatalf("应登记 16 个迁移，实际 %d", applied)
 	}
 }

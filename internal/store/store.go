@@ -485,10 +485,11 @@ func ListServices(ctx context.Context, q DBTX, wsID int64) ([]ServiceInfo, error
 	return out, rows.Err()
 }
 
-// DeleteIssue 删除一张问题单及其附属行（事件、幂等记录、会话内提醒、群通知）。只用于删除草稿：
+// DeleteIssue 删除一张问题单及其附属行（关注者、事件、幂等记录、会话内提醒、群通知）。只用于删除草稿：
 // 草稿只有发起人看得见，删掉不留痕。
 func DeleteIssue(ctx context.Context, q DBTX, id int64) error {
 	for _, sql := range []string{
+		`DELETE FROM issue_watchers WHERE issue_id = $1`,
 		`DELETE FROM idempotency WHERE issue_id = $1`,
 		`DELETE FROM issue_events WHERE issue_id = $1`,
 		`DELETE FROM member_alerts WHERE issue_id = $1`,

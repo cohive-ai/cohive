@@ -81,7 +81,12 @@ func (s *Service) CancelIssue(ctx context.Context, act Actor, who store.Identity
 			Action: issue.ActCancel, FromStatus: from, ToStatus: is.Status, Note: in.Reason, Payload: payload}); err != nil {
 			return err
 		}
-		if err := queueNotices(ctx, tx, who, is, fanout(who, is, issue.ActCancel, false)); err != nil {
+		watchers, err := store.WatcherIDs(ctx, tx, is.ID)
+		if err != nil {
+			return err
+		}
+		items := attachWatchers(who, fanout(who, is, issue.ActCancel, false), EventCancelled, watchers, nil)
+		if err := queueNotices(ctx, tx, who, is, items); err != nil {
 			return err
 		}
 		if byAdmin {

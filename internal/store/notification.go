@@ -15,8 +15,10 @@ type Notification struct {
 	ActorMemberID int64
 	ActorTool     string
 	Recipients    []int64
-	IssueStatus   string // 写入时问题单的状态，投递前核对
-	IssueOwnerID  *int64 // 写入时问题单的负责人，投递前核对
+	Watchers      []int64 // 关注者：告知性质，不要求动手
+	Mentions      []int64 // 留言 @ 到的人（只就这一条）
+	IssueStatus   string  // 写入时问题单的状态，投递前核对
+	IssueOwnerID  *int64  // 写入时问题单的负责人，投递前核对
 	Status        string
 	Attempts      int
 	NextAttemptAt time.Time
@@ -26,27 +28,50 @@ type Notification struct {
 }
 
 const notificationColumns = `id, workspace_id, issue_id, event, actor_member_id, actor_tool, recipients,
-	issue_status, issue_owner_id, status, attempts, next_attempt_at, last_error, created_at, sent_at`
+	watchers, mentions, issue_status, issue_owner_id, status, attempts, next_attempt_at, last_error, created_at, sent_at`
 
 func scanNotification(row interface{ Scan(...any) error }) (Notification, error) {
 	var n Notification
-	var recipients []byte
+	var recipients, watchers, mentions []byte
 	err := row.Scan(&n.ID, &n.WorkspaceID, &n.IssueID, &n.Event, &n.ActorMemberID, &n.ActorTool, &recipients,
-		&n.IssueStatus, &n.IssueOwnerID, &n.Status, &n.Attempts, &n.NextAttemptAt, &n.LastError, &n.CreatedAt, &n.SentAt)
+		&watchers, &mentions, &n.IssueStatus, &n.IssueOwnerID, &n.Status, &n.Attempts, &n.NextAttemptAt, &n.LastError, &n.CreatedAt, &n.SentAt)
 	if err != nil {
 		return Notification{}, notFound(err)
 	}
-	return n, json.Unmarshal(recipients, &n.Recipients)
+	if err := json.Unmarshal(recipients, &n.Recipients); err != nil {
+		return Notification{}, err
+	}
+	if err := json.Unmarshal(watchers, &n.Watchers); err != nil {
+		return Notification{}, err
+	}
+	return n, json.Unmarshal(mentions, &n.Mentions)
+}
+
+// idList 把成员编号清单写成 JSON 数组（nil 写成 []，不写 null）。
+func idList(ids []int64) ([]byte, error) {
+	if ids == nil {
+		ids = []int64{}
+	}
+	return json.Marshal(ids)
 }
 
 func InsertNotification(ctx context.Context, q DBTX, n Notification) error {
-	recipients, err := json.Marshal(n.Recipients)
+	recipients, err := idList(n.Recipients)
+	if err != nil {
+		return err
+	}
+	watchers, err := idList(n.Watchers)
+	if err != nil {
+		return err
+	}
+	mentions, err := idList(n.Mentions)
 	if err != nil {
 		return err
 	}
 	_, err = q.Exec(ctx, `INSERT INTO notifications (workspace_id, issue_id, event, actor_member_id, actor_tool, recipients,
-		issue_status, issue_owner_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		n.WorkspaceID, n.IssueID, n.Event, n.ActorMemberID, n.ActorTool, recipients, n.IssueStatus, n.IssueOwnerID)
+		watchers, mentions, issue_status, issue_owner_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		n.WorkspaceID, n.IssueID, n.Event, n.ActorMemberID, n.ActorTool, recipients, watchers, mentions,
+		n.IssueStatus, n.IssueOwnerID)
 	return err
 }
 

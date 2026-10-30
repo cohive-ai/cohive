@@ -60,6 +60,7 @@ func (s *Service) QueueReminders(ctx context.Context) (int, error) {
 				level = 2
 			}
 			event, to := EventOverdue, []int64{party}
+			var watchers []int64
 			if level == 2 {
 				event = EventOverdueAdmin
 				admins, err := store.WorkspaceAdminMembers(ctx, tx, d.WorkspaceID)
@@ -71,6 +72,12 @@ func (s *Service) QueueReminders(ctx context.Context) (int, error) {
 						to = append(to, a)
 					}
 				}
+				// 第 2 档才告知关注者（第 1 档只是再提醒当事人一次）；已经在 @ 名单里的不重复
+				ws, err := store.WatcherIDs(ctx, tx, d.IssueID)
+				if err != nil {
+					return err
+				}
+				watchers = attachWatchers(store.Identity{}, []notice{{event: event, to: to}}, event, ws, nil)[0].watchers
 			}
 			ws, err := store.GetWorkspace(ctx, tx, d.WorkspaceID)
 			if err != nil {
@@ -79,7 +86,7 @@ func (s *Service) QueueReminders(ctx context.Context) (int, error) {
 			if ws.Notify.Channel != "" {
 				if err := store.InsertNotification(ctx, tx, store.Notification{
 					WorkspaceID: d.WorkspaceID, IssueID: d.IssueID, Event: event,
-					ActorMemberID: party, ActorTool: "cohive", Recipients: to,
+					ActorMemberID: party, ActorTool: "cohive", Recipients: to, Watchers: watchers,
 					IssueStatus: string(d.Status), IssueOwnerID: d.OwnerID,
 				}); err != nil {
 					return fmt.Errorf("queue overdue reminder notification: %w", err)
@@ -88,6 +95,12 @@ func (s *Service) QueueReminders(ctx context.Context) (int, error) {
 			if err := store.InsertAlert(ctx, tx, store.Alert{WorkspaceID: d.WorkspaceID, MemberID: party,
 				IssueID: d.IssueID, Kind: AlertOverdue, ActorMemberID: party}); err != nil {
 				return err
+			}
+			for _, w := range watchers {
+				if err := store.InsertAlert(ctx, tx, store.Alert{WorkspaceID: d.WorkspaceID, MemberID: w,
+					IssueID: d.IssueID, Kind: AlertWatching, About: event, ActorMemberID: party}); err != nil {
+					return err
+				}
 			}
 			if err := store.SetRemindLevel(ctx, tx, d.IssueID, level); err != nil {
 				return err

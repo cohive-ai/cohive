@@ -97,13 +97,17 @@ const (
 type Role int
 
 const (
-	RoleSource Role = iota // 发起人
-	RoleOwner              // 负责人
+	RoleSource  Role = iota // 发起人
+	RoleOwner               // 负责人
+	RoleWatcher             // 关注者：只能留言，其余动作按角色匹配自然拒绝
 )
 
 func (r Role) labelIn(l i18n.Lang) string {
-	if r == RoleSource {
+	switch r {
+	case RoleSource:
 		return l.T("issue.role.source")
+	case RoleWatcher:
+		return l.T("issue.role.watcher")
 	}
 	return l.T("issue.role.owner")
 }

@@ -37,9 +37,11 @@ func InfoEvent(event string) bool {
 
 // notice 是一次变化要通知的一组人：群通知与会话内提醒共用这份清单（2026-10-18 lee 定：信息链完整）。
 type notice struct {
-	event   string
-	to      []int64
-	noAlert map[int64]bool // 只在群里 @、不写会话内提醒的人（改派时被换下、已经用不了编程工具的人）
+	event    string
+	to       []int64        // 原收件人：要动手的人或直接相关方
+	watchers []int64        // 关注者：告知性质，和原收件人在同一条群消息里列出
+	mentions []int64        // 留言里被 @ 到的人（只就这一条留言）
+	noAlert  map[int64]bool // 只在群里 @、不写会话内提醒的人（改派时被换下、已经用不了编程工具的人）
 }
 
 // parties 去重、去掉 0；others 再去掉操作者本人。
@@ -187,6 +189,65 @@ func reassignFanout(who store.Identity, is store.Issue, oldOwner *int64, oldSour
 	return out
 }
 
+// attachWatchers 把关注者与被 @ 的人挂到本次动作的主通知（items[0]）上，同一条群消息里列出，不另起一行；
+// 没有任何原收件人（items 为空）时，新建一条只有关注者 / 被 @ 的人的通知，event 是本次动作的主事件。
+// 操作者本人不收；已经是原收件人的不重复；既被 @ 又是关注者的人只按“被 @”收。
+func attachWatchers(who store.Identity, items []notice, event string, watchers, mentions []int64) []notice {
+	got := map[int64]bool{who.MemberID: true}
+	for _, n := range items {
+		for _, id := range n.to {
+			got[id] = true
+		}
+	}
+	var ms, ws []int64
+	for _, id := range parties(mentions...) {
+		if !got[id] {
+			ms = append(ms, id)
+		}
+	}
+	for _, id := range ms {
+		got[id] = true
+	}
+	for _, id := range parties(watchers...) {
+		if !got[id] {
+			ws = append(ws, id)
+		}
+	}
+	if len(ws) == 0 && len(ms) == 0 {
+		return items
+	}
+	if len(items) == 0 {
+		return []notice{{event: event, watchers: ws, mentions: ms}}
+	}
+	items[0].watchers, items[0].mentions = ws, ms
+	return items
+}
+
+// actEvent 是动作的主事件名：群里没有任何原收件人时，关注者按它收通知。
+func actEvent(act issue.Action) string {
+	switch act {
+	case issue.ActSubmit, issue.ActTransfer:
+		return EventAssigned
+	case issue.ActAccept:
+		return EventAccepted
+	case issue.ActDecline:
+		return EventDeclined
+	case issue.ActStart:
+		return EventStarted
+	case issue.ActRequestVerification:
+		return EventVerify
+	case issue.ActClose:
+		return EventClosed
+	case issue.ActReopen:
+		return EventReopened
+	case issue.ActCancel:
+		return EventCancelled
+	case issue.ActComment:
+		return EventCommented
+	}
+	return string(act)
+}
+
 // queueNotices 在状态变更的同一事务里写会话内提醒（与有没有配群无关，操作者本人不收）与待发群通知（工作空间配了群时）。
 func queueNotices(ctx context.Context, tx store.DBTX, who store.Identity, is store.Issue, items []notice) error {
 	if len(items) == 0 {
@@ -202,6 +263,20 @@ func queueNotices(ctx context.Context, tx store.DBTX, who store.Identity, is sto
 				return err
 			}
 		}
+		for _, g := range []struct {
+			kind string
+			ids  []int64
+		}{{AlertMentioned, it.mentions}, {AlertWatching, it.watchers}} {
+			for _, to := range g.ids {
+				if to == who.MemberID {
+					continue
+				}
+				if err := store.InsertAlert(ctx, tx, store.Alert{WorkspaceID: is.WorkspaceID, MemberID: to,
+					IssueID: is.ID, Kind: g.kind, About: it.event, ActorMemberID: who.MemberID}); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	ws, err := store.GetWorkspace(ctx, tx, is.WorkspaceID)
 	if err != nil {
@@ -213,7 +288,7 @@ func queueNotices(ctx context.Context, tx store.DBTX, who store.Identity, is sto
 	for _, it := range items {
 		if err := store.InsertNotification(ctx, tx, store.Notification{
 			WorkspaceID: is.WorkspaceID, IssueID: is.ID, Event: it.event,
-			ActorMemberID: who.MemberID, ActorTool: who.Tool, Recipients: it.to,
+			ActorMemberID: who.MemberID, ActorTool: who.Tool, Recipients: it.to, Watchers: it.watchers, Mentions: it.mentions,
 			IssueStatus: string(is.Status), IssueOwnerID: is.OwnerID,
 		}); err != nil {
 			return err
