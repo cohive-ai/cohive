@@ -27,6 +27,14 @@ type StatusReporter interface {
 	Status() (online bool, detail string)
 }
 
+// DirectSender 是通道可选的能力：机器人主动私聊一个人（关注者、留言里被 @ 的人收到的个人通知）。
+// to 是此人在本通讯工具上的连接（UserID 必有；钉钉、Slack 另带 Tenant）。m 按本通讯工具的格式写好，
+// 私聊里不 @ 人，m.Mentions 为空。错误沿用群通知的分类：限流 *RetryAfterError、通道整体不可用 *ChannelDownError、
+// 不值得重试 *PermanentError（对方屏蔽机器人、没开单聊权限、用户编号无效等），其余为普通错误。
+type DirectSender interface {
+	SendDirect(ctx context.Context, to store.ChatIdentity, m Rendered) error
+}
+
 var (
 	_ Channel        = (*Bot)(nil)
 	_ Channel        = (*DingTalkChannel)(nil)
