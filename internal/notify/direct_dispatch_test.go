@@ -407,3 +407,48 @@ func TestDirectMentionedReason(t *testing.T) {
 		t.Fatalf("被 @ 的原因行：%+v", e.tg.directs)
 	}
 }
+
+// 私聊与群通知一样判过时：要动手的事件（新单）写入后单子已往前走（已接单），私聊跳过；告知型事件（已接单）照发。
+func TestDirectStaleSkipped(t *testing.T) {
+	e := newDDEnv(t, true)
+	ctx := context.Background()
+	is := e.submitCC(t)
+	if _, err := e.svc.Act(ctx, e.b, core.ActInput{IssueID: is.ID, Action: issue.ActAccept, ExpectedVersion: is.Version}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.d.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	list, err := store.ListNotificationsForIssue(ctx, e.pool, is.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, n := range list {
+		if n.DirectMemberID != nil {
+			got[n.Event] = n.Status
+		}
+	}
+	if got[core.EventAssigned] != "skipped" || got[core.EventAccepted] != "sent" || len(got) != 2 {
+		t.Fatalf("新单私聊应过时跳过、已接单私聊照发：%v", got)
+	}
+	if len(e.tg.directs) != 1 || !strings.Contains(e.tg.directs[0].m.Text, "已接单") {
+		t.Fatalf("只发出已接单那条：%+v", e.tg.directs)
+	}
+}
+
+// 关注者的账号已停用（成员资格仍在册）：skipped，不发私聊。
+func TestDirectSkippedForDisabledAccount(t *testing.T) {
+	e := newDDEnv(t, true)
+	ctx := context.Background()
+	is := e.submitCC(t)
+	if _, err := e.pool.Exec(ctx, `UPDATE accounts SET disabled_at = now() WHERE id = $1`, e.w.AccountID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.d.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.direct(t, is.ID); d.Status != "skipped" || len(e.tg.directs) != 0 || e.tg.calls != 0 {
+		t.Fatalf("账号停用应跳过：%+v calls=%d", d, e.tg.calls)
+	}
+}

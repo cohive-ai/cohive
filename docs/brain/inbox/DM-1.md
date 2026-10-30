@@ -70,7 +70,7 @@ https://cohive.example.com/w/payments/issues/12
 - 投递用例（`internal/notify/direct_dispatch_test.go`，自写同时实现群发与私聊的假通道）：发到正确连接、收件人语言、缺省语言、没绑群照发、没连接跳过且提醒仍在、只有用户名跳过、通道不支持私聊跳过、已移出跳过、不重试错误只试一次且提醒仍在、普通错误 3 次放弃、限流不计次、通道不可用计次与 3 次放弃、优先工作空间通讯工具、被 @ 原因。
 - 核心用例（`internal/core/watch_test.go`）：每个动作的群行不带关注者、私聊行的收件人与原因、操作者与原收件人没有私聊行、既关注又被 @ 只一条、没绑群也有私聊行、催办第 2 档。
 
-变异验证 15 个探针（在临时副本里逐个改代码、跑对应包测试，库 `cohive_walk_dm1_probe`），全部被抓住：
+变异验证 17 个探针（P16、P17 是主脑验收打回后补的用例）（在临时副本里逐个改代码、跑对应包测试，库 `cohive_walk_dm1_probe`），全部被抓住：
 
 | 探针 | 抓住它的用例 |
 |---|---|
@@ -89,6 +89,8 @@ https://cohive.example.com/w/payments/issues/12
 | P13 钉钉 invalidStaffIdList 被忽略 | TestDirectDingTalkInvalidAndFlowControlled |
 | P14 被 @ 的人收到“关注”原因文案 | TestDirectMentionedReason、TestRenderDirectMentionedAndEnglish |
 | P15 私聊里 @ 人（Telegram 链接） | TestRenderDirectWatching 等 3 条 |
+| P16 私聊不判过时（主脑验收时补） | TestDirectStaleSkipped |
+| P17 不判收件人账号已停用（主脑验收时补） | TestDirectSkippedForDisabledAccount |
 
 走查库 `cohive_walk_dm1`、`cohive_walk_dm1_probe` 保留在本机 55432，合入后可删。
 
