@@ -39,8 +39,8 @@ func InfoEvent(event string) bool {
 type notice struct {
 	event    string
 	to       []int64        // 原收件人：要动手的人或直接相关方
-	watchers []int64        // 关注者：告知性质，和原收件人在同一条群消息里列出
-	mentions []int64        // 留言里被 @ 到的人（只就这一条留言）
+	watchers []int64        // 关注者：告知性质，由机器人私聊（不进群消息）
+	mentions []int64        // 留言里被 @ 到的人（只就这一条留言），同样私聊
 	noAlert  map[int64]bool // 只在群里 @、不写会话内提醒的人（改派时被换下、已经用不了编程工具的人）
 }
 
@@ -189,8 +189,8 @@ func reassignFanout(who store.Identity, is store.Issue, oldOwner *int64, oldSour
 	return out
 }
 
-// attachWatchers 把关注者与被 @ 的人挂到本次动作的主通知（items[0]）上，同一条群消息里列出，不另起一行；
-// 没有任何原收件人（items 为空）时，新建一条只有关注者 / 被 @ 的人的通知，event 是本次动作的主事件。
+// attachWatchers 把关注者与被 @ 的人挂到本次动作的主通知（items[0]）上，由 queueNotices 为每个人单独写一条私聊
+// （不进群消息）；没有任何原收件人（items 为空）时，新建一条只有关注者 / 被 @ 的人的通知，event 是本次动作的主事件。
 // 操作者本人不收；已经是原收件人的不重复；既被 @ 又是关注者的人只按“被 @”收。
 func attachWatchers(who store.Identity, items []notice, event string, watchers, mentions []int64) []notice {
 	got := map[int64]bool{who.MemberID: true}
@@ -248,7 +248,7 @@ func actEvent(act issue.Action) string {
 	return string(act)
 }
 
-// queueNotices 在状态变更的同一事务里写会话内提醒（与有没有配群无关，操作者本人不收）与待发群通知（工作空间配了群时）。
+// queueNotices 在状态变更的同一事务里写会话内提醒（与有没有配群无关，操作者本人不收）、待发私聊（关注者与被 @ 的人，一人一条）与待发群通知（工作空间配了群时，只含原收件人）。
 func queueNotices(ctx context.Context, tx store.DBTX, who store.Identity, is store.Issue, items []notice) error {
 	if len(items) == 0 {
 		return nil
@@ -278,6 +278,23 @@ func queueNotices(ctx context.Context, tx store.DBTX, who store.Identity, is sto
 			}
 		}
 	}
+	// 私聊：关注者与被 @ 的人各一条，与工作空间有没有绑群无关；有没有连接通讯账号在投递时判断。
+	// 会话提醒已在上面写好，与私聊成败无关。
+	for _, it := range items {
+		for _, g := range []struct {
+			mentioned bool
+			ids       []int64
+		}{{true, it.mentions}, {false, it.watchers}} {
+			for _, to := range g.ids {
+				if to == who.MemberID {
+					continue
+				}
+				if err := queueDirect(ctx, tx, is, it.event, to, who.MemberID, who.Tool, g.mentioned); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	ws, err := store.GetWorkspace(ctx, tx, is.WorkspaceID)
 	if err != nil {
 		return err
@@ -286,13 +303,30 @@ func queueNotices(ctx context.Context, tx store.DBTX, who store.Identity, is sto
 		return nil
 	}
 	for _, it := range items {
+		if len(it.to) == 0 { // 只有关注者 / 被 @ 的人：只私聊，不进群
+			continue
+		}
 		if err := store.InsertNotification(ctx, tx, store.Notification{
 			WorkspaceID: is.WorkspaceID, IssueID: is.ID, Event: it.event,
-			ActorMemberID: who.MemberID, ActorTool: who.Tool, Recipients: it.to, Watchers: it.watchers, Mentions: it.mentions,
+			ActorMemberID: who.MemberID, ActorTool: who.Tool, Recipients: it.to,
 			IssueStatus: string(is.Status), IssueOwnerID: is.OwnerID,
 		}); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// queueDirect 写一条发给 to 的私聊通知（关注者或留言里被 @ 的人）。与工作空间有没有绑群无关；
+// 有没有连接通讯账号、能不能发出在投递时判断。mentioned 为真原因是被 @，否则是关注。
+func queueDirect(ctx context.Context, tx store.DBTX, is store.Issue, event string, to, actor int64, tool string, mentioned bool) error {
+	n := store.Notification{WorkspaceID: is.WorkspaceID, IssueID: is.ID, Event: event,
+		ActorMemberID: actor, ActorTool: tool, DirectMemberID: &to,
+		IssueStatus: string(is.Status), IssueOwnerID: is.OwnerID}
+	if mentioned {
+		n.Mentions = []int64{to}
+	} else {
+		n.Watchers = []int64{to}
+	}
+	return store.InsertNotification(ctx, tx, n)
 }

@@ -24,6 +24,7 @@ oauth_config:
       - chat:write # 发通知、审批消息，改成结果 / post notifications and approvals, update them
       - app_mentions:read # 频道里 @Cohive 的指令（绑定群、群编号、我是谁） / commands sent as @Cohive in a channel
       - im:history # 私聊里收连接码 / receive link codes in direct messages
+      - im:write # 私聊关注者与被 @ 的人 / DM watchers and people @-mentioned in comments
       - channels:read # 绑定时记下公开频道名 / record the public channel name when binding
       - groups:read # 绑定时记下私有频道名 / record the private channel name when binding
       - users:read # 网页确认连接时显示是谁发来的码 / show who sent the code when you confirm in the web UI

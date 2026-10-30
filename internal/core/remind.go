@@ -86,7 +86,7 @@ func (s *Service) QueueReminders(ctx context.Context) (int, error) {
 			if ws.Notify.Channel != "" {
 				if err := store.InsertNotification(ctx, tx, store.Notification{
 					WorkspaceID: d.WorkspaceID, IssueID: d.IssueID, Event: event,
-					ActorMemberID: party, ActorTool: "cohive", Recipients: to, Watchers: watchers,
+					ActorMemberID: party, ActorTool: "cohive", Recipients: to,
 					IssueStatus: string(d.Status), IssueOwnerID: d.OwnerID,
 				}); err != nil {
 					return fmt.Errorf("queue overdue reminder notification: %w", err)
@@ -99,6 +99,10 @@ func (s *Service) QueueReminders(ctx context.Context) (int, error) {
 			for _, w := range watchers {
 				if err := store.InsertAlert(ctx, tx, store.Alert{WorkspaceID: d.WorkspaceID, MemberID: w,
 					IssueID: d.IssueID, Kind: AlertWatching, About: event, ActorMemberID: party}); err != nil {
+					return err
+				}
+				is := store.Issue{ID: d.IssueID, WorkspaceID: d.WorkspaceID, Status: d.Status, OwnerID: d.OwnerID}
+				if err := queueDirect(ctx, tx, is, event, w, party, "cohive", false); err != nil {
 					return err
 				}
 			}

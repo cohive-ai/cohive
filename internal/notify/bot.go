@@ -303,6 +303,16 @@ func (b *Bot) Send(ctx context.Context, chat string, m Rendered) error {
 	return b.api().SendText(ctx, id, m.Text)
 }
 
+// SendDirect 机器人私聊一个人：Telegram 里私聊的 chat_id 就是用户编号。对方屏蔽了机器人、
+// 从没和机器人开始过对话时 Telegram 返回 400/403，call 已归为 PermanentError。
+func (b *Bot) SendDirect(ctx context.Context, to store.ChatIdentity, m Rendered) error {
+	id, err := strconv.ParseInt(to.UserID, 10, 64)
+	if err != nil {
+		return &PermanentError{Msg: fmt.Sprintf("Telegram user ID must be a number: %q", to.UserID)}
+	}
+	return b.api().SendText(ctx, id, m.Text)
+}
+
 // SendApproval 发一条带“批准 / 拒绝”按钮的消息，返回消息编号。
 func (b *Bot) SendApproval(ctx context.Context, chat string, m Rendered, a Approval) (string, error) {
 	id, err := tgChat(chat)

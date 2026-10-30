@@ -77,6 +77,19 @@ Group messages (notifications, reminders and the bot's replies in the group) use
 
 Accepting, starting a fix and comments do not notify.
 
+**Who is @-mentioned in the group and who gets a direct message**: the people in the table above (the original recipients: reporter, owner, the people involved in a reassignment or reminder, and admins) are @-mentioned in the group. Two other groups of people are not @-mentioned in the group; the bot sends each of them a personal **direct message** instead:
+
+- people who watch the issue (cc'd when it was sent, or watching it themselves on the web or from a coding tool);
+- people @-mentioned in a comment.
+
+The direct message says which issue, what happened, who did it, why you are being notified, plus the link and the `/cohive 12` hint. The title and brief follow the workspace's switches, the comment text is never sent, and the language is the one the recipient chose in their Profile.
+
+- If the workspace has no group bound, direct messages are still sent.
+- Telegram: the direct message goes to the member's Telegram user ID. Telegram only lets a bot message people who have written to it first; members did exactly that when they connected Telegram, so every connected member qualifies and no extra permission is needed. A member who blocked the bot will not receive it.
+- For the permissions and upgrade checks for DingTalk and Slack direct messages, see section 3 of [DingTalk](dingtalk.md) (Chinese) and "Direct-message notifications" in [Slack](slack.en.md).
+- Members who haven't connected a chat account get no direct message, only the in-session reminders in the web UI and their coding tool.
+- A failed direct message (the person blocked the bot, a missing permission, quota used up) is only logged and not retried over and over; the in-session reminder still appears.
+
 How people get @-mentioned:
 - Members who have connected Telegram are mentioned by **user ID** (the message contains a link to them, with their name as the text). They don't need a Telegram username, and changing it later doesn't stop notifications.
 - Older data that has only a username and no user ID (for example registered early through the command line) falls back to `@username`; reconnecting once under Profile in the web UI switches them to mention-by-ID.

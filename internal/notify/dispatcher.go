@@ -26,6 +26,9 @@ const MaxAttempts = 7
 // backoff 是第 N 次失败后的等待时间，合计约 8.5 小时。
 var backoff = []time.Duration{10 * time.Second, time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour}
 
+// DirectMaxAttempts 是一条私聊最多尝试发送的次数（限流不计入，通道整体不可用计入）。私聊失败不重排，所以比群通知少试几次。
+const DirectMaxAttempts = 3
+
 // MaxAge 是通知的有效期，超过仍未送出的不再发送，避免积压后在群里刷出大量过时消息。
 const MaxAge = 24 * time.Hour
 
@@ -141,6 +144,9 @@ func (d *Dispatcher) deliver(ctx context.Context, tx pgx.Tx, n store.Notificatio
 	if ws.Archived() { // 归档时已把待发的跳过，这里兜底：归档与派发并发时漏网的也不发
 		return store.MarkNotificationSkipped(ctx, tx, n.ID, i18n.T("notify.dispatch.archived"))
 	}
+	if n.DirectMemberID != nil {
+		return d.deliverDirect(ctx, tx, ws, n)
+	}
 	if ws.Notify.Channel == "" {
 		return store.MarkNotificationFailed(ctx, tx, n.ID, i18n.T("notify.dispatch.disabled"))
 	}
@@ -243,4 +249,106 @@ func stale(n store.Notification, is store.Issue) bool {
 		return true
 	}
 	return *n.IssueOwnerID != *is.OwnerID
+}
+
+// directProviders 是选私聊通道的次序：工作空间绑定的通讯工具优先，再依次试其余的。
+func directProviders(bound string) []string {
+	out := []string{}
+	if bound != "" {
+		out = append(out, bound)
+	}
+	for _, p := range []string{store.ProviderTelegram, store.ProviderDingTalk, store.ProviderSlack} {
+		if p != bound {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// deliverDirect 投递一条私聊通知（关注者、留言里被 @ 的人）：不要求工作空间绑了群；
+// 私聊失败只影响这一条，不返回 errStopBatch（私聊用的通道不一定是群通道，别卡住别的群通知）。
+func (d *Dispatcher) deliverDirect(ctx context.Context, tx pgx.Tx, ws store.Workspace, n store.Notification) error {
+	if expired, err := store.NotificationExpired(ctx, tx, n.ID, MaxAge); err != nil {
+		return err
+	} else if expired {
+		return store.MarkNotificationSkipped(ctx, tx, n.ID, i18n.T("notify.dispatch.expired"))
+	}
+	is, err := store.GetIssue(ctx, tx, n.IssueID)
+	if err != nil {
+		return err
+	}
+	if stale(n, is) {
+		return store.MarkNotificationSkipped(ctx, tx, n.ID, i18n.T("notify.dispatch.stale"))
+	}
+	list, err := store.ListAllMembers(ctx, tx, n.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	accounts := make([]int64, 0, len(list))
+	for _, m := range list {
+		accounts = append(accounts, m.AccountID)
+	}
+	chats, err := store.ChatIdentitiesOf(ctx, tx, accounts)
+	if err != nil {
+		return err
+	}
+	people := make(map[int64]Person, len(list))
+	var rcpt *store.Member
+	for i, m := range list {
+		people[m.ID] = personOf(m, chats[m.AccountID])
+		if m.ID == *n.DirectMemberID {
+			rcpt = &list[i]
+		}
+	}
+	if rcpt == nil || rcpt.Status != store.MemberActive || rcpt.AccountDisabled {
+		return store.MarkNotificationSkipped(ctx, tx, n.ID, i18n.T("notify.dispatch.no_direct"))
+	}
+	var (
+		sender   DirectSender
+		provider string
+		to       *store.ChatIdentity
+	)
+	for _, p := range directProviders(ws.Notify.Channel) {
+		ds, ok := d.Senders[p].(DirectSender)
+		if !ok {
+			continue
+		}
+		if id := people[rcpt.ID].identity(p); id != nil && id.UserID != "" {
+			sender, provider, to = ds, p, id
+			break
+		}
+	}
+	if sender == nil {
+		return store.MarkNotificationSkipped(ctx, tx, n.ID, i18n.T("notify.dispatch.no_direct"))
+	}
+	acc, err := store.AccountByID(ctx, tx, rcpt.AccountID)
+	if err != nil {
+		return err
+	}
+	lang := i18n.Pick(acc.Language)
+	msg := RenderDirect(d.Senders[provider].Format(), provider, d.baseURL(ctx), ws, is, n, people, lang)
+	msg.Key = fmt.Sprintf("n%d", n.ID)
+
+	sendCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	sendErr := sender.SendDirect(sendCtx, *to, msg)
+	if sendErr == nil {
+		return store.MarkNotificationSent(ctx, tx, n.ID)
+	}
+	attempt := n.Attempts + 1
+	// 通道整体不可用（令牌失效、钉钉缺权限或额度用尽）也计入次数：私聊一人一条，若像群通知那样每分钟延后不计失败，
+	// 积压的私聊会每分钟重试一遍直到过期，形成重试风暴；试满 3 次放弃，会话提醒已在写入时备好
+	var ra *RetryAfterError
+	switch {
+	case errors.As(sendErr, &ra):
+		return store.DelayNotification(ctx, tx, n.ID, time.Duration(ra.Seconds)*time.Second, sendErr.Error())
+	case IsPermanent(sendErr):
+		d.logf("direct notification #%d failed, not retrying: %v", n.ID, sendErr)
+		return store.MarkNotificationFailed(ctx, tx, n.ID, sendErr.Error())
+	case attempt >= DirectMaxAttempts:
+		d.logf("direct notification #%d failed %d times, giving up: %v", n.ID, attempt, sendErr)
+		return store.MarkNotificationFailed(ctx, tx, n.ID, sendErr.Error())
+	default:
+		return store.MarkNotificationRetry(ctx, tx, n.ID, backoff[attempt-1], sendErr.Error())
+	}
 }

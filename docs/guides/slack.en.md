@@ -6,7 +6,8 @@ Once it's set up:
 
 - When it's someone's turn on an issue (a new issue, a verification request, a reopen, and so on), a message appears in the project channel and @-mentions them. When an issue is accepted, or closed after passing verification, the other side is told too. The message carries only the issue number, the hand-off and what to do next; the issue body never goes into the channel. The full list of events is in section 3 of [Group notifications](group-notify.en.md).
 - When someone asks to sign up, join or add a new device, an approval message with Approve and Reject buttons appears in the channel. An admin clicks one and the message turns into the result.
-- Members can be @-mentioned, and can click approval buttons, only after they connect their Slack account under Profile in the Cohive web app.
+- People who watch an issue, and people @-mentioned in a comment, are not @-mentioned in the channel; the bot sends them a personal **direct message** instead (see "Direct-message notifications" below).
+- Members can be @-mentioned, receive direct messages and click approval buttons only after they connect their Slack account under Profile in the Cohive web app.
 
 Cohive only needs **outbound** access to Slack: it connects out to Slack in Socket Mode, so you don't need a public IP, a domain or a tunnel.
 
@@ -33,6 +34,7 @@ Scopes in the manifest and what they're for:
 | `chat:write` | Posting notifications and approval messages, and updating them with the result |
 | `app_mentions:read` | Commands sent as @Cohive in a channel (bindgroup, chatid, whoami) |
 | `im:history` | Link codes members send in a direct message |
+| `im:write` | The bot DMs watchers and people @-mentioned in comments (see "Direct-message notifications" below) |
 | `channels:read`, `groups:read` | Recording the channel name when binding, to show it in the web UI |
 | `users:read` | Showing which Slack user sent the code when you confirm the connection in the web UI |
 
@@ -118,7 +120,23 @@ Note: send the code to the bot in a **direct message** only. A code posted in a 
 - [ ] Do it again, but reject it in the web app under Admin > Pending: the message in the channel changes to "Rejected" as well.
 - [ ] Have a member who is **not** an admin click an approval button: only they see a "no permission" notice, and the request is unaffected.
 - [ ] Post an account link code in the channel: the reply says the code was voided (without repeating it), and the web page shows the connection failed.
+- [ ] Watch an issue and have someone else change it: the watcher gets a direct message in the Messages tab of the Cohive app home (see "Direct-message notifications" above).
 - [ ] Server admin > Settings > Chat apps shows Slack as online.
+
+## Direct-message notifications
+
+People who watch an issue, and people @-mentioned in a comment, are not @-mentioned in the channel. The bot sends them a personal direct message instead: which issue, what happened, who did it, why you are being notified, plus the link and the `/cohive 12` hint. The title and brief follow the workspace's switches, the comment text is never sent, and the language is the one the recipient chose in their Profile. The original recipients (reporter, owner and so on) are still @-mentioned in the channel. If the workspace has no channel bound, the direct messages are still sent.
+
+Direct messages use `conversations.open` (which needs the `im:write` scope) plus `chat.postMessage`, and show up in the Messages tab of the Cohive app home. Members who haven't connected Slack get no direct message, only the in-session reminders in the web app and their coding tool. A failed send (the person closed DMs, missing scope and so on) is only logged and not retried over and over; the in-session reminder still appears.
+
+**Upgrading an existing deployment** (an app created from the latest manifest already has `im:write`; nothing to do):
+
+1. Open <https://api.slack.com/apps>, go to the Cohive app and click **OAuth & Permissions** on the left.
+2. Under **Scopes > Bot Token Scopes**, add `im:write`.
+3. Click **Reinstall to Workspace** in the banner at the top and allow it. The bot token (`xoxb-`) normally stays the same; if the page shows a new one, update the configuration as in step 4.
+4. Without these two steps direct messages fail, with a `missing_scope` hint in the log; everything else keeps working.
+
+**To verify**: have a member watch an issue, then have someone else change it (comment on it or transfer it). The watcher should receive a direct message in the Messages tab of the Cohive app home, and is not @-mentioned in the channel.
 
 ## Troubleshooting
 
@@ -129,6 +147,7 @@ Note: send the code to the bot in a **direct message** only. A code posted in a 
 - **Status says Socket Mode is turned off**: turn it on under **Socket Mode** in the app settings.
 - **Approval messages have no buttons**: Socket Mode was offline when the message was posted (a click couldn't have reached Cohive). Handle it in the web app under Admin > Pending; the message in the channel is still updated with the result.
 - **Notifications arrive but nobody is @-mentioned**: the person hasn't connected Slack yet (step 6).
+- **A watcher gets no direct message and the log shows `missing_scope`**: an existing deployment didn't add `im:write`; follow the upgrade steps under "Direct-message notifications".
 - **External members of a shared channel are refused when they click a button**: that's intentional. Only members of this workspace can approve.
 - **Can one app serve both a test and a production Cohive?** No, see section 0.
 

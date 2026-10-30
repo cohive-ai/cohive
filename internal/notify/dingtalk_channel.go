@@ -102,6 +102,15 @@ func (d *DingTalkChannel) Send(ctx context.Context, chat string, m Rendered) err
 		Params: map[string]string{"title": m.Title, "content": text}, AtUserIDs: atUsers(m.Mentions), Alert: m.Title})
 }
 
+// SendDirect 机器人单聊发一条 Markdown 消息（不 @ 人，换行与群消息一致）。
+func (d *DingTalkChannel) SendDirect(ctx context.Context, to store.ChatIdentity, m Rendered) error {
+	title := m.Title
+	if title == "" {
+		title = "Cohive"
+	}
+	return d.API.DirectMarkdown(ctx, to.UserID, title, dtText(m.Text))
+}
+
 // SendApproval 发审批卡片，返回卡片编号；没配审批模板或 Stream 不在线（点了按钮也收不到）时
 // 发不带按钮的文字、返回空编号。
 func (d *DingTalkChannel) SendApproval(ctx context.Context, chat string, m Rendered, a Approval) (string, error) {

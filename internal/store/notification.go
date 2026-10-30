@@ -17,24 +17,27 @@ type Notification struct {
 	Recipients    []int64
 	Watchers      []int64 // 关注者：告知性质，不要求动手
 	Mentions      []int64 // 留言 @ 到的人（只就这一条）
-	IssueStatus   string  // 写入时问题单的状态，投递前核对
-	IssueOwnerID  *int64  // 写入时问题单的负责人，投递前核对
-	Status        string
-	Attempts      int
-	NextAttemptAt time.Time
-	LastError     string
-	CreatedAt     time.Time
-	SentAt        *time.Time
+	// DirectMemberID 非空表示这是一条发给该成员的私聊（不进群）：Recipients 为空，
+	// 原因用 Watchers=[该人]（关注）或 Mentions=[该人]（被 @）表示。
+	DirectMemberID *int64
+	IssueStatus    string // 写入时问题单的状态，投递前核对
+	IssueOwnerID   *int64 // 写入时问题单的负责人，投递前核对
+	Status         string
+	Attempts       int
+	NextAttemptAt  time.Time
+	LastError      string
+	CreatedAt      time.Time
+	SentAt         *time.Time
 }
 
 const notificationColumns = `id, workspace_id, issue_id, event, actor_member_id, actor_tool, recipients,
-	watchers, mentions, issue_status, issue_owner_id, status, attempts, next_attempt_at, last_error, created_at, sent_at`
+	watchers, mentions, issue_status, issue_owner_id, direct_member_id, status, attempts, next_attempt_at, last_error, created_at, sent_at`
 
 func scanNotification(row interface{ Scan(...any) error }) (Notification, error) {
 	var n Notification
 	var recipients, watchers, mentions []byte
 	err := row.Scan(&n.ID, &n.WorkspaceID, &n.IssueID, &n.Event, &n.ActorMemberID, &n.ActorTool, &recipients,
-		&watchers, &mentions, &n.IssueStatus, &n.IssueOwnerID, &n.Status, &n.Attempts, &n.NextAttemptAt, &n.LastError, &n.CreatedAt, &n.SentAt)
+		&watchers, &mentions, &n.IssueStatus, &n.IssueOwnerID, &n.DirectMemberID, &n.Status, &n.Attempts, &n.NextAttemptAt, &n.LastError, &n.CreatedAt, &n.SentAt)
 	if err != nil {
 		return Notification{}, notFound(err)
 	}
@@ -69,9 +72,9 @@ func InsertNotification(ctx context.Context, q DBTX, n Notification) error {
 		return err
 	}
 	_, err = q.Exec(ctx, `INSERT INTO notifications (workspace_id, issue_id, event, actor_member_id, actor_tool, recipients,
-		watchers, mentions, issue_status, issue_owner_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		watchers, mentions, issue_status, issue_owner_id, direct_member_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		n.WorkspaceID, n.IssueID, n.Event, n.ActorMemberID, n.ActorTool, recipients, watchers, mentions,
-		n.IssueStatus, n.IssueOwnerID)
+		n.IssueStatus, n.IssueOwnerID, n.DirectMemberID)
 	return err
 }
 
@@ -146,16 +149,16 @@ func DelayNotification(ctx context.Context, q DBTX, id int64, after time.Duratio
 	return err
 }
 
-// CountNotifications 返回工作空间待发与失败的通知条数。
+// CountNotifications 返回工作空间待发与失败的群通知条数（私聊不计：失败不重排，见 RequeueFailedNotifications）。
 func CountNotifications(ctx context.Context, q DBTX, wsID int64) (pending, failed int, err error) {
 	err = q.QueryRow(ctx, `SELECT count(*) FILTER (WHERE status = 'pending'), count(*) FILTER (WHERE status = 'failed')
-		FROM notifications WHERE workspace_id = $1`, wsID).Scan(&pending, &failed)
+		FROM notifications WHERE workspace_id = $1 AND direct_member_id IS NULL`, wsID).Scan(&pending, &failed)
 	return pending, failed, err
 }
 
-// RequeueFailedNotifications 把工作空间里失败的通知重新排队，返回条数。
+// RequeueFailedNotifications 把工作空间里失败的群通知重新排队，返回条数。私聊失败不重排，避免补发风暴。
 func RequeueFailedNotifications(ctx context.Context, q DBTX, wsID int64) (int64, error) {
 	tag, err := q.Exec(ctx, `UPDATE notifications SET status = 'pending', attempts = 0, next_attempt_at = now(),
-		created_at = now(), last_error = '' WHERE workspace_id = $1 AND status = 'failed'`, wsID)
+		created_at = now(), last_error = '' WHERE workspace_id = $1 AND status = 'failed' AND direct_member_id IS NULL`, wsID)
 	return tag.RowsAffected(), err
 }
