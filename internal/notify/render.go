@@ -121,6 +121,17 @@ func RenderFor(f Formatter, provider, base string, ws store.Workspace, is store.
 		head = l.T("notify.head.default", d(nil))
 	}
 
+	// 关注者与留言里被 @ 的人：原收件人（谁该动手）的首行照旧，后面追加“仅告知”的人；没有原收件人时单独成首行
+	if len(n.Recipients) == 0 && (len(n.Watchers) > 0 || len(n.Mentions) > 0) {
+		head = l.T("notify.head.watchers_only", i18n.D{"ID": is.ID, "Actor": actor, "Event": esc(eventTitle(l, n.Event))})
+	}
+	if len(n.Mentions) > 0 {
+		head += l.T("notify.cc.mentions", i18n.D{"Who": mentions(n.Mentions)})
+	}
+	if len(n.Watchers) > 0 {
+		head += l.T("notify.cc.watchers", i18n.D{"Who": mentions(n.Watchers)})
+	}
+
 	lines := []string{head}
 	var meta []string
 	if is.TargetService != "" {

@@ -53,9 +53,15 @@ func addWatchers(ctx context.Context, q store.DBTX, issueID, addedBy int64, ms [
 	return nil
 }
 
-// mentionRe 取留言里的 @登录名：前一个字符不能是字母、数字、下划线、点或 @（免得把邮箱 a@b.com 当成 @）。
+// mentionRe 取留言里 @ 后面的一段字（含中文等文字）：前一个字符不能是字母、数字、下划线、点或 @（免得把邮箱 a@b.com 当成 @）。
 // RE2 没有向后断言，前一个字符作为第一组一起匹配。
-var mentionRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.@])@([A-Za-z0-9][A-Za-z0-9_-]{0,31})`)
+var mentionRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.@])@([\p{L}\p{N}_-]+)`)
+
+// mentionNameRe 是 @ 后面那段字开头的登录名写法：中文里常紧接着写正文（“@bob看一下”），只取前面的登录名部分。
+var mentionNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*`)
+
+// mentionMaxRunes 是没识别的 @ 原样列出时的字数上限（昵称后面可能紧接着正文）。
+const mentionMaxRunes = 32
 
 // resolveMentions 解析留言里的 @。登录名（不区分大小写）对得上在册成员的进第一个返回值（去重、不含操作者本人）；
 // 昵称、重名、不存在、已停用的都不通知，原样（含 @）记进第二个返回值（去重，按出现顺序）。@ 不加关注。
@@ -64,7 +70,18 @@ func resolveMentions(ctx context.Context, q store.DBTX, who store.Identity, note
 	var unknown []string
 	seenID, seenName := map[int64]bool{who.MemberID: true}, map[string]bool{}
 	for _, mt := range mentionRe.FindAllStringSubmatch(note, -1) {
-		written := mt[1]
+		written := mentionNameRe.FindString(mt[1])
+		if written == "" || len(written) > 32 { // 不是登录名写法（如 @昵称）：不通知，原样列出
+			written = mt[1]
+			if r := []rune(written); len(r) > mentionMaxRunes {
+				written = string(r[:mentionMaxRunes])
+			}
+			if !seenName[written] {
+				seenName[written] = true
+				unknown = append(unknown, "@"+written)
+			}
+			continue
+		}
 		key := strings.ToLower(written)
 		if seenName[key] {
 			continue

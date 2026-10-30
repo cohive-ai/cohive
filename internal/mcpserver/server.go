@@ -62,30 +62,55 @@ func identity(req *mcp.CallToolRequest) (store.Identity, error) {
 // ---- 输入结构 ----
 
 type DraftArgs struct {
-	Title          string `json:"title"`
-	Brief          string `json:"brief,omitempty"`
-	Summary        string `json:"summary,omitempty"`
-	Expected       string `json:"expected,omitempty"`
-	Actual         string `json:"actual,omitempty"`
-	ReproScript    string `json:"repro_script,omitempty"`
-	ReproEnv       string `json:"repro_env,omitempty"`
-	ReproExitCode  *int   `json:"repro_expected_exit_code,omitempty"`
-	Evidence       string `json:"evidence,omitempty"`
-	Repo           string `json:"repo,omitempty"`
-	Branch         string `json:"branch,omitempty"`
-	Commit         string `json:"commit,omitempty"`
-	TargetService  string `json:"target_service,omitempty"`
-	Owner          string `json:"owner,omitempty"`
-	Severity       string `json:"severity,omitempty"`
-	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	Title          string   `json:"title"`
+	Brief          string   `json:"brief,omitempty"`
+	Summary        string   `json:"summary,omitempty"`
+	Expected       string   `json:"expected,omitempty"`
+	Actual         string   `json:"actual,omitempty"`
+	ReproScript    string   `json:"repro_script,omitempty"`
+	ReproEnv       string   `json:"repro_env,omitempty"`
+	ReproExitCode  *int     `json:"repro_expected_exit_code,omitempty"`
+	Evidence       string   `json:"evidence,omitempty"`
+	Repo           string   `json:"repo,omitempty"`
+	Branch         string   `json:"branch,omitempty"`
+	Commit         string   `json:"commit,omitempty"`
+	TargetService  string   `json:"target_service,omitempty"`
+	Owner          string   `json:"owner,omitempty"`
+	Severity       string   `json:"severity,omitempty"`
+	CC             []string `json:"cc,omitempty"`
+	IdempotencyKey string   `json:"idempotency_key,omitempty"`
 }
 
 type SubmitArgs struct {
-	IssueID         int64  `json:"issue_id"`
-	ExpectedVersion int    `json:"expected_version"`
-	Assignee        string `json:"assignee,omitempty"`
-	Note            string `json:"note,omitempty"`
-	IdempotencyKey  string `json:"idempotency_key,omitempty"`
+	IssueID         int64    `json:"issue_id"`
+	ExpectedVersion int      `json:"expected_version"`
+	Assignee        string   `json:"assignee,omitempty"`
+	Note            string   `json:"note,omitempty"`
+	CC              []string `json:"cc,omitempty"`
+	IdempotencyKey  string   `json:"idempotency_key,omitempty"`
+}
+
+type WatchArgs struct {
+	IssueID int64    `json:"issue_id"`
+	Watch   bool     `json:"watch"`
+	Members []string `json:"members,omitempty"`
+}
+
+type WatcherEntry struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name,omitempty"`
+}
+
+type WatchResult struct {
+	IssueID  int64          `json:"issue_id"`
+	Watchers []WatcherEntry `json:"watchers"`
+}
+
+// UpdateResult 是留言的结果：问题单本身，外加留言里没有认出的 @。
+type UpdateResult struct {
+	view.IssueView
+	UnknownMentions []string `json:"unknown_mentions,omitempty"`
+	Hint            string   `json:"hint,omitempty"`
 }
 
 type AcceptArgs struct {
@@ -205,11 +230,26 @@ var (
 		"target_service":           "mcp.arg.target_service",
 		"owner":                    "mcp.arg.owner",
 		"severity":                 "mcp.arg.severity",
+		"cc":                       "mcp.arg.cc",
 	}
 	submitArgDescs = map[string]string{
 		"expected_version": "mcp.arg.expected_version",
 		"assignee":         "mcp.arg.assignee",
+		"cc":               "mcp.arg.cc",
 	}
+	watchArgDescs = map[string]string{
+		"watch":   "mcp.arg.watch",
+		"members": "mcp.arg.watch_members",
+	}
+	watchOutDescs = map[string]string{
+		"watchers":                "mcp.out.watchers",
+		"watchers[].name":         "mcp.out.watcher.name",
+		"watchers[].display_name": "mcp.out.watcher.display_name",
+	}
+	updateOutDescs = merge(view.IssueDescs, map[string]string{
+		"unknown_mentions": "mcp.out.unknown_mentions",
+		"hint":             "mcp.out.unknown_mentions_hint",
+	})
 	acceptArgDescs = map[string]string{
 		"expected_version": "mcp.arg.expected_version",
 		"decision":         "mcp.arg.decision",
@@ -277,6 +317,7 @@ var ToolPolicies = []ToolPolicy{
 	{Name: "cohive_submit_issue", Confirm: true},
 	{Name: "cohive_accept_issue", Confirm: true},
 	{Name: "cohive_update_issue"},
+	{Name: "cohive_watch_issue"}, // 关注只影响通知，不改单子
 	{Name: "cohive_request_verification"},
 	{Name: "cohive_close_issue", Confirm: true},
 	{Name: "cohive_cancel_issue", Confirm: true},
@@ -352,16 +393,30 @@ func NewServerFor(svc *core.Service, l i18n.Lang) *mcp.Server {
 		return errors.New(msg)
 	}
 
-	act := func(ctx context.Context, req *mcp.CallToolRequest, in core.ActInput) (*mcp.CallToolResult, view.IssueView, error) {
+	// withWatchers 把关注者填进结果；取不到时不影响动作本身的结果
+	withWatchers := func(ctx context.Context, who store.Identity, v view.IssueView) view.IssueView {
+		ws, err := svc.Watchers(ctx, who, v.ID)
+		if err != nil {
+			return v
+		}
+		return view.WithWatchers(v, ws)
+	}
+
+	actDetail := func(ctx context.Context, req *mcp.CallToolRequest, in core.ActInput) (view.IssueView, core.ActInfo, error) {
 		who, err := identity(req)
 		if err != nil {
-			return nil, view.IssueView{}, fail(err)
+			return view.IssueView{}, core.ActInfo{}, fail(err)
 		}
-		is, err := svc.Act(ctx, who, in)
+		is, info, err := svc.ActDetail(ctx, who, in)
 		if err != nil {
-			return nil, view.IssueView{}, fail(err)
+			return view.IssueView{}, info, fail(err)
 		}
-		return nil, view.Issue(l, who, is), nil
+		return withWatchers(ctx, who, view.Issue(l, who, is)), info, nil
+	}
+
+	act := func(ctx context.Context, req *mcp.CallToolRequest, in core.ActInput) (*mcp.CallToolResult, view.IssueView, error) {
+		v, _, err := actDetail(ctx, req, in)
+		return nil, v, err
 	}
 
 	register(s, l, spec{name: "cohive_draft_issue", ann: writes, desc: "mcp.tool.draft_issue", writes: true}, draftArgDescs, issueOutDescs,
@@ -375,18 +430,18 @@ func NewServerFor(svc *core.Service, l i18n.Lang) *mcp.Server {
 				ReproScript: in.ReproScript, ReproEnv: in.ReproEnv, ReproExitCode: in.ReproExitCode,
 				Evidence: in.Evidence, Repo: in.Repo, Branch: in.Branch, Commit: in.Commit,
 				TargetService: in.TargetService, Owner: in.Owner, Severity: in.Severity,
-				IdempotencyKey: in.IdempotencyKey,
+				CC: in.CC, IdempotencyKey: in.IdempotencyKey,
 			})
 			if err != nil {
 				return nil, view.IssueView{}, fail(err)
 			}
-			return nil, view.Issue(l, who, is), nil
+			return nil, withWatchers(ctx, who, view.Issue(l, who, is)), nil
 		})
 
 	register(s, l, spec{name: "cohive_submit_issue", ann: writes, desc: "mcp.tool.submit_issue", writes: true}, submitArgDescs, issueOutDescs,
 		func(ctx context.Context, req *mcp.CallToolRequest, in SubmitArgs) (*mcp.CallToolResult, view.IssueView, error) {
 			return act(ctx, req, core.ActInput{IssueID: in.IssueID, Action: issue.ActSubmit,
-				ExpectedVersion: in.ExpectedVersion, Assignee: in.Assignee, Note: in.Note, IdempotencyKey: in.IdempotencyKey})
+				ExpectedVersion: in.ExpectedVersion, Assignee: in.Assignee, Note: in.Note, CC: in.CC, IdempotencyKey: in.IdempotencyKey})
 		})
 
 	register(s, l, spec{name: "cohive_accept_issue", ann: writes, desc: "mcp.tool.accept_issue", writes: true}, acceptArgDescs, issueOutDescs,
@@ -406,16 +461,43 @@ func NewServerFor(svc *core.Service, l i18n.Lang) *mcp.Server {
 				Note: in.Note, Assignee: in.TransferTo, IdempotencyKey: in.IdempotencyKey})
 		})
 
-	register(s, l, spec{name: "cohive_update_issue", ann: writes, desc: "mcp.tool.update_issue", writes: true}, updateArgDescs, issueOutDescs,
-		func(ctx context.Context, req *mcp.CallToolRequest, in UpdateArgs) (*mcp.CallToolResult, view.IssueView, error) {
+	register(s, l, spec{name: "cohive_update_issue", ann: writes, desc: "mcp.tool.update_issue", writes: true}, updateArgDescs, updateOutDescs,
+		func(ctx context.Context, req *mcp.CallToolRequest, in UpdateArgs) (*mcp.CallToolResult, UpdateResult, error) {
 			a := issue.ActComment
 			if in.StartFixing {
 				a = issue.ActStart
 			} else if in.Note == "" {
-				return nil, view.IssueView{}, fail(i18n.Errorf("mcp.err.note_required"))
+				return nil, UpdateResult{}, fail(i18n.Errorf("mcp.err.note_required"))
 			}
-			return act(ctx, req, core.ActInput{IssueID: in.IssueID, Action: a, ExpectedVersion: in.ExpectedVersion,
+			v, info, err := actDetail(ctx, req, core.ActInput{IssueID: in.IssueID, Action: a, ExpectedVersion: in.ExpectedVersion,
 				Note: in.Note, IdempotencyKey: in.IdempotencyKey})
+			if err != nil {
+				return nil, UpdateResult{}, err
+			}
+			out := UpdateResult{IssueView: v}
+			if len(info.UnknownMentions) > 0 {
+				out.UnknownMentions = info.UnknownMentions
+				out.Hint = l.T("mcp.hint.unknown_mentions")
+			}
+			return nil, out, nil
+		})
+
+	register(s, l, spec{name: "cohive_watch_issue", ann: writes, desc: "mcp.tool.watch_issue"}, watchArgDescs, watchOutDescs,
+		func(ctx context.Context, req *mcp.CallToolRequest, in WatchArgs) (*mcp.CallToolResult, WatchResult, error) {
+			who, err := identity(req)
+			if err != nil {
+				return nil, WatchResult{}, fail(err)
+			}
+			// 编程工具令牌不是网页管理员（Account 为空）：让别人关注只有发起人、负责人，移除别人只有发起人
+			ws, err := svc.SetWatch(ctx, core.Actor{Via: core.ViaAgent}, who, core.WatchInput{IssueID: in.IssueID, Members: in.Members, Watch: in.Watch})
+			if err != nil {
+				return nil, WatchResult{}, fail(err)
+			}
+			out := WatchResult{IssueID: in.IssueID, Watchers: make([]WatcherEntry, 0, len(ws))}
+			for _, m := range ws {
+				out.Watchers = append(out.Watchers, WatcherEntry{Name: m.Name, DisplayName: m.DisplayName})
+			}
+			return nil, out, nil
 		})
 
 	register(s, l, spec{name: "cohive_request_verification", ann: writes, desc: "mcp.tool.request_verification", writes: true}, verifyArgDescs, issueOutDescs,
@@ -451,7 +533,7 @@ func NewServerFor(svc *core.Service, l i18n.Lang) *mcp.Server {
 			if err != nil {
 				return nil, GetResult{}, fail(err)
 			}
-			out := GetResult{Issue: view.Issue(l, who, is), Events: view.Events(evs)}
+			out := GetResult{Issue: withWatchers(ctx, who, view.Issue(l, who, is)), Events: view.Events(evs)}
 			return nil, out, nil
 		})
 

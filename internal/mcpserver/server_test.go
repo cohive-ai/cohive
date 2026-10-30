@@ -244,7 +244,7 @@ func TestToolAnnotations(t *testing.T) {
 		"cohive_get_issue": true, "cohive_inbox": true, "cohive_search": true, "cohive_who_owns": true, "cohive_find_member": true,
 		"cohive_draft_issue": false, "cohive_submit_issue": false, "cohive_accept_issue": false,
 		"cohive_update_issue": false, "cohive_request_verification": false, "cohive_close_issue": false,
-		"cohive_cancel_issue": false, "cohive_delete_draft": false,
+		"cohive_cancel_issue": false, "cohive_delete_draft": false, "cohive_watch_issue": false,
 	}
 	seen := 0
 	for _, tool := range res.Tools {

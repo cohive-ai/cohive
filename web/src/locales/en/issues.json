@@ -105,7 +105,17 @@
     "deleteDraft": "Delete draft",
     "deleteDraftTitle": "Delete draft #{{id}}",
     "deleteDraftMessage": "Only you can see this draft. Deleting it cannot be undone and leaves no record.",
-    "deleteDraftConfirm": "Delete"
+    "deleteDraftConfirm": "Delete",
+    "watchers": "Watchers",
+    "watchersNone": "No watchers yet",
+    "watch": "Watch",
+    "unwatch": "Unwatch",
+    "removeWatcher": "Remove",
+    "removeWatcherLabel": "Remove watcher {{name}}",
+    "ccLabel": "CC: enter a login name",
+    "ccPlaceholder": "Login names, comma separated",
+    "ccAdd": "CC",
+    "ccRequired": "Enter the login name to CC"
   },
   "event": {
     "head": "<actor>{{actor}}</actor> <tool>({{tool}})</tool> {{action}}",

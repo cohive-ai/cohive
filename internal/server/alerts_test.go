@@ -95,3 +95,40 @@ func TestAlertsAPI(t *testing.T) {
 		t.Fatalf("ops 的成员没有提醒：%d %s", code, body)
 	}
 }
+
+// CC-1：抄送的关注者拿到 kind=watching，about 是原事件名；owner 的 assigned 不带 about。
+func TestAlertsAPIWatchingAbout(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, builtWeb)
+	ws, err := store.DefaultWorkspace(ctx, f.svc.Pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := store.CreateMember(ctx, f.svc.Pool, ws, "lee-watcher", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := store.IssueToken(ctx, f.svc.Pool, m.ID, "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := f.svc.Draft(ctx, f.a, core.DraftInput{Title: "t", Brief: "b", Actual: "a", Owner: "lee-codex", CC: []string{"lee-watcher"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Act(ctx, f.a, core.ActInput{IssueID: d.ID, Action: issue.ActSubmit, ExpectedVersion: d.Version}); err != nil {
+		t.Fatal(err)
+	}
+	code, _, body := get(t, f.url+"/api/v1/w/default/alerts?after=0", token)
+	var res struct {
+		Items []struct {
+			Kind  string `json:"kind"`
+			About string `json:"about"`
+			Actor string `json:"actor"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(body), &res); code != 200 || err != nil || len(res.Items) != 1 ||
+		res.Items[0].Kind != "watching" || res.Items[0].About != "assigned" || res.Items[0].Actor != "lee-claude" {
+		t.Fatalf("关注者应收到 watching + about：%d %s", code, body)
+	}
+}

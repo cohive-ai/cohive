@@ -678,6 +678,11 @@ func TestCommentMentions(t *testing.T) {
 	if len(n.Mentions) != 0 || strings.Join(info.UnknownMentions, ",") != "@Otto,@nobody,@zzz" {
 		t.Fatalf("没识别的 @：%+v %+v", n, info)
 	}
+	// 中文昵称不通知、原样列出；登录名后面紧接中文正文时只取登录名
+	n, info = comment(e.a, "@关羽 你看下，@lee-other看一下")
+	if !sameList(n.Mentions, []int64{e.o.MemberID}) || strings.Join(info.UnknownMentions, ",") != "@关羽" {
+		t.Fatalf("中文昵称与紧接正文：%+v %+v", n, info)
+	}
 	// 邮箱形式、点号后的 @ 都不算
 	if _, info = comment(e.a, "mail a@b.com x.@lee-other"); len(info.UnknownMentions) != 0 {
 		t.Fatalf("邮箱不算 @：%v", info)

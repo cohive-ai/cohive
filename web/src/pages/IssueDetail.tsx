@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { safeTrans } from "../i18n/safeTrans";
 import { Trans, useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type Issue, type IssueEvent } from "../api";
+import { api, ApiError, type Issue, type IssueDetail, type IssueEvent } from "../api";
 import { btn, ConfirmButton, Dialog, ErrorText, errMsg, Field as FormField, inputClass } from "../ui";
 import { Notice, StatusTag, ToolMark } from "../components";
 import {
@@ -63,6 +63,7 @@ export function IssueDetailPage() {
   }
 
   const { issue: is, events, can_cancel, can_delete } = detail.data;
+  const wd = detail.data;
   const unset = <span className="text-muted">{t("unset")}</span>;
   const meta: [string, React.ReactNode][] = [
     [t("detail.reporter"), <span className="inline-flex items-center gap-1.5">{is.source}<ToolMark tool={is.source_tool} /></span>],
@@ -131,6 +132,8 @@ export function IssueDetailPage() {
           </section>
 
           <Field title={t("detail.evidence")} text={is.evidence} mono />
+
+          <Watchers ws={ws} id={is.id} detail={wd} readOnly={archived} />
         </div>
 
         <section aria-label={t("detail.activity")}>
@@ -276,5 +279,98 @@ function DeleteDraftButton({ ws, id, readOnly }: { ws: string; id: number; readO
         await navigate({ to: "/w/$ws", params: { ws } });
       }}
     />
+  );
+}
+
+// 关注者（CC-1）：关注 / 取消关注自己；发起人、负责人可抄送别人；发起人与账号登录的管理员可移除别人。
+// 按钮是否显示由详情里的 can_* 决定，真正操作时服务端重新判定，错误原样显示。
+function Watchers({ ws, id, detail, readOnly }: { ws: string; id: number; detail: IssueDetail; readOnly: boolean }) {
+  const { t } = useTranslation("issues");
+  const qc = useQueryClient();
+  const inputId = useId();
+  const [cc, setCc] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const { watchers, watching, can_watch, can_add_watchers, can_remove_watchers } = detail;
+  const run = async (body: { watch: boolean; members?: string[] }) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.setWatch(ws, id, body);
+      await qc.invalidateQueries({ queryKey: ["issue", ws] });
+      return true;
+    } catch (err) {
+      setError(errMsg(err));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const add = async () => {
+    const members = cc.split(/[,\uff0c\s]+/).filter(Boolean);
+    if (members.length === 0) {
+      setError(t("detail.ccRequired"));
+      return;
+    }
+    if (await run({ watch: true, members })) setCc("");
+  };
+  return (
+    <section aria-label={t("detail.watchers")}>
+      <div className="mb-2 flex flex-wrap items-center gap-3">
+        <h2 className="font-semibold">{t("detail.watchers")}</h2>
+        {can_watch && (
+          <button type="button" disabled={busy || readOnly} onClick={() => run({ watch: !watching })} className={btn.secondary}>
+            {watching ? t("detail.unwatch") : t("detail.watch")}
+          </button>
+        )}
+      </div>
+      {watchers.length === 0 ? (
+        <p className="text-sm text-muted">{t("detail.watchersNone")}</p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {watchers.map((m) => (
+            <li key={m.name} className="flex items-center gap-2">
+              <span className="font-medium">{m.display_name || m.name}</span>
+              {m.display_name && m.display_name !== m.name && <span className="text-muted">{m.name}</span>}
+              {can_remove_watchers && (
+                <button
+                  type="button"
+                  disabled={busy || readOnly}
+                  onClick={() => run({ watch: false, members: [m.name] })}
+                  aria-label={t("detail.removeWatcherLabel", { name: m.name })}
+                  className="text-muted hover:text-danger disabled:opacity-50"
+                >
+                  {t("detail.removeWatcher")}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {can_add_watchers && (
+        <div className="mt-3 flex max-w-md flex-wrap items-end gap-2">
+          <div className="min-w-0 flex-1">
+            <label htmlFor={inputId} className="mb-1 block text-sm text-muted">
+              {t("detail.ccLabel")}
+            </label>
+            <input
+              id={inputId}
+              value={cc}
+              onChange={(e) => setCc(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void add();
+              }}
+              placeholder={t("detail.ccPlaceholder")}
+              className={inputClass}
+              disabled={busy || readOnly}
+            />
+          </div>
+          <button type="button" onClick={add} disabled={busy || readOnly} className={btn.secondary}>
+            {t("detail.ccAdd")}
+          </button>
+        </div>
+      )}
+      <ErrorText>{error}</ErrorText>
+    </section>
   );
 }

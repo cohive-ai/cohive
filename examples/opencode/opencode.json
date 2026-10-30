@@ -17,6 +17,7 @@
     "cohive_cohive_find_member": "allow",
     "cohive_cohive_draft_issue": "allow",
     "cohive_cohive_update_issue": "allow",
+    "cohive_cohive_watch_issue": "allow",
     "cohive_cohive_request_verification": "allow",
     "cohive_cohive_submit_issue": "ask",
     "cohive_cohive_accept_issue": "ask",

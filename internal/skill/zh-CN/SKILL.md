@@ -37,6 +37,7 @@ Cohive 是团队的协作层：其他成员的智能体会把问题交给你，�
    |---|---|
    | 接单 / 退回 / 转交 | `cohive_accept_issue`（decision 为 accept / decline / transfer，退回和转交必须写理由；转交接收人用登录名，用户只说了昵称时先用 `cohive_find_member` 确认） |
    | 开始修复、补充进展 | `cohive_update_issue`（start_fixing 或 note） |
+| 关注 / 取消关注一张单 | `cohive_watch_issue`（watch 为 true / false，members 为空表示自己；让别人关注只有发起人、负责人能做，移除别人只有发起人能做） |
    | 修好后请对方验证 | `cohive_request_verification`（note 写改了什么、合并请求、部署位置） |
    | 验证通过 / 未通过 | `cohive_close_issue`（verdict 为 pass / reopen） |
    | 作废自己发出、还没被接单的单 | `cohive_cancel_issue`（必须写理由，作废后不能恢复，只能留言） |
@@ -53,6 +54,8 @@ Cohive 是团队的协作层：其他成员的智能体会把问题交给你，�
 2. 调用 `cohive_draft_issue` 起草，尽量提供：期望与实际结果、可直接运行的复现脚本、修复后应返回的退出码、仓库、分支、提交号。
 3. 写好 `brief`（群通知简述）：一句话说清是什么问题、影响什么，不超过 80 字，**不含日志、密钥、内部地址、客户数据**。标题和简述会原样出现在团队群里。
 4. 把草稿的标题、简述、负责人展示给用户，确认后再调用 `cohive_submit_issue` 发出。
+   需要让别人知情时，起草或发出时用 `cc` 抄送（只传登录名，昵称同样先用 `cohive_find_member` 确认）：被抄送的人成为关注者，会收到这张单此后的所有动态，也可以留言；关注者列表在问题单的 `watchers` 里。自己想跟进别人的单时用 `cohive_watch_issue`。
+   留言里 `@登录名` 只通知被 @ 的那个人、只通知这一条，不会让他成为关注者。结果里出现 `unknown_mentions` 说明那些 @ 没有通知到任何人，改用登录名（可先用 `cohive_find_member` 查）后再留言。
 5. 用户不想要这张单了：还没发出的草稿用 `cohive_delete_draft` 删除；已发出、还没被接单的用 `cohive_cancel_issue` 作废，必须写理由，负责人会收到通知。两者都不能恢复，都要用户确认后再调用。已被接单的单只能请工作空间管理员在网页上作废。
 
 ## 写入被拒：疑似密钥

@@ -48,6 +48,20 @@ type detailResult struct {
 	// CanCancel、CanDelete 供网页决定是否显示“作废”“删除草稿”按钮；真正操作时业务层重新判定。
 	CanCancel bool `json:"can_cancel"`
 	CanDelete bool `json:"can_delete"`
+	// 关注者（CC-1）：当前关注者与查看者的关注权限，网页据此决定显示哪些按钮；真正操作时业务层重新判定。
+	Watchers          []MemberView `json:"watchers"`
+	Watching          bool         `json:"watching"`
+	CanWatch          bool         `json:"can_watch"`
+	CanAddWatchers    bool         `json:"can_add_watchers"`
+	CanRemoveWatchers bool         `json:"can_remove_watchers"`
+}
+
+func watcherViews(ms []store.Member) []MemberView {
+	out := make([]MemberView, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, MemberView{Name: m.Name, DisplayName: m.DisplayName})
+	}
+	return out
 }
 
 // Options 是接口层的可选依赖。
@@ -246,9 +260,46 @@ func workspaceRoutes(mux *http.ServeMux, svc *core.Service) {
 			writeError(w, err)
 			return
 		}
+		watchers, err := svc.Watchers(r.Context(), who, id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		wp := svc.WatchPerms(r.Context(), webAdmin(r), who, is)
 		writeJSON(w, http.StatusOK, detailResult{Issue: view.Issue(i18n.FromContext(r.Context()), who, is), Events: view.Events(evs),
 			CanCancel: svc.CanCancel(r.Context(), webAdmin(r), who, is),
-			CanDelete: is.Status == issue.StatusDraft && is.SourceMemberID == who.MemberID})
+			CanDelete: is.Status == issue.StatusDraft && is.SourceMemberID == who.MemberID,
+			Watchers:  watcherViews(watchers), Watching: wp.Watching, CanWatch: wp.CanWatch,
+			CanAddWatchers: wp.CanAdd, CanRemoveWatchers: wp.CanRemoveOthers})
+	})
+	// 关注 / 取消关注 / 抄送（CC-1）：members 为空是操作者本人。移除别人只有发起人与账号密码登录的管理员，
+	// 所以免密会话（webAdmin 为空）传不带账号的操作人，业务层就不会把它当成管理员。
+	handle(mux, "POST /api/v1/w/{ws}/issues/{id}/watchers", aSession, func(w http.ResponseWriter, r *http.Request) {
+		who, ok := memberScope(w, r, svc)
+		if !ok {
+			return
+		}
+		id, ok := pathID(w, r, "id")
+		if !ok {
+			return
+		}
+		var body struct {
+			Watch   bool     `json:"watch"`
+			Members []string `json:"members"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		act := core.Actor{Via: core.ViaWeb}
+		if a := webAdmin(r); a != nil {
+			act = core.WebActor(*a)
+		}
+		ws, err := svc.SetWatch(r.Context(), act, who, core.WatchInput{IssueID: id, Members: body.Members, Watch: body.Watch})
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"watchers": watcherViews(ws)})
 	})
 	// 作废（#12）：发起人作废自己还没被接单的单；管理员作废任何进行中的单（只认账号密码登录的会话）。
 	handle(mux, "POST /api/v1/w/{ws}/issues/{id}/cancel", aSession, func(w http.ResponseWriter, r *http.Request) {
