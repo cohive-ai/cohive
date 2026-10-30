@@ -83,7 +83,7 @@ Add the following to `~/.dsh/profiles/web/cordis.patch.yml`. The file is created
 | `cohive_accept_issue` accept, decline, transfer | `cohive_who_owns`, `cohive_find_member` |
 | `cohive_close_issue` close or reopen after verifying | `cohive_draft_issue`, `cohive_update_issue` |
 | `cohive_cancel_issue` cancel | `cohive_request_verification` |
-| `cohive_delete_draft` delete a draft | |
+| `cohive_delete_draft` delete a draft | `cohive_watch_issue` |
 
 The list matches what `cohive init` configures for Claude Code, Codex and OpenCode.
 

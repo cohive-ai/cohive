@@ -343,16 +343,17 @@ func webCases() []webCase {
 
 // notAdminWrites 是不属于管理操作、不留记录的写接口，各附理由。新增写接口必须归到上表或这里。
 var notAdminWrites = map[string]string{
-	"POST /api/v1/auth/login":              "登录：不改变权限，量大",
-	"POST /api/v1/auth/logout":             "登出：同上",
-	"POST /api/v1/me/language":             "改本人账号语言：个人偏好，不改变权限",
-	"POST /api/v1/auth/web-login":          "cohive web 换一次性登录码：本人已配对的电脑免密打开网页，不改变权限",
-	"POST /api/v1/device/start":            "终端发起设备授权：还没有身份，授权与审批另有记录",
-	"POST /api/v1/device/poll":             "终端轮询领取：领取的是已批准（已记录）的授权",
-	"POST /api/v1/device/tokens":           "设备密钥为本人已加入的工作空间补签令牌：设备授权与加入时已记录",
-	"POST /api/v1/me/links":                "发起通讯工具连接：Telegram 连接完成时在机器人那边记录，钉钉在网页确认时记录",
-	"POST /api/v1/w/{ws}/admin/chat-binds": "生成钉钉群绑定码：绑定完成时（群里 @机器人）记录",
-	"DELETE /api/v1/w/{ws}/issues/{id}":    "删除本人草稿：草稿只有本人看得见，不是管理操作",
+	"POST /api/v1/auth/login":                  "登录：不改变权限，量大",
+	"POST /api/v1/auth/logout":                 "登出：同上",
+	"POST /api/v1/me/language":                 "改本人账号语言：个人偏好，不改变权限",
+	"POST /api/v1/auth/web-login":              "cohive web 换一次性登录码：本人已配对的电脑免密打开网页，不改变权限",
+	"POST /api/v1/device/start":                "终端发起设备授权：还没有身份，授权与审批另有记录",
+	"POST /api/v1/device/poll":                 "终端轮询领取：领取的是已批准（已记录）的授权",
+	"POST /api/v1/device/tokens":               "设备密钥为本人已加入的工作空间补签令牌：设备授权与加入时已记录",
+	"POST /api/v1/me/links":                    "发起通讯工具连接：Telegram 连接完成时在机器人那边记录，钉钉在网页确认时记录",
+	"POST /api/v1/w/{ws}/admin/chat-binds":     "生成钉钉群绑定码：绑定完成时（群里 @机器人）记录",
+	"DELETE /api/v1/w/{ws}/issues/{id}":        "删除本人草稿：草稿只有本人看得见，不是管理操作",
+	"POST /api/v1/w/{ws}/issues/{id}/watchers": "关注、取消关注、抄送：问题单协作，不是管理操作（管理员移除别人的关注由业务层判定，不写管理记录）",
 }
 
 // 网页上每个管理入口都留记录，入口、工作空间、操作人都对。

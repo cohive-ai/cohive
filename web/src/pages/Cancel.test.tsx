@@ -46,7 +46,8 @@ const board: Board = {
 
 let calls: { method: string; url: string; body?: string }[] = [];
 
-function stubApi(detail: { issue: Issue; can_cancel: boolean; can_delete: boolean }) {
+function stubApi(d: { issue: Issue; can_cancel: boolean; can_delete: boolean }) {
+  const detail = { ...d, watchers: [], watching: false, can_watch: true, can_add_watchers: false, can_remove_watchers: false };
   calls = [];
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     calls.push({ method: init?.method ?? "GET", url, body: init?.body as string | undefined });

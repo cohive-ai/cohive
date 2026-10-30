@@ -18,6 +18,7 @@ type AlertItem struct {
 	ID      int64     `json:"id"`
 	IssueID int64     `json:"issue_id"`
 	Kind    string    `json:"kind"`
+	About   string    `json:"about,omitempty"` // kind 为 watching / mentioned 时是原事件名
 	Actor   string    `json:"actor"`
 	At      time.Time `json:"at"`
 }

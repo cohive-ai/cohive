@@ -224,10 +224,11 @@ func CountDraftIssues(ctx context.Context, q DBTX, wsID int64) (int, error) {
 	return n, err
 }
 
-// DeleteWorkspaceIssues 删除工作空间的全部问题单（含草稿）及其附属行（事件、幂等记录、会话内提醒、群通知）。
+// DeleteWorkspaceIssues 删除工作空间的全部问题单（含草稿）及其附属行（关注者、事件、幂等记录、会话内提醒、群通知）。
 // 只用于彻底删除工作空间；管理操作记录（admin_events）不动。调用方须已锁住工作空间并确认没有未结束的单。
 func DeleteWorkspaceIssues(ctx context.Context, q DBTX, wsID int64) error {
 	for _, sql := range []string{
+		`DELETE FROM issue_watchers WHERE issue_id IN (SELECT id FROM issues WHERE workspace_id = $1)`,
 		`DELETE FROM idempotency WHERE issue_id IN (SELECT id FROM issues WHERE workspace_id = $1)`,
 		`DELETE FROM issue_events WHERE issue_id IN (SELECT id FROM issues WHERE workspace_id = $1)`,
 		`DELETE FROM member_alerts WHERE workspace_id = $1`,

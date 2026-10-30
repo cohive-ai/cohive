@@ -80,6 +80,22 @@ func TestWrongRole(t *testing.T) {
 	}
 }
 
+// 关注者只能留言（草稿除外：草稿只有发起人看得见），其余动作一律拒绝。
+func TestWatcherOnlyComments(t *testing.T) {
+	watcher := []issue.Role{issue.RoleWatcher}
+	for _, s := range []issue.Status{issue.StatusOpen, issue.StatusFixing, issue.StatusClosed, issue.StatusDeclined, issue.StatusCancelled} {
+		if got := issue.Allowed(s, watcher); len(got) != 1 || got[0] != issue.ActComment {
+			t.Errorf("%s 关注者只允许留言，实际允许 %v", s, got)
+		}
+	}
+	if _, err := issue.Apply(issue.StatusDraft, issue.ActComment, watcher); err == nil {
+		t.Error("草稿上关注者不能留言")
+	}
+	if _, err := issue.Apply(issue.StatusOpen, issue.ActAccept, watcher); err == nil {
+		t.Error("关注者不能接单")
+	}
+}
+
 func TestNoTransitionFromTerminal(t *testing.T) {
 	for _, s := range []issue.Status{issue.StatusClosed, issue.StatusDeclined} {
 		if got := issue.Allowed(s, issue.Roles(true, true)); len(got) != 1 || got[0] != issue.ActComment {

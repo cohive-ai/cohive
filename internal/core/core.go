@@ -147,6 +147,7 @@ type DraftInput struct {
 	TargetService                    string
 	Owner                            string // 成员名；为空时按 TargetService 查服务负责人
 	Severity                         string
+	CC                               []string // 抄送：登录名；发出后也成为关注者
 	IdempotencyKey                   string
 }
 
@@ -155,8 +156,14 @@ type ActInput struct {
 	Action          issue.Action
 	ExpectedVersion int
 	Note            string
-	Assignee        string // 发出时补充负责人，或转交的接收人
+	Assignee        string   // 发出时补充负责人，或转交的接收人
+	CC              []string // 抄送：登录名；只有发出（ActSubmit）能带
 	IdempotencyKey  string
+}
+
+// ActInfo 是动作的附带结果：留言里没有认出的 @ 写法，原样列出（含 @，去重，按出现顺序），调用方据此提醒用户改用登录名。
+type ActInfo struct {
+	UnknownMentions []string
 }
 
 type InboxItem struct {
@@ -266,11 +273,22 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 				return err
 			}
 		}
+		cc, err := resolveCC(ctx, tx, who, in.CC)
+		if err != nil {
+			return err
+		}
 		if err := store.InsertIssue(ctx, tx, &is); err != nil {
 			return err
 		}
+		var payload map[string]any
+		if len(cc) > 0 {
+			payload = map[string]any{"cc": memberNames(cc)}
+		}
 		if err := store.InsertEvent(ctx, tx, store.Event{IssueID: is.ID, ActorMemberID: who.MemberID,
-			ActorTool: who.Tool, Action: ActDraft, ToStatus: issue.StatusDraft}); err != nil {
+			ActorTool: who.Tool, Action: ActDraft, ToStatus: issue.StatusDraft, Payload: payload}); err != nil {
+			return err
+		}
+		if err := addWatchers(ctx, tx, is.ID, who.MemberID, cc); err != nil {
 			return err
 		}
 		if in.IdempotencyKey != "" {
@@ -279,7 +297,6 @@ func (s *Service) Draft(ctx context.Context, who store.Identity, in DraftInput) 
 				return err
 			}
 		}
-		var err error
 		out, err = store.GetIssue(ctx, tx, is.ID)
 		return err
 	})
@@ -301,14 +318,24 @@ func visible(who store.Identity, is store.Issue) bool {
 
 // Act 对问题单执行一个动作。
 func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (store.Issue, error) {
+	is, _, err := s.ActDetail(ctx, who, in)
+	return is, err
+}
+
+// ActDetail 同 Act，另返回留言里没有认出的 @（见 ActInfo）。
+func (s *Service) ActDetail(ctx context.Context, who store.Identity, in ActInput) (store.Issue, ActInfo, error) {
+	var info ActInfo
 	// 评论只追加事件，不改状态、归属与正文：不比对也不改变版本号，
 	// 免得人刚批准的发出、接单、关闭因为期间多了一条评论而版本冲突。
 	comment := in.Action == issue.ActComment
 	if !comment && in.ExpectedVersion <= 0 {
-		return store.Issue{}, inputErr("core.err.expected_version_required")
+		return store.Issue{}, info, inputErr("core.err.expected_version_required")
+	}
+	if len(in.CC) > 0 && in.Action != issue.ActSubmit {
+		return store.Issue{}, info, inputErr("core.err.cc_submit_only")
 	}
 	if err := checkSecrets(actFields(in)...); err != nil {
-		return store.Issue{}, err
+		return store.Issue{}, info, err
 	}
 	var out store.Issue
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
@@ -335,6 +362,13 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 		}
 		roles := issue.Roles(is.SourceMemberID == who.MemberID,
 			is.OwnerID != nil && *is.OwnerID == who.MemberID)
+		if len(roles) == 0 && comment { // 关注者只能留言；其他动作不必查，没有角色本来就拒绝
+			if w, err := store.IsWatcher(ctx, tx, is.ID, who.MemberID); err != nil {
+				return err
+			} else if w {
+				roles = []issue.Role{issue.RoleWatcher}
+			}
+		}
 		from := is.Status
 		to, err := issue.Apply(from, in.Action, roles)
 		if err != nil {
@@ -348,8 +382,13 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 		if in.Action == issue.ActCancel && strings.TrimSpace(in.Note) == "" {
 			return inputErr("core.err.cancel_reason_required")
 		}
+		var cc []store.Member
+		var mentions []int64
 		switch in.Action {
 		case issue.ActSubmit:
+			if cc, err = resolveCC(ctx, tx, who, in.CC); err != nil {
+				return err
+			}
 			if in.Assignee != "" {
 				m, err := assignable(ctx, tx, who.WorkspaceID, in.Assignee)
 				if err != nil {
@@ -360,6 +399,15 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 			}
 			if is.OwnerID == nil {
 				return inputErr("core.err.owner_missing", i18n.D{"Service": strconv.Quote(is.TargetService)})
+			}
+			if len(cc) > 0 {
+				payload["cc"] = memberNames(cc)
+			}
+		case issue.ActComment:
+			if from != issue.StatusDraft { // 草稿只有发起人看得见，不通知也不 @
+				if mentions, info.UnknownMentions, err = resolveMentions(ctx, tx, who, in.Note); err != nil {
+					return err
+				}
 			}
 		case issue.ActTransfer:
 			if in.Assignee == "" {
@@ -399,7 +447,18 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 			Note: in.Note, Payload: payload}); err != nil {
 			return err
 		}
-		if err := queueNotices(ctx, tx, who, is, fanout(who, is, in.Action, payload["escalated"] == true)); err != nil {
+		if err := addWatchers(ctx, tx, is.ID, who.MemberID, cc); err != nil {
+			return err
+		}
+		items := fanout(who, is, in.Action, payload["escalated"] == true)
+		if from != issue.StatusDraft || in.Action == issue.ActSubmit { // 草稿上的留言不通知任何人（含关注者）
+			watchers, err := store.WatcherIDs(ctx, tx, is.ID)
+			if err != nil {
+				return err
+			}
+			items = attachWatchers(who, items, actEvent(in.Action), watchers, mentions)
+		}
+		if err := queueNotices(ctx, tx, who, is, items); err != nil {
 			return err
 		}
 		if in.IdempotencyKey != "" {
@@ -414,10 +473,10 @@ func (s *Service) Act(ctx context.Context, who store.Identity, in ActInput) (sto
 	if err != nil && in.IdempotencyKey != "" && isUniqueViolation(err) {
 		// 同一个键刚被并发用于另一张问题单
 		if rec, ok, rerr := store.GetIdempotent(ctx, s.Pool, who.TokenID, in.IdempotencyKey); rerr == nil && ok {
-			return store.Issue{}, keyReuseErr(in.IdempotencyKey, rec)
+			return store.Issue{}, info, keyReuseErr(in.IdempotencyKey, rec)
 		}
 	}
-	return out, err
+	return out, info, err
 }
 
 // Get 返回问题单与全部事件。

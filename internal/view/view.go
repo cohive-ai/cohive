@@ -43,6 +43,7 @@ type IssueView struct {
 	Escalated        bool      `json:"escalated"`
 	EscalationReason string    `json:"escalation_reason,omitempty"`
 	YourActions      []string  `json:"your_actions"`
+	Watchers         []string  `json:"watchers,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -78,6 +79,15 @@ func Issue(l i18n.Lang, who store.Identity, is store.Issue) IssueView {
 	}
 }
 
+// WithWatchers 把关注者的登录名填进问题单结构（没有关注者时保持为空，输出里省略）。
+func WithWatchers(v IssueView, ms []store.Member) IssueView {
+	v.Watchers = nil
+	for _, m := range ms {
+		v.Watchers = append(v.Watchers, m.Name)
+	}
+	return v
+}
+
 // Events 把事件列表转换为对外结构。
 func Events(evs []store.Event) []EventView {
 	out := make([]EventView, 0, len(evs))
@@ -98,6 +108,7 @@ var (
 		"brief":                    "mcp.out.issue.brief",
 		"repro.expected_exit_code": "mcp.out.issue.repro_expected_exit_code",
 		"your_actions":             "mcp.out.issue.your_actions",
+		"watchers":                 "mcp.out.issue.watchers",
 	}
 	EventDescs = map[string]string{
 		"payload": "mcp.out.event.payload",

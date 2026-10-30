@@ -12,14 +12,15 @@ type Alert struct {
 	MemberID      int64 // 收件人
 	IssueID       int64
 	Kind          string
+	About         string // kind 为 watching / mentioned 时记原事件名，其余为空
 	ActorMemberID int64
 	ActorName     string // 只读：操作者登录名
 	CreatedAt     time.Time
 }
 
 func InsertAlert(ctx context.Context, q DBTX, a Alert) error {
-	_, err := q.Exec(ctx, `INSERT INTO member_alerts (workspace_id, member_id, issue_id, kind, actor_member_id)
-		VALUES ($1, $2, $3, $4, $5)`, a.WorkspaceID, a.MemberID, a.IssueID, a.Kind, a.ActorMemberID)
+	_, err := q.Exec(ctx, `INSERT INTO member_alerts (workspace_id, member_id, issue_id, kind, actor_member_id, about)
+		VALUES ($1, $2, $3, $4, $5, $6)`, a.WorkspaceID, a.MemberID, a.IssueID, a.Kind, a.ActorMemberID, a.About)
 	return err
 }
 
@@ -34,7 +35,7 @@ func LastAlertID(ctx context.Context, q DBTX, memberID int64) (int64, error) {
 // 编号较小的可能后提交，只按编号会漏掉；调用方按编号去重）。按编号升序，最多 limit 条。
 func AlertsAfter(ctx context.Context, q DBTX, memberID, after int64, grace time.Duration, limit int) ([]Alert, error) {
 	rows, err := q.Query(ctx, `
-		SELECT x.id, x.workspace_id, x.member_id, x.issue_id, x.kind, x.actor_member_id, a.name, x.created_at
+		SELECT x.id, x.workspace_id, x.member_id, x.issue_id, x.kind, x.about, x.actor_member_id, a.name, x.created_at
 		FROM member_alerts x JOIN members m ON m.id = x.actor_member_id JOIN accounts a ON a.id = m.account_id
 		WHERE x.member_id = $1 AND (x.id > $2 OR x.created_at > now() - make_interval(secs => $3))
 		ORDER BY x.id LIMIT $4`, memberID, after, grace.Seconds(), limit)
@@ -45,7 +46,7 @@ func AlertsAfter(ctx context.Context, q DBTX, memberID, after int64, grace time.
 	var out []Alert
 	for rows.Next() {
 		var x Alert
-		if err := rows.Scan(&x.ID, &x.WorkspaceID, &x.MemberID, &x.IssueID, &x.Kind, &x.ActorMemberID, &x.ActorName, &x.CreatedAt); err != nil {
+		if err := rows.Scan(&x.ID, &x.WorkspaceID, &x.MemberID, &x.IssueID, &x.Kind, &x.About, &x.ActorMemberID, &x.ActorName, &x.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, x)

@@ -84,6 +84,12 @@ export interface IssueDetail {
   events: IssueEvent[];
   can_cancel: boolean;
   can_delete: boolean;
+  // 关注者（CC-1）：当前关注者与查看者的关注权限
+  watchers: { name: string; display_name?: string }[];
+  watching: boolean;
+  can_watch: boolean;
+  can_add_watchers: boolean;
+  can_remove_watchers: boolean;
 }
 
 export interface Issue {
@@ -524,6 +530,9 @@ export const api = {
   cancelIssue: (ws: string, id: number, body: { expected_version: number; reason: string }) =>
     post<Issue>(`${w(ws)}/issues/${seg(id)}/cancel`, body),
   deleteDraft: (ws: string, id: number) => del(`${w(ws)}/issues/${seg(id)}`),
+  // 关注 / 取消关注 / 抄送；members 为空是自己
+  setWatch: (ws: string, id: number, body: { watch: boolean; members?: string[] }) =>
+    post<{ watchers: IssueDetail["watchers"] }>(`${w(ws)}/issues/${seg(id)}/watchers`, body),
 
   // 账号
   me: () => request<Me>("/api/v1/me"),

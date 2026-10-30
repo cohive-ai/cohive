@@ -13,6 +13,7 @@ type alertJSON struct {
 	ID      int64     `json:"id"`
 	IssueID int64     `json:"issue_id"`
 	Kind    string    `json:"kind"`
+	About   string    `json:"about,omitempty"`
 	Actor   string    `json:"actor"`
 	At      time.Time `json:"at"`
 }
@@ -57,7 +58,7 @@ func alertRoutes(mux *http.ServeMux, svc *core.Service) {
 		}
 		out := alertsResult{Cursor: res.Cursor, More: res.More, Items: make([]alertJSON, 0, len(res.Items))}
 		for _, a := range res.Items {
-			out.Items = append(out.Items, alertJSON{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, Actor: a.Actor, At: a.At})
+			out.Items = append(out.Items, alertJSON{ID: a.ID, IssueID: a.IssueID, Kind: a.Kind, About: a.About, Actor: a.Actor, At: a.At})
 		}
 		out.Pending.Count = res.PendingCount
 		out.Pending.Top = make([]pendingJSON, 0, len(res.PendingTop))

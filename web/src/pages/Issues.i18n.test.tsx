@@ -55,7 +55,7 @@ function stubApi() {
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
     if (url === "/api/v1/me") return json(me);
     if (url === "/api/v1/w/pay/board") return json(board);
-    if (url === "/api/v1/w/pay/issues/7") return json({ issue, events });
+    if (url === "/api/v1/w/pay/issues/7") return json({ issue, events, can_cancel: false, can_delete: false, watchers: [], watching: false, can_watch: false, can_add_watchers: false, can_remove_watchers: false });
     return new Response(JSON.stringify({ error: "not found" }), { status: 404, headers: { "Content-Type": "application/json" } });
   });
 }

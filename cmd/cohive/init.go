@@ -33,7 +33,7 @@ func isKnownTool(t string) bool { return slices.Contains(knownTools, t) }
 var (
 	confirmTools = []string{"cohive_submit_issue", "cohive_accept_issue", "cohive_close_issue", "cohive_cancel_issue", "cohive_delete_draft"}
 	allowTools   = []string{"cohive_inbox", "cohive_get_issue", "cohive_search", "cohive_who_owns", "cohive_find_member",
-		"cohive_draft_issue", "cohive_update_issue", "cohive_request_verification"}
+		"cohive_draft_issue", "cohive_update_issue", "cohive_request_verification", "cohive_watch_issue"}
 )
 
 // lookPath 查找命令；测试里替换掉。

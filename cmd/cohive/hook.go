@@ -219,8 +219,51 @@ func alertPhrase(it client.AlertItem) string {
 		return i18n.T("cli.hook.alert_reassigned", d)
 	case "cancelled":
 		return i18n.T("cli.hook.alert_cancelled", d)
+	case "watching":
+		d["Event"] = hookEventName(it.About)
+		if it.Actor == "" { // 超时催办之类系统动作没有操作者
+			return i18n.T("cli.hook.alert_watching_system", d)
+		}
+		return i18n.T("cli.hook.alert_watching", d)
+	case "mentioned":
+		return i18n.T("cli.hook.alert_mentioned", d)
 	}
 	return i18n.T("cli.hook.alert_other", d)
+}
+
+// hookEventName 是关注提醒里的事件短名；服务端发来不认识的事件名用“有新动态”。
+func hookEventName(about string) string {
+	switch about {
+	case "assigned":
+		return i18n.T("cli.hook.event.assigned")
+	case "declined":
+		return i18n.T("cli.hook.event.declined")
+	case "verify":
+		return i18n.T("cli.hook.event.verify")
+	case "reopened":
+		return i18n.T("cli.hook.event.reopened")
+	case "escalated":
+		return i18n.T("cli.hook.event.escalated")
+	case "overdue":
+		return i18n.T("cli.hook.event.overdue")
+	case "overdue_admin":
+		return i18n.T("cli.hook.event.overdue_admin")
+	case "accepted":
+		return i18n.T("cli.hook.event.accepted")
+	case "closed":
+		return i18n.T("cli.hook.event.closed")
+	case "transferred":
+		return i18n.T("cli.hook.event.transferred")
+	case "started":
+		return i18n.T("cli.hook.event.started")
+	case "commented":
+		return i18n.T("cli.hook.event.commented")
+	case "reassigned":
+		return i18n.T("cli.hook.event.reassigned")
+	case "cancelled":
+		return i18n.T("cli.hook.event.cancelled")
+	}
+	return i18n.T("cli.hook.event.other")
 }
 
 // slashCommand 是提醒里给的调用写法：Codex 的技能用 $cohive，其余（Claude Code、opencode、dsh）用 /cohive。

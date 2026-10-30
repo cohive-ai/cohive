@@ -477,3 +477,20 @@ func TestHookOpencodeAndDsh(t *testing.T) {
 		})
 	}
 }
+
+// CC-1 关注与被 @ 的提醒：关注提醒写事件短名，系统动作（催办）没有操作者；未知事件名落到“有新动态”。
+func TestAlertPhraseWatching(t *testing.T) {
+	for _, c := range []struct {
+		it   client.AlertItem
+		want string
+	}{
+		{client.AlertItem{IssueID: 7, Kind: "watching", About: "accepted", Actor: "lee-codex"}, "#7 你关注的单：已接单（lee-codex）"},
+		{client.AlertItem{IssueID: 7, Kind: "watching", About: "overdue_admin"}, "#7 你关注的单：催办（已请管理员协调）"},
+		{client.AlertItem{IssueID: 7, Kind: "watching", About: "brand_new", Actor: "lee-codex"}, "#7 你关注的单：有新动态（lee-codex）"},
+		{client.AlertItem{IssueID: 7, Kind: "mentioned", About: "commented", Actor: "lee-codex"}, "#7 lee-codex 在留言里提到了你"},
+	} {
+		if got := alertPhrase(c.it); got != c.want {
+			t.Errorf("%+v：%q，应为 %q", c.it, got, c.want)
+		}
+	}
+}

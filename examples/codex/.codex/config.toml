@@ -41,5 +41,8 @@ approval_mode = "approve"
 [mcp_servers.cohive.tools.cohive_update_issue]
 approval_mode = "approve"
 
+[mcp_servers.cohive.tools.cohive_watch_issue]
+approval_mode = "approve"
+
 [mcp_servers.cohive.tools.cohive_request_verification]
 approval_mode = "approve"

@@ -796,7 +796,12 @@ func reassign(ctx context.Context, tx pgx.Tx, op store.Member, is store.Issue, o
 		Action: issue.ActReassign, FromStatus: is.Status, ToStatus: is.Status, Note: i18n.T("core.reassign.note"), Payload: payload}); err != nil {
 		return err
 	}
-	return queueNotices(ctx, tx, who, is, reassignFanout(who, is, oldOwner, oldSource, owner != nil, source != nil))
+	watchers, err := store.WatcherIDs(ctx, tx, is.ID)
+	if err != nil {
+		return err
+	}
+	items := attachWatchers(who, reassignFanout(who, is, oldOwner, oldSource, owner != nil, source != nil), EventReassigned, watchers, nil)
+	return queueNotices(ctx, tx, who, is, items)
 }
 
 // ---- 停用与启用、服务器管理员 ----

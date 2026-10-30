@@ -83,7 +83,7 @@
 | `cohive_accept_issue` 接单、退回、转交 | `cohive_who_owns`、`cohive_find_member` |
 | `cohive_close_issue` 验证后关闭或重开 | `cohive_draft_issue`、`cohive_update_issue` |
 | `cohive_cancel_issue` 作废 | `cohive_request_verification` |
-| `cohive_delete_draft` 删除草稿 | |
+| `cohive_delete_draft` 删除草稿 | `cohive_watch_issue` |
 
 这份清单与 `cohive init` 给 Claude Code、Codex、OpenCode 配的一致。
 

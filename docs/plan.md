@@ -94,6 +94,7 @@
 | `cohive_inbox` | 查看自己的待办和动态 | 否 |
 | `cohive_accept_issue` | 接单，或退回、转交（附理由） | **是** |
 | `cohive_update_issue` | 补充说明、证据、进展 | 否 |
+| `cohive_watch_issue` | 关注或取消关注问题单（只影响通知） | 否 |
 | `cohive_request_verification` | 修复完成，请求发起人验证 | 否 |
 | `cohive_close_issue` | 验证通过后关闭，或重开 | **是** |
 | `cohive_who_owns` | 查询某个路径、服务、接口的负责人 | 否 |
