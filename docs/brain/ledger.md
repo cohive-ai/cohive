@@ -20,7 +20,7 @@
 
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
-| DM-1 关注与留言 @ 改私聊 | 会话自建（从最新 main） | dm-notify / `local_e714775a-2298-4253-8231-5f44908b5e9d` | — | 已派 | 三平台主动私聊能力；关注者与留言 @ 的人私聊、群里不再 @；原收件人仍群里 @；未连接只写会话提醒；私聊失败只记日志、提醒照写；指南补私聊权限；交回 `docs/brain/inbox/DM-1.md` |
+| DM-1 关注与留言 @ 改私聊 | `feature/dm-1-direct-notify` | dm-notify / `local_e714775a-2298-4253-8231-5f44908b5e9d` | `bb62aa8` | 打回（小项：补私聊过时、停用账号两个用例） | 三平台主动私聊能力；关注者与留言 @ 的人私聊、群里不再 @；原收件人仍群里 @；未连接只写会话提醒；私聊失败只记日志、提醒照写；指南补私聊权限；交回 `docs/brain/inbox/DM-1.md` |
 | IM2-1 Slack 接入 | 已合入 main `129bce2`（已验收 = `0ef06c8`） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，处理实测反馈，之后做飞书与 Lark） | `0ef06c8` | 待用户（lee 建免费 Slack 工作区、按 deploy/slack-app-manifest.yaml 建应用，两个令牌亲手写进 pm-dev1 的 deploy/.env 后跑 upgrade.sh，再绑频道、连账号，按 docs/guides/slack.md 第 7 节验收） | 真环境确认：Socket 确认时限、只在消息块里的 @ 是否提醒、免费版改旧消息 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
