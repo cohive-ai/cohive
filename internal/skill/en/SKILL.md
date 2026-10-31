@@ -22,6 +22,10 @@ The session hook inserts two lines of reminder that start with Cohive (`Cohive r
 - **At the end of your final reply (the last message you give the user when this turn ends), after the main text, start a new line and write the reminder the hook gave you exactly as it is** (for example "Cohive reminder: #12 assigned to you by tester-a. Use /cohive 12 to view"), even if it has nothing to do with the user's request. Do not put it at the start: when a reply is long, a sentence at the start is easily skipped. Writing it only in a mid-turn progress note does not count either: some coding tools (for example the Codex desktop app) do not show hook content and fold progress notes away once the turn ends, so the user would never see it.
 - Say each reminder only once in this session; do not expand on the issue's contents, and do not read, accept, or close issues on your own because of a reminder. When the user says they want to handle one, start from step 1 below.
 
+## When the project is not bound to a workspace
+
+If the only Cohive tool is `cohive_status`, or a tool answers that this project is not bound, the project (or worktree) has no Cohive workspace yet. Do not look for workarounds: tell the user in one sentence to run `cohive init` in the project directory (`cohive login` first if this computer is not logged in), then reopen the coding tool.
+
 ## Handle an issue assigned to me
 
 The user may call this with an issue number, for example `/cohive 12` (Claude Code, OpenCode) or `$cohive 12` (Codex).

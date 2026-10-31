@@ -70,20 +70,29 @@ Windows 在 PowerShell 里执行 `$env:COHIVE_LOGIN=1; irm https://cohive.exampl
 配对时终端会自动打开浏览器授权页（同时显示链接和二维码）。用账号密码登录网页，核对设备名、工具和“批准后可用于”的工作空间后点“授权”，终端随即显示“已登录”，并列出每个工作空间拿到的工具。
 
 - **第一台电脑授权后立即生效；之后再加电脑需要你所在任一工作空间的管理员批准**（批准后这台电脑可用于你全部的工作空间）。等待期间终端会一直等，也可以随时按 Ctrl+C 或合上电脑：进度保存在本机，批准后执行 `cohive login --resume` 领取（24 小时内有效）。
-- 仓库里已有 `cohive init` 生成的配置时，服务地址和要登录的工具从配置读取（在子目录里执行也行）。第一次登录某个地址时，终端会先显示地址请你按回车确认。
+- 仓库里已有 `cohive init --project` 生成的项目级配置时，服务地址和要登录的工具从配置读取（在子目录里执行也行）。第一次登录某个地址时，终端会先显示地址请你按回车确认。
 - 设备密钥与令牌保存在 `~/.config/cohive/credentials.json`，只有你本人可读；`cohive status` 查看（不显示密钥与令牌）。
 
-**3. 在项目目录执行 `cohive init`，并在第一次打开项目时信任钩子**（`cohive init` 团队里有人做过并提交了配置就不用再做），之后在 Claude Code、OpenCode 里用 `/cohive`、在 Codex 里用 `$cohive`。你在多个工作空间时要指定这个项目属于哪一个：
+**3. 在项目目录执行 `cohive init`**（每台电脑、每个仓库做一次），之后在 Claude Code、OpenCode 里用 `/cohive`、在 Codex 里用 `$cohive`。你在多个工作空间时要指定这个项目属于哪一个：
 
 ```bash
 cohive init --workspace pay
 ```
 
-第一次在编程工具里打开这个项目时，要信任 cohive 的钩子（会话内提醒要用）：
+`cohive init` 默认做两件事：
 
-- **Claude Code**：在这个文件夹第一次打开时选“信任此文件夹”（与启用 MCP 服务是同一步）。
-- **Codex**：在项目目录执行一次命令行版 `codex`，同意信任项目；启动时提示“Hooks need review”，选“Trust all and continue”，信任 cohive 的两条钩子（`SessionStart`、`UserPromptSubmit`）。**只用桌面版的人也要先这样做一次**：桌面版里没有信任钩子的入口，命令行版信任之后桌面版随之生效。**每台电脑、每个克隆目录各要信任一次**；换了服务地址或工作空间（重新执行 `cohive init` 改了这两项）要重新信任，只是重复执行 `cohive init` 不用。
-- **OpenCode**：不用信任。`cohive init` 写的 `.opencode/plugins/cohive.ts` 插件在 OpenCode 启动时自动加载。第一次启动时 OpenCode 会在 `.opencode/` 下用 npm 安装插件依赖（要能访问 npm，内网请配好 npm 镜像），并自己写一个 `.gitignore` 忽略这些依赖。
+- 在**用户主目录**里装好三种编程工具的 Cohive 配置（MCP、确认规则、会话钩子、`/cohive` 技能）。这份配置里不写服务地址和工作空间，所有项目共用；
+- 把**当前仓库绑定**到这个工作空间，记在本机的 `~/.config/cohive/bindings.json`。同一仓库的所有工作树（Claude Code 桌面版新建的、`git worktree add` 建的）自动沿用，不用复制任何文件。
+
+绑定只在你的电脑上，仓库里不会多出任何文件。想让队友克隆后少做一步，可以加 `--share`，在仓库根生成只有服务地址和工作空间名两行的 `.cohive.toml` 提交上去；它**只在已经登录过这个服务和工作空间的电脑上生效**，所以别人提交的文件不能让你的电脑去连一个你没登录过的地方。详见下文“工作树与多目录”。
+
+第一次使用时要信任 cohive 的钩子（会话内提醒要用）：
+
+- **Claude Code**：如果提示信任文件夹或启用 MCP 服务，选同意。
+- **Codex**：执行一次命令行版 `codex`，启动时提示“Hooks need review”，选“Trust all and continue”，信任 cohive 的两条钩子（`SessionStart`、`UserPromptSubmit`）。**只用桌面版的人也要先这样做一次**：桌面版里没有信任钩子的入口，命令行版信任之后桌面版随之生效。用户级钩子在所有项目里写法一样；换项目、换工作空间是否要重新信任**还没有实测**，没有提醒时再信任一次即可。
+- **OpenCode**：不用信任。`cohive init` 装在 `~/.config/opencode/plugins/cohive.ts` 的插件在 OpenCode 启动时自动加载（这个全局插件目录的自动加载**未实测**；没有提醒时先看 `cohive hook --check`）。
+
+想沿用旧做法、把配置写进项目让团队共用，用 `cohive init --project`（见下文“cohive init 写入的文件”）。
 
 ## 会话内提醒
 
@@ -98,11 +107,24 @@ cohive init --workspace pay
 - 没有提醒时，执行 `cohive init` 结尾打印的那条 `cohive hook --check …` 命令排查。
 - 不想要：`cohive init --no-hooks`（只移除 cohive 的钩子与 OpenCode 插件，你自己的钩子、插件不动）。
 - 团队里有人的 `cohive` 还是旧版本时，钩子会报“未知命令”，不影响使用；升级 `cohive` 即可。
-- Codex 在 git 工作树里读的是主检出目录的钩子配置：`cohive init` 生成的文件要提交。
+- 用 `--project` 写的项目级钩子：Codex 在 git 工作树里读的是主检出目录的钩子配置，生成的文件要提交。默认的用户级配置没有这个限制。
 
 ## 加入新的工作空间之后
 
-不用重新配对。克隆新项目（配置已在仓库里）后直接打开编程工具：本机转发器发现还没有这个工作空间的令牌，会用这台电脑的设备密钥自动签发。也可以在仓库里执行 `cohive init --workspace 名字`，或再执行一次 `cohive login` 补齐全部工作空间的令牌。
+不用重新配对。在新项目里执行 `cohive init --workspace 名字`，本机转发器发现还没有这个工作空间的令牌时，会用这台电脑的设备密钥自动签发。也可以再执行一次 `cohive login` 补齐全部工作空间的令牌。
+
+## 工作树与多目录
+
+一句话：`cohive init` 记住的是“这个仓库属于哪个工作空间”，同一仓库的所有工作树自动生效，不用再复制 `.mcp.json` 之类的文件。
+
+- **自动生效的地方**：Claude Code 的工作树（桌面版新建的、`claude --worktree`）、Codex 的工作树、手动 `git worktree add` 出来的目录，以及你绑定过的普通文件夹（非 git 目录）和它的子文件夹。
+- **要再执行一次 `init` 的地方**：同一仓库的另一个**克隆**（它的 git 目录不同）；想换工作空间时。第二个克隆里执行 `cohive init`，如果发现同一远程地址的仓库已经绑过，会问你是否沿用，你确认才写入。
+- **一台电脑多个工作空间**：不同仓库各自 `cohive init --workspace 名字`；`cohive status` 末尾会显示当前目录绑了哪个；`cohive unbind` 解除当前仓库的绑定。同一仓库里不同子目录绑不同工作空间，目前不支持。
+- **团队共享**：愿意共享时加 `--share` 生成并提交 `.cohive.toml`（只有服务地址和工作空间名）。队友克隆后执行自己的 `cohive init` 就会采用它；他们的电脑没登录过这个工作空间时它不生效，终端会提示先 `cohive login`。优先级：命令行参数 > 本机绑定 > `.cohive.toml` > 旧的项目级配置。
+- **没绑定时会看到什么**：编程工具里只有一个 `cohive_status` 工具，调用它会提示“本项目未绑定，请执行 cohive init”；钩子什么都不做，不联网。
+- **从旧版本升级**：重新执行一次 `cohive init` 即可。项目里旧版写的、没提交的 cohive 配置会被清掉（只清 cohive 自己写的条目，你的其他配置不动）；已提交进仓库的旧配置不动，等团队都升级了再执行 `cohive init --remove-project-config` 移除。迁移期间两边都在时，用户级钩子会让位，提醒不会出现两次。以前为了复制配置手工加的 `.worktreeinclude`、`.git/info/exclude` 里的行已经用不着，`init` 会提示你可以删（它不替你改）。
+- **旧版本的临时办法**：还没升级时，在主检出目录放一份 `.worktreeinclude`，写上 `.mcp.json`、`.claude/settings.json`、`.claude/skills/` 三行，Claude Code 桌面版新建工作树时会把这些被忽略的文件复制过去（只对 Claude Code 有效）。
+- **排查**：`cohive hook --check --tool claude-code` 会打印识别绑定时试了哪些目录、命中了哪条绑定。
 
 ## 个人中心
 
@@ -140,6 +162,19 @@ cohive init --workspace pay
 
 ## cohive init 写入的文件
 
+**默认（用户级）**写在你的用户主目录下：
+
+| 工具 | 文件 |
+|---|---|
+| Claude Code | MCP 条目 `cohive`（经 `claude mcp add-json --scope user` 登记，写进 `~/.claude.json`）、`~/.claude/settings.json`（确认规则；`hooks` 里会话开始、提交提示词各一组 `cohive hook --tool claude-code`）、`~/.claude/skills/cohive/SKILL.md` |
+| Codex | `~/.codex/config.toml`（`# >>> cohive` 与 `# <<< cohive` 之间的一段，含两条钩子）、`~/.agents/skills/cohive/SKILL.md` |
+| OpenCode | `~/.config/opencode/opencode.json`（`mcp` 里的 `cohive` 条目；`permission` 里每个 cohive 工具一条规则，放在最后）、`~/.config/opencode/plugins/cohive.ts`（会话内提醒插件）、`~/.agents/skills/cohive/SKILL.md`（与 Codex 共用） |
+| 绑定表 | `~/.config/cohive/bindings.json`（仓库 → 服务与工作空间，不含令牌） |
+
+找不到 `claude` 命令时，Claude Code 的 MCP 条目没能登记，`init` 会打印一条可手工执行的命令。想完全去掉用户级配置，删除上表里这些文件（或其中 cohive 的部分）即可。
+
+**加 `--project`** 时改写旧的项目级文件，服务地址和工作空间写在项目里，适合想把配置提交给团队共用的仓库：
+
 | 工具 | 文件 |
 |---|---|
 | Claude Code | `.mcp.json`（`cohive` 条目）、`.claude/settings.json`（确认规则；`hooks` 里会话开始、提交提示词各一组 `cohive hook …`）、`.claude/skills/cohive/SKILL.md` |
@@ -147,12 +182,11 @@ cohive init --workspace pay
 | OpenCode | `opencode.json`（`mcp` 里的 `cohive` 条目；`permission` 里每个 cohive 工具一条规则，放在最后）、`.opencode/plugins/cohive.ts`（会话内提醒插件）、`.agents/skills/cohive/SKILL.md`（与 Codex 共用） |
 
 - 只改动自己管理的部分，原有配置保留；重复执行结果相同。
-- 这些文件**不含令牌**：编程工具通过本机命令 `cohive mcp-proxy --server … --workspace … --tool …` 连接协作服务，令牌由它从本机凭据文件读取。可以放心提交进仓库，团队共用。
-- 第一次在编程工具里打开项目时，会询问是否信任项目、是否启用 `cohive` 这个 MCP 服务，都选同意；Codex 还要在项目目录执行一次命令行版 `codex` 信任 cohive 的两条钩子（见上文第 3 步）。OpenCode 不询问。
-- OpenCode 的确认框有“仅本次 / 总是允许 / 拒绝”三个选项，“总是允许”只到 OpenCode 退出为止。仓库里只有带注释的 `opencode.jsonc` 时，`cohive init` 不改它，请把设置挪到 `opencode.json`，或参照 [examples/opencode](../../examples/opencode) 手工配置。
+- 这些配置**不含令牌**：编程工具通过本机命令 `cohive mcp-proxy …` 连接协作服务，令牌由它从本机凭据文件读取。项目级的文件可以放心提交；其中的服务地址与工作空间名在公开仓库里要注意。
+- 第一次在编程工具里打开项目时，可能询问是否信任项目、是否启用 `cohive` 这个 MCP 服务，都选同意；Codex 还要执行一次命令行版 `codex` 信任 cohive 的两条钩子（见上文第 3 步）。OpenCode 不询问。
+- OpenCode 的确认框有“仅本次 / 总是允许 / 拒绝”三个选项，“总是允许”只到 OpenCode 退出为止。`opencode.jsonc`（带注释）存在时，`cohive init` 不改它，请把设置挪到 `opencode.json`，或参照 [examples/opencode](../../examples/opencode) 手工配置。
 - 三家的“全自动”模式（Claude Code 的 auto 模式、Codex 的“完全访问”、OpenCode 的 `--auto`）都会跳过确认，这是编程工具自身的设计。
-- `.claude/settings.json` 里的 `enabledMcpjsonServers` 会随仓库共享，审查合并请求时留意 `.mcp.json` 与它的改动。
-- `.mcp.json`、`.codex/config.toml`、`opencode.json` 里有协作服务地址与工作空间名，公开仓库要注意。
+- 项目级模式下 `.claude/settings.json` 里的 `enabledMcpjsonServers` 会随仓库共享，审查合并请求时留意 `.mcp.json` 与它的改动。
 
 ## 备用方式
 
@@ -169,5 +203,5 @@ pbpaste | cohive login --server https://cohive.example.com --token-stdin
 - **编程工具里提示“Cohive 令牌无效或已吊销”**：如果你被移出了这个工作空间，请联系管理员；否则执行 `cohive login --force` 重新配对。重新配对算新增一台设备，需要管理员批准；成功后会自动吊销这台电脑之前的设备。
 - **提示“这台电脑是旧版配对”**：较早版本（引入设备密钥之前）配对的电脑没有设备密钥，旧令牌照常能用，但新工作空间的自动签发和 `cohive web` 需要先执行 `cohive login --force` 重新配对（需要管理员批准）。
 - **电脑丢失**：在网页“个人中心 → 我的设备”吊销它（或请管理员在“管理 → 设备”里吊销）。
-- **会话里没有 Cohive 提醒**：执行 `cohive hook --check --server … --workspace … --tool …`（`cohive init` 结尾有完整命令）；Codex 先确认在项目目录执行过命令行版 `codex` 并选了“Trust all and continue”。
+- **会话里没有 Cohive 提醒**：执行 `cohive hook --check --tool …`（`cohive init` 结尾有完整命令，会打印识别到的绑定）；Codex 先确认执行过命令行版 `codex` 并选了“Trust all and continue”。
 - **连接 Telegram 时提示没有启用机器人**：服务没有设置 `COHIVE_TELEGRAM_BOT_TOKEN`。

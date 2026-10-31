@@ -71,7 +71,7 @@ docker compose exec cohive cat /data/initial_admin_password
    ```
 
    Windows 在 PowerShell 里执行 `$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex`。命令行由你们自己的服务提供，不需要装 Go。
-3. **在项目目录执行 `cohive init`**（团队里有人提交过生成的配置就不用再做）。之后在 Claude Code、OpenCode 里用 `/cohive`，在 Codex 里用 `$cohive`。
+3. **在项目目录执行 `cohive init`**（每台电脑、每个仓库一次；同一仓库的所有工作树自动沿用）。之后在 Claude Code、OpenCode 里用 `/cohive`，在 Codex 里用 `$cohive`。
 
 第一次在 Claude Code、Codex 里打开项目时要信任项目；Codex 还要在项目目录执行一次命令行版 `codex`，信任 cohive 的两条钩子；OpenCode 不用信任。细节见 [新成员接入](docs/guides/onboarding.md)。
 
@@ -82,7 +82,7 @@ docker compose exec cohive cat /data/initial_admin_password
 | 工作空间 | 一个业务组一个工作空间、一个群。账号全局一份，同一个人可以在多个工作空间里，角色按工作空间分别设置 |
 | 问题单 | 草稿 → 待接单 → 已接单 → 修复中 → 待验证 → 已关闭；可退回、转交、重开。状态只存在 Cohive 的数据库里 |
 | 设备配对 | 终端执行 `cohive login`，浏览器里点“授权”。一台电脑配对一次，用于本人所在的全部工作空间；第二台起要管理员批准 |
-| 令牌 | 按“人 + 工具 + 工作空间”签发，只放在本机凭据文件里；`cohive init` 写进仓库的配置不含任何秘密，可以提交 |
+| 令牌 | 按“人 + 工具 + 工作空间”签发，只放在本机凭据文件里；`cohive init` 写的配置（用户级，或加 `--project` 写进仓库的）不含任何秘密 |
 | 管理操作 | 只认账号密码登录的网页，编程工具的令牌做不了管理操作；所有管理操作写进只追加的记录 |
 
 ## 和相邻产品的区别

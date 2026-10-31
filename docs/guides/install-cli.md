@@ -47,7 +47,7 @@ $env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex
 | macOS、Linux | `~/.local/bin/cohive`；可用 `COHIVE_INSTALL_DIR` 指定 | 不改 shell 配置文件。目录不在 PATH 里时，脚本会打印要加进 `~/.zshrc` 或 `~/.bashrc` 的那一行 |
 | Windows | `%LOCALAPPDATA%\Programs\cohive\cohive.exe`；可用 `COHIVE_INSTALL_DIR` 指定 | 自动加入当前用户的 PATH（不需要管理员权限）；已打开的终端要重开 |
 
-**编程工具要能在 PATH 里找到 `cohive`**：`cohive init` 写进项目配置的命令就是 `cohive`（配置要提交进仓库，不能写某个人的绝对路径）。编程工具不是从终端启动时（例如从程序坞打开桌面应用），它拿到的 PATH 可能不含 `~/.local/bin`。遇到“找不到 cohive”时，从终端启动编程工具，或把目录加进登录 shell 的 PATH。`cohive init` 发现当前 PATH 里没有 `cohive` 时也会提示。
+**编程工具要能在 PATH 里找到 `cohive`**：`cohive init` 写进配置的命令就是 `cohive`（配置可能被提交进仓库，不能写某个人的绝对路径）。编程工具不是从终端启动时（例如从程序坞打开桌面应用），它拿到的 PATH 可能不含 `~/.local/bin`。遇到“找不到 cohive”时，从终端启动编程工具，或把目录加进登录 shell 的 PATH。`cohive init` 发现当前 PATH 里没有 `cohive` 时也会提示。
 
 ## 支持的平台
 
