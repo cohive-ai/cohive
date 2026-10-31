@@ -21,6 +21,7 @@
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
 | IM2-1 Slack 接入 | 已合入 main `129bce2`（已验收 = `0ef06c8`） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，处理实测反馈，之后做飞书与 Lark） | `0ef06c8` | 待用户（lee 建免费 Slack 工作区、按 deploy/slack-app-manifest.yaml 建应用，两个令牌亲手写进 pm-dev1 的 deploy/.env 后跑 upgrade.sh，再绑频道、连账号，按 docs/guides/slack.md 第 7 节验收） | 真环境确认：Socket 确认时限、只在消息块里的 @ 是否提醒、免费版改旧消息 |
+| WT-1 工作树与多目录配置（只出设计） | `wt-1-design` | wt-design / `local_92d87f5a-765b-4c73-bcb2-67344a973005` | — | 已派 | 第 0 步回报 .worktreeinclude 是否生效；甲乙方案对三种工具逐项覆盖；迁移路径；设计交 lee 拍板后再实施 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
