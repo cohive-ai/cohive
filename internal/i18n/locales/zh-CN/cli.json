@@ -202,7 +202,7 @@
   "cli.client.bindings_locked": "别的 cohive 进程正在更新绑定表（锁文件 {{.Path}}），请稍后再试",
   "cli.client.proxy.status_tool_desc": "查看本项目是否已绑定 Cohive 工作空间，以及该怎么办。",
   "cli.proxy.unbound": "本项目未绑定 Cohive 工作空间，请在项目目录执行 cohive init（这台电脑还没登录时先执行 cohive login）。",
-  "cli.proxy.unbound_shared": "本项目的 .cohive.toml 指向 {{.Server}} 上的工作空间 {{.Workspace}}，但这台电脑没有登录过它，所以没有采用。请先执行 cohive login --server {{.Server}}，再在项目目录执行 cohive init。",
+  "cli.proxy.unbound_shared": "本项目的 .cohive.toml 指向 {{.Server}} 上的工作空间 {{.Workspace}}，但这台电脑还没有它的登录，所以没有采用。请在项目目录执行 cohive init：电脑已经配对过的会自动签发令牌并绑定；还没配对的先执行 cohive login --server {{.Server}}。",
   "cli.hook.check_dirs": "识别绑定时尝试的目录（钩子给的 cwd、当前目录、CLAUDE_PROJECT_DIR）：{{.Dirs}}\n",
   "cli.hook.check_project_hook": "这个项目里已经有项目级的 cohive 钩子（带 --server），用户级钩子让位，免得提醒出现两次。",
   "cli.hook.check_resolved": "识别到绑定（来源 {{.Source}}）：键 {{.Key}}，服务 {{.Server}}，工作空间 {{.Workspace}}\n",

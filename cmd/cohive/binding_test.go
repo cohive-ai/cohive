@@ -85,7 +85,7 @@ func TestProxyUnboundMentionsIgnoredSharedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	txt := res.Content[0].(*mcp.TextContent).Text
-	if !strings.Contains(txt, "https://x.example.com") || !strings.Contains(txt, "没有登录过") {
+	if !strings.Contains(txt, "https://x.example.com") || !strings.Contains(txt, "还没有它的登录") {
 		t.Fatalf("应说明 .cohive.toml 因没登录而没采用：%s", txt)
 	}
 }

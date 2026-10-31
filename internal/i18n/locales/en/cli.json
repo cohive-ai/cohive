@@ -211,7 +211,7 @@
   "cli.client.bindings_locked": "Another cohive process is updating the bindings (lock file {{.Path}}); try again in a moment",
   "cli.client.proxy.status_tool_desc": "Shows whether this project is bound to a Cohive workspace and what to do about it.",
   "cli.proxy.unbound": "This project is not bound to a Cohive workspace. Run cohive init in the project directory (cohive login first if this computer is not logged in yet).",
-  "cli.proxy.unbound_shared": "This project's .cohive.toml points to workspace {{.Workspace}} on {{.Server}}, but this computer is not logged in there, so it is not used. Run cohive login --server {{.Server}}, then cohive init in the project directory.",
+  "cli.proxy.unbound_shared": "This project's .cohive.toml points to workspace {{.Workspace}} on {{.Server}}, but this computer has no login for it yet, so it is not used. Run cohive init in the project directory: if this computer is already paired it issues the token and binds the project; if not, run cohive login --server {{.Server}} first.",
   "cli.hook.check_dirs": "Directories tried (hook cwd, current directory, CLAUDE_PROJECT_DIR): {{.Dirs}}\n",
   "cli.hook.check_project_hook": "This project already has a project-level cohive hook (with --server); the user-level hook steps aside so reminders are not shown twice.",
   "cli.hook.check_resolved": "Binding found ({{.Source}}): key {{.Key}}, server {{.Server}}, workspace {{.Workspace}}\n",

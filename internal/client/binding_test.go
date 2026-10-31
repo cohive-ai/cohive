@@ -241,3 +241,25 @@ func TestPruneBindings(t *testing.T) {
 		t.Fatalf("%d %+v", n, b.Items)
 	}
 }
+
+// 在 git 仓库里查找 .cohive.toml 不能越过仓库根：上层目录（例如家目录）里的一份不能作用到它下面的所有仓库。
+func TestSharedFileNotInheritedFromAboveRepoRoot(t *testing.T) {
+	cfgEnv(t)
+	base := realDir(t)
+	repo := filepath.Join(base, "repo")
+	os.MkdirAll(filepath.Join(repo, "sub"), 0o755)
+	gitRun(t, repo, "init", "-q", ".")
+	os.WriteFile(filepath.Join(base, SharedFileName), []byte("server = \"https://a.example.com\"\nworkspace = \"pay\"\n"), 0o644)
+	c := &Credentials{}
+	c.Upsert(Login{Server: "https://a.example.com", Workspace: "pay", Tool: "codex", Token: "t"})
+	c.Save()
+	if r := Resolve(filepath.Join(repo, "sub")); r.Source != "" || r.Ignored != nil {
+		t.Fatalf("仓库上层目录的 .cohive.toml 不应作用到仓库里：%+v", r)
+	}
+	// 对照：非 git 目录仍然向上找
+	plain := filepath.Join(base, "plain")
+	os.MkdirAll(plain, 0o755)
+	if r := Resolve(plain); r.Source != SourceShared {
+		t.Fatalf("非 git 目录应继承上层的 .cohive.toml：%+v", r)
+	}
+}

@@ -286,7 +286,7 @@ func TestInitToolsUnsupportedListsKnown(t *testing.T) {
 // examples/opencode 里的插件与 init 生成的一致（示例参数），改了模板要同步示例。
 func TestOpencodeExampleInSync(t *testing.T) {
 	want := opencodePluginSource([]string{"cohive", "hook", "--server", "http://localhost:8787", "--workspace", "default", "--tool", "opencode"})
-	got, err := os.ReadFile(filepath.Join("..", "..", "examples", "opencode", ".opencode", "plugins", "cohive.ts"))
+	got, err := os.ReadFile(filepath.Join(sourceDir, "..", "..", "examples", "opencode", ".opencode", "plugins", "cohive.ts"))
 	if err != nil || string(got) != string(want) {
 		t.Fatalf("examples/opencode/.opencode/plugins/cohive.ts 与生成结果不一致（%v）；重新生成示例", err)
 	}

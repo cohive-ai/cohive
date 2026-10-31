@@ -435,3 +435,33 @@ func TestUnbindAndStatus(t *testing.T) {
 		t.Fatalf("重复解除应说明：%s", out)
 	}
 }
+
+// 只有设备密钥、还没有这个工作空间令牌的电脑：运行时按“没登录过”忽略 .cohive.toml，
+// 提示里要告诉他们下一步是 cohive init（它会用设备密钥核对成员身份并签发令牌）；执行后即可绑定。
+func TestSharedFileOnDeviceOnlyComputer(t *testing.T) {
+	userEnv(t)
+	s := newTestServer(t)
+	s.login(t, "codex")
+	s.joinWorkspace(t, "ops") // 设备密钥能用于 ops，但本机还没有 ops 的令牌
+	repo := gitProject(t)
+	os.WriteFile(filepath.Join(repo, client.SharedFileName),
+		[]byte("server = "+tomlString(s.url)+"\nworkspace = \"ops\"\n"), 0o644)
+
+	r := client.Resolve(repo)
+	if r.Source != "" || r.Ignored == nil || r.Ignored.Workspace != "ops" {
+		t.Fatalf("没有令牌时运行时应忽略 .cohive.toml：%+v", r)
+	}
+	if msg := unboundMessage(r); !strings.Contains(msg, "cohive init") {
+		t.Fatalf("提示应告诉用户下一步执行 cohive init：%s", msg)
+	}
+	out, err := run(t, "init", "--dir", repo, "--tools", "codex")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if r := client.Resolve(repo); r.Source != client.SourceBinding || r.Workspace != "ops" {
+		t.Fatalf("init 后应绑定到 ops：%+v", r)
+	}
+	if creds, _ := client.LoadCredentials(); func() bool { _, ok := creds.Find(s.url, "ops", "codex"); return ok }() == false {
+		t.Fatal("init 应用设备密钥补签 ops 的令牌")
+	}
+}
