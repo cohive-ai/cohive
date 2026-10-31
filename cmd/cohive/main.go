@@ -41,7 +41,9 @@ func runCLI(ctx context.Context, in io.Reader, out io.Writer, args []string) err
 	case "web":
 		return openWeb(ctx, out, args[1:])
 	case "init":
-		return initProject(ctx, out, args[1:])
+		return initProject(ctx, in, out, args[1:])
+	case "unbind":
+		return unbind(out, args[1:])
 	case "hook":
 		// 编程工具的会话钩子：任何情况下都正常退出，出错只是没有提醒
 		runHook(ctx, in, out, args[1:])
@@ -98,6 +100,7 @@ func status(ctx context.Context, out io.Writer) error {
 	}
 	if len(creds.Logins) == 0 && len(creds.Devices) == 0 {
 		fmt.Fprintln(out, i18n.T("cli.status.none"))
+		printBinding(out)
 		return nil
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
@@ -127,6 +130,8 @@ func status(ctx context.Context, out io.Writer) error {
 	if err := tw.Flush(); err != nil {
 		return err
 	}
+	fmt.Fprintln(out)
+	printBinding(out)
 	for _, srv := range order {
 		if w := client.VersionWarning(ctx, srv); w != "" {
 			fmt.Fprintf(out, "\n%s\n", w)

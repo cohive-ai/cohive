@@ -15,6 +15,7 @@ import (
 // runProxy 运行本机转发器：从凭据文件取令牌，把标准输入的 MCP 消息转发到协作服务。
 // 本机没有这个工作空间的令牌、但有这个服务的设备密钥时，自动为本人签发（新加入工作空间后不必重新配对）；
 // 令牌被拒（例如被移出后又被加回）时用设备密钥重签一次再重试。
+// 命令行不带 --server、--workspace 时，按进程所在目录识别绑定（本机绑定表 > 仓库里的 .cohive.toml）。
 func runProxy(ctx context.Context, in io.Reader, out, errOut io.Writer, args []string) error {
 	fs := flag.NewFlagSet("mcp-proxy", flag.ContinueOnError)
 	fs.SetOutput(errOut)
@@ -24,8 +25,17 @@ func runProxy(ctx context.Context, in io.Reader, out, errOut io.Writer, args []s
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *server == "" || *workspace == "" || *tool == "" {
+	if *tool == "" || (*server == "") != (*workspace == "") {
 		return i18n.Errorf("cli.proxy.missing_args")
+	}
+	if *server == "" {
+		// 命令行没带服务与工作空间（用户级配置）：按所在目录识别
+		r := client.ResolveAny(candidateDirs("")...)
+		if r.Source == "" {
+			p := &client.Proxy{Log: errOut, Unbound: unboundMessage(r)}
+			return p.Run(ctx, in, out)
+		}
+		*server, *workspace = r.Server, r.Workspace
 	}
 	srv := client.NormalizeServer(*server)
 	creds, err := client.LoadCredentials()

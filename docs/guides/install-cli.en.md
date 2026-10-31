@@ -47,7 +47,7 @@ To upgrade, run the install command again; it replaces the binary in place. `coh
 | macOS, Linux | `~/.local/bin/cohive`; set `COHIVE_INSTALL_DIR` to change it | Shell config files are not modified. If the directory is not on your PATH, the script prints the line to add to `~/.zshrc` or `~/.bashrc` |
 | Windows | `%LOCALAPPDATA%\Programs\cohive\cohive.exe`; set `COHIVE_INSTALL_DIR` to change it | Added to the current user's PATH automatically (no admin rights needed); reopen any terminal that is already open |
 
-**Your coding tool must be able to find `cohive` on its PATH**: the command that `cohive init` writes into the project config is just `cohive` (the config is committed to the repository, so it cannot contain one person's absolute path). When a coding tool is not started from a terminal (for example a desktop app launched from the Dock), its PATH may not include `~/.local/bin`. If you see "cohive not found", start the coding tool from a terminal, or add the directory to your login shell's PATH. `cohive init` also warns you when it does not find `cohive` on the current PATH.
+**Your coding tool must be able to find `cohive` on its PATH**: the command that `cohive init` writes into the config is just `cohive` (the config may be committed to a repository, so it cannot contain one person's absolute path). When a coding tool is not started from a terminal (for example a desktop app launched from the Dock), its PATH may not include `~/.local/bin`. If you see "cohive not found", start the coding tool from a terminal, or add the directory to your login shell's PATH. `cohive init` also warns you when it does not find `cohive` on the current PATH.
 
 ## Supported platforms
 

@@ -26,6 +26,9 @@ type Proxy struct {
 	Log    io.Writer
 	// Unavailable 非空时不转发，对每个请求都返回这条提示（例如本机还没登录）。
 	Unavailable string
+	// Unbound 非空表示这个目录没有绑定工作空间：不联网，只在本地回应握手，
+	// 工具列表里只有 cohive_status 一个工具，调用它返回这条提示。
+	Unbound string
 	// Refresh 在服务端返回 401 时换一枚新令牌（用设备密钥重签）；为空时不重试。
 	// 每个进程只换一次：重签也失败就报错，不循环。
 	Refresh func(ctx context.Context) (string, error)
@@ -141,6 +144,10 @@ func (p *Proxy) renew(ctx context.Context, used string) bool {
 }
 
 func (p *Proxy) forward(ctx context.Context, msg []byte, head rpcHead, out io.Writer) {
+	if p.Unbound != "" {
+		p.replyUnbound(msg, head, out)
+		return
+	}
 	if p.Unavailable != "" {
 		p.fail(out, head, p.Unavailable)
 		return
@@ -294,4 +301,52 @@ func (p *Proxy) sanitize(body string) string {
 func parseErrorResponse() []byte {
 	msg, _ := json.Marshal(i18n.T("cli.client.proxy.parse_error"))
 	return []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":` + string(msg) + `}}`)
+}
+
+// replyUnbound 在没有绑定工作空间时本地回应：握手、探活、只含 cohive_status 的工具列表；通知不回复。
+func (p *Proxy) replyUnbound(msg []byte, head rpcHead, out io.Writer) {
+	if len(head.ID) == 0 || string(head.ID) == "null" {
+		return
+	}
+	reply := func(result any) {
+		b, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": head.ID, "result": result})
+		if err == nil {
+			p.write(out, b)
+		}
+	}
+	switch head.Method {
+	case "initialize":
+		var req struct {
+			Params struct {
+				ProtocolVersion string `json:"protocolVersion"`
+			} `json:"params"`
+		}
+		_ = json.Unmarshal(msg, &req)
+		version := req.Params.ProtocolVersion
+		if version == "" {
+			version = "2025-06-18"
+		}
+		reply(map[string]any{
+			"protocolVersion": version,
+			"capabilities":    map[string]any{"tools": map[string]any{}},
+			"serverInfo":      map[string]any{"name": "cohive-unbound", "version": "0"},
+		})
+	case "ping":
+		reply(map[string]any{})
+	case "tools/list":
+		reply(map[string]any{"tools": []any{map[string]any{
+			"name":        "cohive_status",
+			"description": i18n.T("cli.client.proxy.status_tool_desc"),
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+		}}})
+	case "tools/call":
+		reply(map[string]any{
+			"content": []any{map[string]any{"type": "text", "text": p.Unbound}},
+			"isError": true,
+		})
+	default:
+		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": head.ID,
+			"error": map[string]any{"code": -32601, "message": "method not found"}})
+		p.write(out, b)
+	}
 }

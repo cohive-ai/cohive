@@ -73,13 +73,13 @@ func TestInitPicksWorkspace(t *testing.T) {
 	s.login(t, "codex")
 	s.joinWorkspace(t, "ops")
 	dir := t.TempDir()
-	if _, err := run(t, "init", "--dir", dir); err == nil || !strings.Contains(err.Error(), "--workspace") {
+	if _, err := run(t, "init", "--project", "--dir", dir); err == nil || !strings.Contains(err.Error(), "--workspace") {
 		t.Fatalf("多个工作空间时应要求指定：%v", err)
 	}
-	if _, err := run(t, "init", "--dir", dir, "--workspace", "nope"); err == nil || !strings.Contains(err.Error(), "成员") {
+	if _, err := run(t, "init", "--project", "--dir", dir, "--workspace", "nope"); err == nil || !strings.Contains(err.Error(), "成员") {
 		t.Fatalf("不是成员的工作空间应拒绝：%v", err)
 	}
-	out, err := run(t, "init", "--dir", dir, "--workspace", "ops")
+	out, err := run(t, "init", "--project", "--dir", dir, "--workspace", "ops")
 	if err != nil || !strings.Contains(out, "已为工作空间 ops 签发") {
 		t.Fatalf("init 应补签 ops 的令牌：%v\n%s", err, out)
 	}
@@ -175,7 +175,7 @@ func TestLegacyCredentials(t *testing.T) {
 		t.Fatalf("旧版配对补登应提示 --force：%v", err)
 	}
 	// ann 已是 ops 的在册成员：init 不能误报“不是成员”，应提示旧版配对、重新配对
-	_, err = run(t, "init", "--dir", t.TempDir(), "--server", s.url, "--workspace", "ops", "--tools", "codex")
+	_, err = run(t, "init", "--project", "--dir", t.TempDir(), "--server", s.url, "--workspace", "ops", "--tools", "codex")
 	if err == nil || !strings.Contains(err.Error(), "旧版配对") || !strings.Contains(err.Error(), "--force") || strings.Contains(err.Error(), "不是") {
 		t.Fatalf("旧版配对的电脑 init 新工作空间应提示重新配对：%v", err)
 	}
@@ -215,7 +215,7 @@ func TestInitWithOnlyManualToken(t *testing.T) {
 	if err := runCLI(context.Background(), strings.NewReader(tok+"\n"), &out, []string{"login", "--server", s.url, "--token-stdin"}); err != nil {
 		t.Fatalf("手工令牌登录：%v\n%s", err, out.String())
 	}
-	_, err := run(t, "init", "--dir", t.TempDir(), "--workspace", "ops", "--tools", "codex")
+	_, err := run(t, "init", "--project", "--dir", t.TempDir(), "--workspace", "ops", "--tools", "codex")
 	if err == nil || !strings.Contains(err.Error(), "手工签发") || strings.Contains(err.Error(), "不是") {
 		t.Fatalf("应提示配对这台电脑：%v", err)
 	}

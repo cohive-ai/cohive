@@ -55,7 +55,7 @@ func TestInitWritesHooks(t *testing.T) {
 	configDir(t)
 	saveLogins(t, "claude-code", "codex")
 	proj := t.TempDir()
-	out, err := run(t, "init", "--dir", proj)
+	out, err := run(t, "init", "--project", "--dir", proj)
 	if err != nil {
 		t.Fatalf("init 失败：%v\n%s", err, out)
 	}
@@ -89,10 +89,10 @@ func TestInitHooksMergeAndRemove(t *testing.T) {
 		`"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}`
 	os.WriteFile(filepath.Join(proj, ".claude", "settings.json"), []byte(user), 0o644)
 
-	if _, err := run(t, "init", "--dir", proj); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := run(t, "init", "--dir", proj, "--command", "/Users/me/My Tools/cohive"); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj, "--command", "/Users/me/My Tools/cohive"); err != nil {
 		t.Fatal(err)
 	}
 	cc := claudeHooks(t, proj)
@@ -108,7 +108,7 @@ func TestInitHooksMergeAndRemove(t *testing.T) {
 		t.Fatalf("Codex 钩子应随命令路径更新且不重复：%+v", x)
 	}
 
-	out, err := run(t, "init", "--dir", proj, "--no-hooks")
+	out, err := run(t, "init", "--project", "--dir", proj, "--no-hooks")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,8 +126,8 @@ func TestInitHooksMergeAndRemove(t *testing.T) {
 
 	// 只有 cohive 的钩子时，移除后 hooks 键也不留
 	proj2 := t.TempDir()
-	run(t, "init", "--dir", proj2, "--tools", "claude-code")
-	run(t, "init", "--dir", proj2, "--tools", "claude-code", "--no-hooks")
+	run(t, "init", "--project", "--dir", proj2, "--tools", "claude-code")
+	run(t, "init", "--project", "--dir", proj2, "--tools", "claude-code", "--no-hooks")
 	if strings.Contains(readFile(t, filepath.Join(proj2, ".claude", "settings.json")), `"hooks"`) {
 		t.Fatal("只有 cohive 的钩子时，移除后不应留下空的 hooks")
 	}
@@ -141,7 +141,7 @@ func TestInitHooksRefuseBadConfig(t *testing.T) {
 		proj := t.TempDir()
 		os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)
 		os.WriteFile(filepath.Join(proj, ".claude", "settings.json"), []byte(bad), 0o644)
-		if _, err := run(t, "init", "--dir", proj, "--tools", "claude-code"); err == nil || !strings.Contains(err.Error(), "hooks") {
+		if _, err := run(t, "init", "--project", "--dir", proj, "--tools", "claude-code"); err == nil || !strings.Contains(err.Error(), "hooks") {
 			t.Fatalf("%s 应报错：%v", bad, err)
 		}
 		if readFile(t, filepath.Join(proj, ".claude", "settings.json")) != bad {
@@ -155,7 +155,7 @@ func TestInitHooksRefuseBadConfig(t *testing.T) {
 	os.MkdirAll(filepath.Join(proj, ".codex"), 0o755)
 	bad := "hooks = \"off\"\n"
 	os.WriteFile(filepath.Join(proj, ".codex", "config.toml"), []byte(bad), 0o644)
-	if _, err := run(t, "init", "--dir", proj, "--tools", "codex"); err == nil {
+	if _, err := run(t, "init", "--project", "--dir", proj, "--tools", "codex"); err == nil {
 		t.Fatal("Codex 配置里 hooks 写法冲突时应报错")
 	}
 	if readFile(t, filepath.Join(proj, ".codex", "config.toml")) != bad {

@@ -54,7 +54,7 @@ func TestInitOpencodeWritesConfig(t *testing.T) {
 	configDir(t)
 	saveLogins(t, "opencode")
 	proj := t.TempDir()
-	out, err := run(t, "init", "--dir", proj)
+	out, err := run(t, "init", "--project", "--dir", proj)
 	if err != nil {
 		t.Fatalf("init 失败：%v\n%s", err, out)
 	}
@@ -104,7 +104,7 @@ func TestInitOpencodeMergeKeepsOrder(t *testing.T) {
   "zzz": 1.50
 }`
 	os.WriteFile(filepath.Join(proj, "opencode.json"), []byte(user), 0o644)
-	if out, err := run(t, "init", "--dir", proj, "--tools", "opencode"); err != nil {
+	if out, err := run(t, "init", "--project", "--dir", proj, "--tools", "opencode"); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	raw := []byte(readFile(t, filepath.Join(proj, "opencode.json")))
@@ -134,7 +134,7 @@ func TestInitOpencodeMergeKeepsOrder(t *testing.T) {
 	if c.Permission["cohive_cohive_submit_issue"] != "ask" || c.Permission["cohive_cohive_inbox"] != "allow" || c.MCP["cohive"].Type != "local" {
 		t.Fatalf("cohive 的条目应换成 init 的写法：%+v", c)
 	}
-	if _, err := run(t, "init", "--dir", proj, "--tools", "opencode"); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj, "--tools", "opencode"); err != nil {
 		t.Fatal(err)
 	}
 	if again := readFile(t, filepath.Join(proj, "opencode.json")); again != s {
@@ -148,7 +148,7 @@ func TestInitOpencodePermissionString(t *testing.T) {
 	saveLogins(t, "opencode")
 	proj := t.TempDir()
 	os.WriteFile(filepath.Join(proj, "opencode.json"), []byte(`{"permission":"ask"}`), 0o644)
-	if out, err := run(t, "init", "--dir", proj, "--tools", "opencode"); err != nil {
+	if out, err := run(t, "init", "--project", "--dir", proj, "--tools", "opencode"); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	raw := []byte(readFile(t, filepath.Join(proj, "opencode.json")))
@@ -181,7 +181,7 @@ func TestInitOpencodeRefuses(t *testing.T) {
 			os.MkdirAll(filepath.Dir(filepath.Join(proj, rel)), 0o755)
 			os.WriteFile(filepath.Join(proj, rel), []byte(body), 0o644)
 		}
-		out, err := run(t, "init", "--dir", proj, "--tools", "opencode")
+		out, err := run(t, "init", "--project", "--dir", proj, "--tools", "opencode")
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Fatalf("%s：应报错含 %q，实际 %v\n%s", c.name, c.want, err, out)
 		}
@@ -202,7 +202,7 @@ func TestInitOpencodeSymlink(t *testing.T) {
 	proj := t.TempDir()
 	outside := t.TempDir()
 	os.Symlink(outside, filepath.Join(proj, ".opencode"))
-	if _, err := run(t, "init", "--dir", proj, "--tools", "opencode"); err == nil || !strings.Contains(err.Error(), "符号链接") {
+	if _, err := run(t, "init", "--project", "--dir", proj, "--tools", "opencode"); err == nil || !strings.Contains(err.Error(), "符号链接") {
 		t.Fatalf("经符号链接写到项目之外应报错：%v", err)
 	}
 	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
@@ -216,10 +216,10 @@ func TestInitOpencodeNoHooks(t *testing.T) {
 	saveLogins(t, "opencode")
 	proj := t.TempDir()
 	plugin := filepath.Join(proj, ".opencode", "plugins", "cohive.ts")
-	if _, err := run(t, "init", "--dir", proj, "--tools", "opencode"); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj, "--tools", "opencode"); err != nil {
 		t.Fatal(err)
 	}
-	out, err := run(t, "init", "--dir", proj, "--tools", "opencode", "--no-hooks")
+	out, err := run(t, "init", "--project", "--dir", proj, "--tools", "opencode", "--no-hooks")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestInitOpencodeNoHooks(t *testing.T) {
 		t.Fatal("--no-hooks 不影响 MCP 配置")
 	}
 	os.WriteFile(plugin, []byte("export const Mine = 1\n"), 0o644)
-	if _, err := run(t, "init", "--dir", proj, "--tools", "opencode", "--no-hooks"); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj, "--tools", "opencode", "--no-hooks"); err != nil {
 		t.Fatalf("--no-hooks 时用户自己的同名文件不应导致报错：%v", err)
 	}
 	if readFile(t, plugin) != "export const Mine = 1\n" {
@@ -246,7 +246,7 @@ func TestInitAllThreeAndRepoTarget(t *testing.T) {
 	configDir(t)
 	saveLogins(t, "claude-code", "codex", "opencode")
 	proj := t.TempDir()
-	out, err := run(t, "init", "--dir", proj)
+	out, err := run(t, "init", "--project", "--dir", proj)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -262,7 +262,7 @@ func TestInitAllThreeAndRepoTarget(t *testing.T) {
 	// 只有 opencode 的仓库也认得出
 	only := t.TempDir()
 	saveLogins(t, "opencode")
-	run(t, "init", "--dir", only)
+	run(t, "init", "--project", "--dir", only)
 	if rt, err := readRepoTarget(only); err != nil || rt.Server != srv || !reflect.DeepEqual(rt.Tools, []string{"opencode"}) {
 		t.Fatalf("只有 opencode：%+v %v", rt, err)
 	}
@@ -277,7 +277,7 @@ func TestInitAllThreeAndRepoTarget(t *testing.T) {
 func TestInitToolsUnsupportedListsKnown(t *testing.T) {
 	configDir(t)
 	saveLogins(t, "opencode")
-	_, err := run(t, "init", "--dir", t.TempDir(), "--tools", "dsh")
+	_, err := run(t, "init", "--project", "--dir", t.TempDir(), "--tools", "dsh")
 	if err == nil || !strings.Contains(err.Error(), "claude-code, codex, opencode") || !strings.Contains(err.Error(), `"dsh"`) {
 		t.Fatalf("应列出支持的工具：%v", err)
 	}
@@ -286,7 +286,7 @@ func TestInitToolsUnsupportedListsKnown(t *testing.T) {
 // examples/opencode 里的插件与 init 生成的一致（示例参数），改了模板要同步示例。
 func TestOpencodeExampleInSync(t *testing.T) {
 	want := opencodePluginSource([]string{"cohive", "hook", "--server", "http://localhost:8787", "--workspace", "default", "--tool", "opencode"})
-	got, err := os.ReadFile(filepath.Join("..", "..", "examples", "opencode", ".opencode", "plugins", "cohive.ts"))
+	got, err := os.ReadFile(filepath.Join(sourceDir, "..", "..", "examples", "opencode", ".opencode", "plugins", "cohive.ts"))
 	if err != nil || string(got) != string(want) {
 		t.Fatalf("examples/opencode/.opencode/plugins/cohive.ts 与生成结果不一致（%v）；重新生成示例", err)
 	}
@@ -297,7 +297,7 @@ func TestInitOpencodeEnglish(t *testing.T) {
 	configDir(t)
 	saveLogins(t, "opencode")
 	proj := t.TempDir()
-	out, err := run(t, "init", "--dir", proj)
+	out, err := run(t, "init", "--project", "--dir", proj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestInitOpencodeEnglish(t *testing.T) {
 		t.Errorf("英文输出里不应有汉字：\n%s", out)
 	}
 	os.WriteFile(filepath.Join(proj, "opencode.jsonc"), []byte("{}"), 0o644)
-	if _, err := run(t, "init", "--dir", proj); err == nil || hasHan(err.Error()) || !strings.Contains(err.Error(), "comments") {
+	if _, err := run(t, "init", "--project", "--dir", proj); err == nil || hasHan(err.Error()) || !strings.Contains(err.Error(), "comments") {
 		t.Fatalf("英文报错：%v", err)
 	}
 }

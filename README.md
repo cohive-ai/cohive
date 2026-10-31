@@ -75,7 +75,7 @@ To change the board's colors to your own, see [Custom themes](docs/guides/themin
    ```
 
    On Windows, in PowerShell: `$env:COHIVE_LOGIN=1; irm https://cohive.example.com/install.ps1 | iex`. The CLI is served by your own Cohive server; no Go toolchain needed.
-3. **Run `cohive init` in the project directory** (skip it if a teammate already committed the generated config). Then use `/cohive` in Claude Code and OpenCode, and `$cohive` in Codex.
+3. **Run `cohive init` in the project directory** (once per computer and repository; every worktree of the repository follows automatically). Then use `/cohive` in Claude Code and OpenCode, and `$cohive` in Codex.
 
 The first time you open the project in Claude Code or Codex, trust the project. For Codex, also run the `codex` CLI once in the project directory and trust Cohive's two hooks. OpenCode needs no trust step. Details: [Onboarding](docs/guides/onboarding.en.md).
 
@@ -86,7 +86,7 @@ The first time you open the project in Claude Code or Codex, trust the project. 
 | Workspace | One per team or product area, with one chat group. Accounts are global; a person can belong to several workspaces with a role in each |
 | Issue | Draft → open → accepted → fixing → ready for verification → closed; it can be declined, transferred or reopened. Its state lives only in Cohive's database |
 | Device pairing | Run `cohive login` in a terminal and click "Authorize" in the browser. Pair a computer once and it works for all your workspaces; from the second computer on, an admin approves it |
-| Tokens | Issued per person + tool + workspace and kept only in a local credentials file. The config `cohive init` writes into the repository holds no secrets and can be committed |
+| Tokens | Issued per person + tool + workspace and kept only in a local credentials file. The config `cohive init` writes (user-level, or into the repository with `--project`) holds no secrets |
 | Admin actions | Only allowed from a web session signed in with a password; coding-tool tokens cannot do them. Every admin action goes into an append-only log |
 
 ## How it differs from nearby products
