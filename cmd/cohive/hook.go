@@ -30,6 +30,7 @@ type hookInput struct {
 	SessionID string `json:"session_id"`
 	Event     string `json:"hook_event_name"`
 	Source    string `json:"source"`
+	Cwd       string `json:"cwd"`
 }
 
 type hookOutput struct {
@@ -50,14 +51,31 @@ func runHook(ctx context.Context, in io.Reader, out io.Writer, args []string) {
 	workspace := fs.String("workspace", "", "")
 	tool := fs.String("tool", "", "")
 	check := fs.Bool("check", false, "")
-	if fs.Parse(args) != nil || *server == "" || *workspace == "" || !isHookTool(*tool) {
+	// 不带 --server、--workspace（用户级配置）时，按所在目录识别绑定；只给了一个算用法错误
+	if fs.Parse(args) != nil || (*server == "") != (*workspace == "") || !isHookTool(*tool) {
 		if *check {
 			fmt.Fprintln(out, i18n.T("cli.hook.check_usage"))
 		}
 		return
 	}
 	if *check {
-		hookCheck(ctx, out, *server, *workspace, *tool)
+		srv, ws := *server, *workspace
+		if srv == "" {
+			dirs := candidateDirs("")
+			r := client.ResolveAny(dirs...)
+			fmt.Fprint(out, i18n.T("cli.hook.check_dirs", i18n.D{"Dirs": strings.Join(dirs, ", ")}))
+			if hasProjectHook(*tool, dirs) {
+				fmt.Fprintln(out, i18n.T("cli.hook.check_project_hook"))
+				return
+			}
+			if r.Source == "" {
+				fmt.Fprintln(out, unboundMessage(r))
+				return
+			}
+			fmt.Fprint(out, i18n.T("cli.hook.check_resolved", i18n.D{"Source": r.Source, "Key": r.Key, "Server": r.Server, "Workspace": r.Workspace}))
+			srv, ws = r.Server, r.Workspace
+		}
+		hookCheck(ctx, out, srv, ws, *tool)
 		return
 	}
 
@@ -89,6 +107,18 @@ func hookOnce(ctx context.Context, in io.Reader, server, workspace, tool string)
 	var hi hookInput
 	if json.Unmarshal(raw, &hi) != nil || (hi.Event != "SessionStart" && hi.Event != "UserPromptSubmit") {
 		return nil
+	}
+	if server == "" {
+		// 没绑定就立刻静默退出：只读几个小文件，不联网、不读凭据（.cohive.toml 例外，见 Resolve）
+		dirs := candidateDirs(hi.Cwd)
+		if hasProjectHook(tool, dirs) {
+			return nil
+		}
+		r := client.ResolveAny(dirs...)
+		if r.Source == "" {
+			return nil
+		}
+		server, workspace = r.Server, r.Workspace
 	}
 	creds, err := client.LoadCredentials()
 	if err != nil {

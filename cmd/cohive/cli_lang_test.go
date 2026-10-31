@@ -297,7 +297,7 @@ func TestProxyUnavailableEnglish(t *testing.T) {
 		t.Fatalf("转发器的提示应是英文：%s", out.String())
 	}
 	if err := runProxy(t.Context(), strings.NewReader(""), &out, &strings.Builder{}, nil); err == nil ||
-		!strings.HasPrefix(err.Error(), "mcp-proxy needs --server, --workspace and --tool") {
+		!strings.HasPrefix(err.Error(), "mcp-proxy needs --tool") {
 		t.Fatalf("缺少参数：%v", err)
 	}
 }

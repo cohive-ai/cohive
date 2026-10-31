@@ -165,7 +165,7 @@
     "one": "Cohive reminder: you have 1 pending issue: {{.List}}. Use {{.Cmd}} to view",
     "other": "Cohive reminder: you have {{.Count}} pending issues: {{.List}}. Use {{.Cmd}} to view"
   },
-  "cli.hook.check_usage": "Usage: cohive hook --check --server <url> --workspace <name> --tool claude-code|codex|opencode|dsh",
+  "cli.hook.check_usage": "Usage: cohive hook --check [--server <url> --workspace <name>] --tool claude-code|codex|opencode|dsh",
   "cli.hook.check_creds_failed": "Failed to read the credentials on this computer: {{.Err}}\n",
   "cli.hook.check_no_login": "This computer has no login for {{.Tool}} in workspace {{.Workspace}} ({{.Server}}): run cohive login --server {{.Server}} --tools {{.Tool}}\n",
   "cli.hook.check_found": "Found a login: workspace {{.Workspace}}, member {{.Member}}, tool {{.Tool}}\n",
@@ -174,7 +174,7 @@
   "cli.hook.check_would_insert": "At the start of a new session this will be inserted:\n",
   "cli.hook.check_nothing": "There are no pending issues right now, so nothing will be inserted when a new session starts.",
   "cli.hook.check_state_dir": "Session cursor directory: {{.Dir}}\n",
-  "cli.proxy.missing_args": "mcp-proxy needs --server, --workspace and --tool; they are normally written into the project config by cohive init",
+  "cli.proxy.missing_args": "mcp-proxy needs --tool; --server and --workspace must be given together or both left out (then the binding of the directory is used). cohive init normally sets this up",
   "cli.proxy.no_token_returned": "The Cohive server did not return a token",
   "cli.proxy.not_member": "You are not a member of workspace {{.Workspace}}; ask its admin to add you",
   "cli.proxy.issue_failed": "Failed to issue a {{.Tool}} token for workspace {{.Workspace}}: {{.Err}}",
@@ -208,5 +208,11 @@
   "cli.client.proxy.stream_failed": "Failed to read the streaming response from the Cohive server: {{.Err}}",
   "cli.client.proxy.unrecognized": "The Cohive server returned something unrecognizable",
   "cli.client.bindings_bad_format": "The bindings file has the wrong format: {{.Path}}",
-  "cli.client.bindings_locked": "Another cohive process is updating the bindings (lock file {{.Path}}); try again in a moment"
+  "cli.client.bindings_locked": "Another cohive process is updating the bindings (lock file {{.Path}}); try again in a moment",
+  "cli.client.proxy.status_tool_desc": "Shows whether this project is bound to a Cohive workspace and what to do about it.",
+  "cli.proxy.unbound": "This project is not bound to a Cohive workspace. Run cohive init in the project directory (cohive login first if this computer is not logged in yet).",
+  "cli.proxy.unbound_shared": "This project's .cohive.toml points to workspace {{.Workspace}} on {{.Server}}, but this computer is not logged in there, so it is not used. Run cohive login --server {{.Server}}, then cohive init in the project directory.",
+  "cli.hook.check_dirs": "Directories tried (hook cwd, current directory, CLAUDE_PROJECT_DIR): {{.Dirs}}\n",
+  "cli.hook.check_project_hook": "This project already has a project-level cohive hook (with --server); the user-level hook steps aside so reminders are not shown twice.",
+  "cli.hook.check_resolved": "Binding found ({{.Source}}): key {{.Key}}, server {{.Server}}, workspace {{.Workspace}}\n"
 }
