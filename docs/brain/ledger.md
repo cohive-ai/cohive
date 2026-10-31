@@ -21,13 +21,14 @@
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
 | IM2-1 Slack 接入 | 已合入 main `129bce2`（已验收 = `0ef06c8`） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，处理实测反馈，之后做飞书与 Lark） | `0ef06c8` | 待用户（lee 建免费 Slack 工作区、按 deploy/slack-app-manifest.yaml 建应用，两个令牌亲手写进 pm-dev1 的 deploy/.env 后跑 upgrade.sh，再绑频道、连账号，按 docs/guides/slack.md 第 7 节验收） | 真环境确认：Socket 确认时限、只在消息块里的 @ 是否提醒、免费版改旧消息 |
-| WT-1 工作树与多目录配置（只出设计） | `wt-1-design` | wt-design / `local_92d87f5a-765b-4c73-bcb2-67344a973005` | — | 已派 | 第 0 步回报 .worktreeinclude 是否生效；甲乙方案对三种工具逐项覆盖；迁移路径；设计交 lee 拍板后再实施 |
+| WT-1 工作树与多目录配置（只出设计） | `claude/wt-1-design-644f43` | wt-design / `local_92d87f5a-765b-4c73-bcb2-67344a973005` | `ccca820` | 待用户（6 条拍板，见 §2） | 设计稿 docs/design/2026-10-31-worktree-binding.md；第 0 步实测 .worktreeinclude 生效；推荐方案乙，约 4～5 天；拍板后改稿再合入设计稿，实施另派 Sonnet |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
 | 编号 | 问题 | 选项 | 建议 | 阻塞什么 |
 |---|---|---|---|---|
 | I18N-GH | 私密漏洞报告仍未开启（lee 亲手点：仓库设置 → 左侧“安全与质量”分组 → 高级安全 → 私密漏洞报告一栏的启用按钮） | 做 | 做 | 安全报告入口可用 |
+| WT-1 | 设计稿 6 条：①默认用户级+本机绑定 ②可提交的 .cohive.toml ③未绑定只露 cohive_status ④迁移自动清未提交旧文件 ⑤首期只做仓库级 ⑥第二克隆提示沿用 | 见设计稿 4.1 | 全按稿推荐；②附条件：仅本机已有该服务+工作空间登录时生效 | WT-1 实施 |
 
 ## 3. 队列（按优先级，随时重排；派出后移到 §1）
 排序依据见 requirements.md 第 5 节（2026-10-16 lee 同意）。
