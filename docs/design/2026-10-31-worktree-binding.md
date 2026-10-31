@@ -269,3 +269,21 @@
 7. **从旧版本升级**：重新执行一次 `cohive init`；仓库里已提交的旧配置什么时候可以删。
 8. **旧版本的临时办法**：在主检出目录放一份 `.worktreeinclude`，写上 `.mcp.json`、`.claude/settings.json`、`.claude/skills/` 三行，只对 Claude Code 的工作树有效。
 9. **排查**：`cohive hook --check` 会打印起点目录、识别出的仓库和命中的绑定。
+
+---
+
+## 5. 实施结果（2026-11-01）
+
+按 4.2 实施完毕。验收要点 4.3 的自测对应如下（测试均用临时主目录与临时配置目录，未动真实配置）：
+
+| 验收 | 自测 | 结果 |
+| --- | --- | --- |
+| 1 一次 init 后工作树可用，不复制文件 | `TestInitUserLevelWritesNoProjectFiles`、`TestProxyUsesBindingInWorktree`、`TestHookResolvesFromCwd`、`TestRepoKeyMainAndWorktreeAreSame` | 通过（真实 `git worktree add`；Claude Code 桌面应用、Codex 工作树的真实会话未实测） |
+| 2 未绑定时只有 `cohive_status`；钩子静默且 P99 < 10 毫秒 | `TestProxyUnboundOnlyStatusTool`、`TestHookUnboundFast` | 通过 |
+| 3 两个仓库绑两个工作空间互不串 | 绑定表按键查找：`TestResolveBindingWorktreeAndNonGit`、`TestInitRerunKeepsBinding` | 通过（未做两个真实会话同时打开） |
+| 4 非 git 目录绑定后子目录可用 | `TestResolveBindingWorktreeAndNonGit` | 通过 |
+| 5 迁移 | `TestInitMigratesUncommittedProjectConfig`、`TestInitMigrationLeavesCommittedFiles`、`TestHookStepsAsideForProjectHook` | 通过 |
+| 6 带参数的旧命令行为不变 | 原有测试全部保留（初始化相关改用 `--project`） | 通过 |
+| 7 仓库里无本机路径与令牌 | `.cohive.toml` 不含令牌（`TestInitShareAndDefaultFromSharedFile`）；绑定表只在配置目录 | 通过 |
+
+与设计稿的差异：未实现“遇到 `GIT_DIR` 环境变量时退回 `git rev-parse`”；识别不到一律按未绑定处理。
