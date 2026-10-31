@@ -21,6 +21,7 @@
 | 编号 | 分支 | 会话（短名 / 会话编号） | tip | 状态 | 验收要点 |
 |---|---|---|---|---|---|
 | IM2-1 Slack 接入 | 已合入 main `129bce2`（已验收 = `0ef06c8`） | im-research-2 / `local_cc6acfd5-18c9-401c-b14b-8ccbcf70869a`（保留，处理实测反馈，之后做飞书与 Lark） | `0ef06c8` | 待用户（lee 建免费 Slack 工作区、按 deploy/slack-app-manifest.yaml 建应用，两个令牌亲手写进 pm-dev1 的 deploy/.env 后跑 upgrade.sh，再绑频道、连账号，按 docs/guides/slack.md 第 7 节验收） | 真环境确认：Socket 确认时限、只在消息块里的 @ 是否提醒、免费版改旧消息 |
+| WT-1 工作树与多目录配置（方案乙实施） | `claude/wt-1-design-644f43` | wt-design / `local_92d87f5a-765b-4c73-bcb2-67344a973005`（已改 Sonnet） | `ccca820` | 实施中 | 设计稿 4.3 七条逐条复测；未绑定钩子 P99<10ms；.cohive.toml 仅本机已登录才生效；迁移不动已提交文件、不重复提醒；旧参数行为不变；探针选绑定解析优先级与未绑定分支 |
 
 ## 2. 待用户拍板（拍板后删除，有长期效力的移到 decisions）
 
@@ -44,6 +45,7 @@
 - P3 新登录私聊通知加一键吊销 —— 来源 M5 会话
 - P3 过期设备授权请求、通讯连接请求清理；删掉旧表 `login_codes` —— 来源 M5 会话
 - P3 第一阶段剩余范围（按试用反馈排序）：`CODEOWNERS` 路由（现在服务负责人只能用服务器命令行登记，网页上没有入口）、代码占用声明 —— 来源 `docs/plan.md` 第 10 节
+- DEP-3（P3）：依赖告警 23，@vitest/mocker 4.1.11→4.1.12，仅开发依赖、仅 Windows 路径，等依赖机器人出合并请求或随下次依赖批次处理
 
 ## 4. 环境与待清理
 - 本仓库自用 Cohive（2026-10-18 起）：主检出已 `cohive init` 接入测试服工作空间 `cohive-internal`（只配 Claude Code，含会话钩子），生成的 `.mcp.json`、`.claude/settings.json`、`.claude/skills/` 写在本地 `.git/info/exclude`，不提交；服务 `cohive` 负责人 lee。工作树里的实施会话没有这些文件，不受提醒打扰。朋友与同事在该空间报的问题单，由 lee 或主脑在主检出会话里用 /cohive 拉取，再分派。
