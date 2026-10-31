@@ -117,7 +117,7 @@ func TestInitEnglish(t *testing.T) {
 	configDir(t)
 	saveLogins(t, "claude-code", "codex")
 	proj := t.TempDir()
-	out, err := run(t, "init", "--dir", proj)
+	out, err := run(t, "init", "--project", "--dir", proj)
 	if err != nil {
 		t.Fatalf("init 失败：%v\n%s", err, out)
 	}
@@ -141,22 +141,22 @@ func TestInitEnglish(t *testing.T) {
 func TestInitErrorsEnglish(t *testing.T) {
 	withLang(t, i18n.EN)
 	configDir(t)
-	if _, err := run(t, "init", "--dir", t.TempDir()); err == nil || !strings.HasPrefix(err.Error(), "This computer is not logged in yet: run cohive login") {
+	if _, err := run(t, "init", "--project", "--dir", t.TempDir()); err == nil || !strings.HasPrefix(err.Error(), "This computer is not logged in yet: run cohive login") {
 		t.Fatalf("没有登录：%v", err)
 	}
 	saveLogins(t, "codex")
-	if _, err := run(t, "init", "--dir", t.TempDir(), "--tools", "vim"); err == nil || err.Error() != `--tools only supports claude-code, codex, opencode, got "vim"` {
+	if _, err := run(t, "init", "--project", "--dir", t.TempDir(), "--tools", "vim"); err == nil || err.Error() != `--tools only supports claude-code, codex, opencode, got "vim"` {
 		t.Fatalf("--tools：%v", err)
 	}
 	proj := t.TempDir()
 	os.MkdirAll(filepath.Join(proj, ".codex"), 0o755)
 	os.WriteFile(filepath.Join(proj, ".codex", "config.toml"), []byte("[mcp_servers.cohive]\ncommand = \"x\"\n"), 0o644)
-	if _, err := run(t, "init", "--dir", proj); err == nil || !strings.Contains(err.Error(), "already has a hand-written mcp_servers.cohive entry") {
+	if _, err := run(t, "init", "--project", "--dir", proj); err == nil || !strings.Contains(err.Error(), "already has a hand-written mcp_servers.cohive entry") {
 		t.Fatalf("手写配置：%v", err)
 	}
 	os.WriteFile(filepath.Join(proj, ".mcp.json"), []byte(`{"mcpServers": 3}`), 0o644)
 	saveLogins(t, "claude-code")
-	if _, err := run(t, "init", "--dir", proj, "--tools", "claude-code"); err == nil || !strings.Contains(err.Error(), "mcpServers in .mcp.json should be an object but is json.Number") {
+	if _, err := run(t, "init", "--project", "--dir", proj, "--tools", "claude-code"); err == nil || !strings.Contains(err.Error(), "mcpServers in .mcp.json should be an object but is json.Number") {
 		t.Fatalf("类型错误：%v", err)
 	}
 }
@@ -170,7 +170,7 @@ func TestInitKeepsExistingSkillLanguage(t *testing.T) {
 	agents := filepath.Join(proj, ".agents", "skills", "cohive", "SKILL.md")
 
 	// 中文成员先执行
-	if _, err := run(t, "init", "--dir", proj); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj); err != nil {
 		t.Fatal(err)
 	}
 	zh := readFile(t, claude)
@@ -181,7 +181,7 @@ func TestInitKeepsExistingSkillLanguage(t *testing.T) {
 
 	// 英文成员再执行：已有中文技能，仍写中文
 	withLang(t, i18n.EN)
-	if _, err := run(t, "init", "--dir", proj); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj); err != nil {
 		t.Fatal(err)
 	}
 	if readFile(t, claude) != zh || readFile(t, agents) != zh {
@@ -198,7 +198,7 @@ func TestInitKeepsExistingSkillLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	i18n.SetDefault(i18n.ZhCN)
-	if _, err := run(t, "init", "--dir", proj); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj); err != nil {
 		t.Fatal(err)
 	}
 	if readFile(t, claude) != en {
@@ -220,7 +220,7 @@ func TestInitReplacesOldChineseBlockMarker(t *testing.T) {
 	os.MkdirAll(filepath.Join(proj, ".codex"), 0o755)
 	old := "model = \"gpt\"\n\n# >>> cohive（由 cohive init 生成，重新执行会覆盖这一段）\n[mcp_servers.cohive]\ncommand = \"old\"\nargs = []\n# <<< cohive\n"
 	os.WriteFile(filepath.Join(proj, ".codex", "config.toml"), []byte(old), 0o644)
-	if _, err := run(t, "init", "--dir", proj); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj); err != nil {
 		t.Fatal(err)
 	}
 	got := readFile(t, filepath.Join(proj, ".codex", "config.toml"))

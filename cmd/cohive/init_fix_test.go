@@ -25,7 +25,7 @@ func TestInitRefusesSymlinks(t *testing.T) {
 		if err := os.Symlink(target, filepath.Join(proj, link)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := run(t, "init", "--dir", proj); err == nil || !strings.Contains(err.Error(), "符号链接") {
+		if _, err := run(t, "init", "--project", "--dir", proj); err == nil || !strings.Contains(err.Error(), "符号链接") {
 			t.Fatalf("%s 是符号链接时应拒绝，得到 %v", link, err)
 		}
 		if got := readFile(t, victim); got != "export SAFE=1\n" {
@@ -45,7 +45,7 @@ func TestInitPreservesExistingJSON(t *testing.T) {
 	os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)
 	orig := `{"hooks":{"PostToolUse":[{"command":"make lint && go test ./... > /tmp/out"}]},"bigNumber":12345678901234567890,"permissions":{"deny":["Bash(rm -rf *)"]}}`
 	os.WriteFile(filepath.Join(proj, ".claude", "settings.json"), []byte(orig), 0o644)
-	if _, err := run(t, "init", "--dir", proj); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj); err != nil {
 		t.Fatal(err)
 	}
 	got := readFile(t, filepath.Join(proj, ".claude", "settings.json"))
@@ -62,7 +62,7 @@ func TestInitRefusesWrongJSONTypes(t *testing.T) {
 	proj := t.TempDir()
 	os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)
 	os.WriteFile(filepath.Join(proj, ".claude", "settings.json"), []byte(`{"permissions":{"allow":"Bash(*)"}}`), 0o644)
-	if _, err := run(t, "init", "--dir", proj); err == nil || !strings.Contains(err.Error(), "permissions.allow") {
+	if _, err := run(t, "init", "--project", "--dir", proj); err == nil || !strings.Contains(err.Error(), "permissions.allow") {
 		t.Fatalf("类型不对时应报错而不是覆盖，得到 %v", err)
 	}
 	if got := readFile(t, filepath.Join(proj, ".claude", "settings.json")); !strings.Contains(got, `"allow":"Bash(*)"`) {
@@ -80,18 +80,18 @@ func TestInitCodexDetection(t *testing.T) {
 		os.WriteFile(filepath.Join(proj, ".codex", "config.toml"), []byte(content), 0o644)
 		return proj
 	}
-	if _, err := run(t, "init", "--dir", write("[mcp_servers.cohive-dev]\ncommand = \"x\"\n")); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", write("[mcp_servers.cohive-dev]\ncommand = \"x\"\n")); err != nil {
 		t.Fatalf("名字相似的 cohive-dev 不应被当成已有条目：%v", err)
 	}
 	for _, content := range []string{
 		"[mcp_servers.\"cohive\"]\ncommand = \"x\"\n",
 		"[mcp_servers]\ncohive = { command = \"x\" }\n",
 	} {
-		if _, err := run(t, "init", "--dir", write(content)); err == nil || !strings.Contains(err.Error(), "mcp_servers.cohive") {
+		if _, err := run(t, "init", "--project", "--dir", write(content)); err == nil || !strings.Contains(err.Error(), "mcp_servers.cohive") {
 			t.Fatalf("%q 里已有 cohive 条目，应报错，得到 %v", content, err)
 		}
 	}
-	if _, err := run(t, "init", "--dir", write("this is = = not toml\n")); err == nil || !strings.Contains(err.Error(), "TOML") {
+	if _, err := run(t, "init", "--project", "--dir", write("this is = = not toml\n")); err == nil || !strings.Contains(err.Error(), "TOML") {
 		t.Fatalf("原文件不是合法 TOML 时应报错，得到 %v", err)
 	}
 }

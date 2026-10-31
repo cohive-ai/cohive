@@ -37,7 +37,7 @@ func TestInitWritesBothTools(t *testing.T) {
 	configDir(t)
 	saveLogins(t, "claude-code", "codex")
 	proj := t.TempDir()
-	out, err := run(t, "init", "--dir", proj)
+	out, err := run(t, "init", "--project", "--dir", proj)
 	if err != nil {
 		t.Fatalf("init 失败：%v\n%s", err, out)
 	}
@@ -90,7 +90,7 @@ func TestInitCodexConfigParses(t *testing.T) {
 	proj := t.TempDir()
 	os.MkdirAll(filepath.Join(proj, ".codex"), 0o755)
 	os.WriteFile(filepath.Join(proj, ".codex", "config.toml"), []byte("model = \"gpt\"\n"), 0o644)
-	if _, err := run(t, "init", "--dir", proj); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj); err != nil {
 		t.Fatal(err)
 	}
 	var cfg struct {
@@ -130,7 +130,7 @@ func TestInitMergesAndIsIdempotent(t *testing.T) {
 	os.WriteFile(filepath.Join(proj, ".claude", "settings.json"), []byte(`{"permissions":{"allow":["Bash(make test)"]},"model":"opus"}`), 0o644)
 	os.WriteFile(filepath.Join(proj, ".codex", "config.toml"), []byte("model = \"gpt\"\n\n[mcp_servers.other]\ncommand = \"x\"\n"), 0o644)
 
-	if _, err := run(t, "init", "--dir", proj); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj); err != nil {
 		t.Fatal(err)
 	}
 	first := map[string]string{}
@@ -142,7 +142,7 @@ func TestInitMergesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("应保留原有配置：%v", first)
 	}
 
-	if _, err := run(t, "init", "--dir", proj); err != nil {
+	if _, err := run(t, "init", "--project", "--dir", proj); err != nil {
 		t.Fatal(err)
 	}
 	for p, before := range first {
@@ -159,7 +159,7 @@ func TestInitOnlyLoggedInTools(t *testing.T) {
 	configDir(t)
 	saveLogins(t, "codex")
 	proj := t.TempDir()
-	out, err := run(t, "init", "--dir", proj)
+	out, err := run(t, "init", "--project", "--dir", proj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestInitOnlyLoggedInTools(t *testing.T) {
 		t.Fatal("应写 Codex 配置")
 	}
 
-	out, err = run(t, "init", "--dir", proj, "--tools", "claude-code")
+	out, err = run(t, "init", "--project", "--dir", proj, "--tools", "claude-code")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestInitOnlyLoggedInTools(t *testing.T) {
 
 func TestInitErrors(t *testing.T) {
 	configDir(t)
-	if _, err := run(t, "init", "--dir", t.TempDir()); err == nil || !strings.Contains(err.Error(), "cohive login") {
+	if _, err := run(t, "init", "--project", "--dir", t.TempDir()); err == nil || !strings.Contains(err.Error(), "cohive login") {
 		t.Fatalf("没有任何登录时应提示先登录，得到 %v", err)
 	}
 
@@ -189,7 +189,7 @@ func TestInitErrors(t *testing.T) {
 	proj := t.TempDir()
 	os.MkdirAll(filepath.Join(proj, ".codex"), 0o755)
 	os.WriteFile(filepath.Join(proj, ".codex", "config.toml"), []byte("[mcp_servers.cohive]\ncommand = \"old\"\n"), 0o644)
-	if _, err := run(t, "init", "--dir", proj); err == nil || !strings.Contains(err.Error(), "mcp_servers.cohive") {
+	if _, err := run(t, "init", "--project", "--dir", proj); err == nil || !strings.Contains(err.Error(), "mcp_servers.cohive") {
 		t.Fatalf("已有手写的 cohive 配置时应报错而不是写出重复配置，得到 %v", err)
 	}
 }
@@ -201,7 +201,7 @@ func TestInitWarnsWhenCommandNotOnPath(t *testing.T) {
 	old := lookPath
 	defer func() { lookPath = old }()
 	lookPath = func(string) (string, error) { return "", os.ErrNotExist }
-	out, err := run(t, "init", "--dir", t.TempDir(), "--tools", "claude-code")
+	out, err := run(t, "init", "--project", "--dir", t.TempDir(), "--tools", "claude-code")
 	if err != nil {
 		t.Fatalf("init 失败：%v\n%s", err, out)
 	}
@@ -209,7 +209,7 @@ func TestInitWarnsWhenCommandNotOnPath(t *testing.T) {
 		t.Fatalf("应提示 cohive 不在 PATH 里：%s", out)
 	}
 	lookPath = func(string) (string, error) { return "/usr/local/bin/cohive", nil }
-	if out, _ := run(t, "init", "--dir", t.TempDir(), "--tools", "claude-code"); strings.Contains(out, "PATH 里找不到") {
+	if out, _ := run(t, "init", "--project", "--dir", t.TempDir(), "--tools", "claude-code"); strings.Contains(out, "PATH 里找不到") {
 		t.Fatalf("在 PATH 里时不提示：%s", out)
 	}
 }

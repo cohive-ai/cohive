@@ -37,6 +37,20 @@ func opencodePluginSource(hookArgv []string) []byte {
 	return []byte(strings.Replace(opencodePluginTmpl, "__COHIVE_HOOK_ARGV__", string(argv), 1))
 }
 
+// opencodePaths 是 opencode 配置涉及的四个文件的位置：项目级在项目目录下，用户级在 ~/.config/opencode 与 ~/.agents 下。
+type opencodePaths struct {
+	config, jsonc, plugin, skill string
+}
+
+func projectOpencodePaths(dir string) opencodePaths {
+	return opencodePaths{
+		config: filepath.Join(dir, opencodeConfig),
+		jsonc:  filepath.Join(dir, opencodeJSONC),
+		plugin: filepath.Join(dir, opencodePlugin),
+		skill:  filepath.Join(dir, sharedSkillPath),
+	}
+}
+
 // initOpencode 写 opencode.json（MCP 与按工具确认）、提醒插件和 /cohive 技能。
 // hookArgv 为空表示不写提醒插件，并移除以前 cohive init 写的那份。
 func initOpencode(dir, command string, args, hookArgv []string) error {
@@ -45,11 +59,15 @@ func initOpencode(dir, command string, args, hookArgv []string) error {
 			return err
 		}
 	}
+	return initOpencodeAt(projectOpencodePaths(dir), command, args, hookArgv, nil)
+}
+
+func initOpencodeAt(p opencodePaths, command string, args, hookArgv []string, extraAllow []string) error {
 	// 带注释的 opencode.jsonc 改写后注释会丢；而且两份同时存在时 opencode 两份都读，容易搞不清哪份生效
-	if _, err := os.Stat(filepath.Join(dir, opencodeJSONC)); err == nil {
-		return i18n.Errorf("cli.init.opencode_jsonc", i18n.D{"Path": filepath.Join(dir, opencodeJSONC)})
+	if _, err := os.Stat(p.jsonc); err == nil {
+		return i18n.Errorf("cli.init.opencode_jsonc", i18n.D{"Path": p.jsonc})
 	}
-	cfgPath := filepath.Join(dir, opencodeConfig)
+	cfgPath := p.config
 	cfg, err := readOrdered(cfgPath)
 	if err != nil {
 		return err
@@ -82,7 +100,7 @@ func initOpencode(dir, command string, args, hookArgv []string) error {
 	if err != nil {
 		return err
 	}
-	for _, t := range allowTools {
+	for _, t := range append(append([]string{}, allowTools...), extraAllow...) {
 		perm.moveToEnd(opencodeToolPrefix+t, json.RawMessage(`"allow"`))
 	}
 	for _, t := range confirmTools {
@@ -93,7 +111,7 @@ func initOpencode(dir, command string, args, hookArgv []string) error {
 	}
 
 	// 插件：认出是自己写的才动；用户自己放的同名文件不覆盖也不删
-	pluginPath := filepath.Join(dir, opencodePlugin)
+	pluginPath := p.plugin
 	old, err := os.ReadFile(pluginPath)
 	exists := err == nil
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -122,7 +140,7 @@ func initOpencode(dir, command string, args, hookArgv []string) error {
 			return err
 		}
 	}
-	return writeSkill(filepath.Join(dir, sharedSkillPath))
+	return writeSkill(p.skill)
 }
 
 // ordered 是保持键顺序的 JSON 对象：值原样保留（嵌套内容的顺序、数字写法都不变）。
@@ -203,6 +221,13 @@ func (o *ordered) set(key string, v json.RawMessage) {
 		return
 	}
 	*o = append(*o, orderedField{key, v})
+}
+
+// remove 删掉一个键，没有时什么都不做。
+func (o *ordered) remove(key string) {
+	if i := o.index(key); i >= 0 {
+		*o = append((*o)[:i], (*o)[i+1:]...)
+	}
 }
 
 // moveToEnd 删掉已有的键再追加到末尾。

@@ -47,7 +47,7 @@ const (
 	blockEnd         = "# <<< cohive"
 )
 
-func initProject(ctx context.Context, out io.Writer, args []string) error {
+func initProject(ctx context.Context, in io.Reader, out io.Writer, args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	dir := fs.String("dir", ".", i18n.T("cli.flag.init.dir"))
 	server := fs.String("server", "", i18n.T("cli.flag.init.server"))
@@ -55,12 +55,27 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 	toolsFlag := fs.String("tools", "", i18n.T("cli.flag.init.tools"))
 	command := fs.String("command", "cohive", i18n.T("cli.flag.init.command"))
 	noHooks := fs.Bool("no-hooks", false, i18n.T("cli.flag.init.no_hooks"))
+	project := fs.Bool("project", false, i18n.T("cli.flag.init.project"))
+	share := fs.Bool("share", false, i18n.T("cli.flag.init.share"))
+	removeProject := fs.Bool("remove-project-config", false, i18n.T("cli.flag.init.remove_project"))
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *project && *removeProject {
+		return i18n.Errorf("cli.init.flag_conflict")
+	}
+	dirAbs, err := filepath.Abs(*dir)
+	if err != nil {
 		return err
 	}
 	creds, err := client.LoadCredentials()
 	if err != nil {
 		return err
+	}
+	if *server == "" && *workspace == "" {
+		if t, ok := defaultTarget(in, out, dirAbs); ok {
+			*server, *workspace = t.Server, t.Workspace
+		}
 	}
 	srv, ws, err := pickTarget(ctx, creds, *server, *workspace)
 	if err != nil {
@@ -92,8 +107,12 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 		}
 	}
 
+	// 项目级（--project）：命令行里写死服务与工作空间；用户级：不写，运行时按目录识别
 	proxyArgs := func(tool string) []string {
-		return []string{"mcp-proxy", "--server", srv, "--workspace", ws, "--tool", tool}
+		if *project {
+			return []string{"mcp-proxy", "--server", srv, "--workspace", ws, "--tool", tool}
+		}
+		return []string{"mcp-proxy", "--tool", tool}
 	}
 	// 会话钩子的命令（参数列表）；为空表示不写（并移除以前写的）
 	hookArgv := func(tool string) []string {
@@ -110,32 +129,35 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 	}
 	var written []string
 	for _, t := range tools {
-		switch t {
-		case "claude-code":
-			if err := initClaude(*dir, *command, proxyArgs(t), hookCmd(t)); err != nil {
-				return err
-			}
-			written = append(written, i18n.T("cli.init.written_claude"))
-		case "codex":
-			if err := initCodex(*dir, *command, proxyArgs(t), hookCmd(t)); err != nil {
-				return err
-			}
-			written = append(written, i18n.T("cli.init.written_codex"))
-		case "opencode":
-			if err := initOpencode(*dir, *command, proxyArgs(t), hookArgv(t)); err != nil {
-				return err
-			}
-			if *noHooks {
-				written = append(written, i18n.T("cli.init.written_opencode"))
-			} else {
-				written = append(written, i18n.T("cli.init.written_opencode_plugin"))
-			}
+		var w string
+		var err error
+		if *project {
+			w, err = initToolProject(*dir, t, *command, proxyArgs(t), hookCmd(t), hookArgv(t), *noHooks)
+		} else {
+			w, err = initToolUser(out, t, *command, proxyArgs(t), hookCmd(t), hookArgv(t), *noHooks)
 		}
+		if err != nil {
+			return err
+		}
+		written = append(written, w)
 	}
 
-	fmt.Fprint(out, i18n.T("cli.init.wrote_config", i18n.D{"Workspace": ws, "Server": srv}))
+	if *project {
+		fmt.Fprint(out, i18n.T("cli.init.wrote_config", i18n.D{"Workspace": ws, "Server": srv}))
+	} else {
+		fmt.Fprint(out, i18n.T("cli.init.user_wrote_config", i18n.D{"Workspace": ws, "Server": srv}))
+	}
 	for _, w := range written {
 		fmt.Fprintf(out, "  %s\n", w)
+	}
+	if !*project {
+		if err := bindAndTidy(out, dirAbs, srv, ws, tools, *share, *removeProject); err != nil {
+			return err
+		}
+	} else if *share {
+		if err := writeSharedFile(out, dirAbs, srv, ws); err != nil {
+			return err
+		}
 	}
 	fmt.Fprintln(out, i18n.T("cli.init.no_tokens_note"))
 	if !*noHooks {
@@ -145,13 +167,17 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 			case "claude-code":
 				fmt.Fprintln(out, i18n.T("cli.init.hook_claude"))
 			case "codex":
-				fmt.Fprintln(out, i18n.T("cli.init.hook_codex"))
+				if *project {
+					fmt.Fprintln(out, i18n.T("cli.init.hook_codex"))
+				} else {
+					fmt.Fprintln(out, i18n.T("cli.init.user_hook_codex"))
+				}
 			case "opencode":
 				fmt.Fprintln(out, i18n.T("cli.init.hook_opencode"))
 			}
 		}
-		fmt.Fprint(out, i18n.T("cli.init.hook_check", i18n.D{
-			"Command": shellCommand(append([]string{*command, "hook", "--check"}, proxyArgs(tools[0])[1:]...))}))
+		check := append([]string{*command, "hook", "--check"}, proxyArgs(tools[0])[1:]...)
+		fmt.Fprint(out, i18n.T("cli.init.hook_check", i18n.D{"Command": shellCommand(check)}))
 	}
 	// 编程工具按配置里的命令启动转发器：命令不在 PATH 里时它会找不到 cohive
 	if _, err := lookPath(*command); err != nil {
@@ -185,6 +211,31 @@ func initProject(ctx context.Context, out io.Writer, args []string) error {
 	fmt.Fprintln(out, i18n.T("cli.init.next_1"))
 	fmt.Fprintln(out, i18n.T("cli.init.next_2"))
 	return nil
+}
+
+// initToolProject 写某个工具的项目级配置（旧做法），返回给用户看的一行说明。
+func initToolProject(dir, tool, command string, args []string, hookCmd string, hookArgv []string, noHooks bool) (string, error) {
+	switch tool {
+	case "claude-code":
+		if err := initClaude(dir, command, args, hookCmd); err != nil {
+			return "", err
+		}
+		return i18n.T("cli.init.written_claude"), nil
+	case "codex":
+		if err := initCodex(dir, command, args, hookCmd); err != nil {
+			return "", err
+		}
+		return i18n.T("cli.init.written_codex"), nil
+	case "opencode":
+		if err := initOpencode(dir, command, args, hookArgv); err != nil {
+			return "", err
+		}
+		if noHooks {
+			return i18n.T("cli.init.written_opencode"), nil
+		}
+		return i18n.T("cli.init.written_opencode_plugin"), nil
+	}
+	return "", nil
 }
 
 // pickTarget 决定配置哪个服务与工作空间：显式指定优先。服务：本机必须只配对过一个；
@@ -400,17 +451,37 @@ func initClaude(dir, command string, args []string, hookCmd string) error {
 	if err != nil {
 		return err
 	}
-	argv := make([]any, len(args))
-	for i, a := range args {
-		argv[i] = a
-	}
-	servers["cohive"] = map[string]any{"type": "stdio", "command": command, "args": argv}
+	servers["cohive"] = claudeServerEntry(command, args)
 
 	settingsPath := filepath.Join(dir, ".claude", "settings.json")
 	settings, err := readJSONObject(settingsPath)
 	if err != nil {
 		return err
 	}
+	if err := applyClaudeSettings(settings, hookCmd, true, nil); err != nil {
+		return err
+	}
+	// 全部校验通过后再写，避免只写了一半
+	if err := writeJSON(mcpPath, mcp); err != nil {
+		return err
+	}
+	if err := writeJSON(settingsPath, settings); err != nil {
+		return err
+	}
+	return writeSkill(filepath.Join(dir, ".claude", "skills", "cohive", "SKILL.md"))
+}
+
+func claudeServerEntry(command string, args []string) map[string]any {
+	argv := make([]any, len(args))
+	for i, a := range args {
+		argv[i] = a
+	}
+	return map[string]any{"type": "stdio", "command": command, "args": argv}
+}
+
+// applyClaudeSettings 把确认规则、（项目级时）启用 .mcp.json 里的 cohive、会话钩子合并进 settings。
+// extraAllow 是额外放行的工具名（不带 mcp__cohive__ 前缀），用户级配置用它放行 cohive_status。
+func applyClaudeSettings(settings map[string]any, hookCmd string, enableMcpjson bool, extraAllow []string) error {
 	perms, err := childObject(settings, "permissions", i18n.T("cli.init.at.permissions"))
 	if err != nil {
 		return err
@@ -422,26 +493,18 @@ func initClaude(dir, command string, args []string, hookCmd string) error {
 		}
 		return out
 	}
-	if err := addStrings(perms, "allow", i18n.T("cli.init.at.permissions_allow"), prefixed(allowTools)...); err != nil {
+	if err := addStrings(perms, "allow", i18n.T("cli.init.at.permissions_allow"), prefixed(append(append([]string{}, allowTools...), extraAllow...))...); err != nil {
 		return err
 	}
 	if err := addStrings(perms, "ask", i18n.T("cli.init.at.permissions_ask"), prefixed(confirmTools)...); err != nil {
 		return err
 	}
-	if err := addStrings(settings, "enabledMcpjsonServers", i18n.T("cli.init.at.enabled_servers"), "cohive"); err != nil {
-		return err
+	if enableMcpjson {
+		if err := addStrings(settings, "enabledMcpjsonServers", i18n.T("cli.init.at.enabled_servers"), "cohive"); err != nil {
+			return err
+		}
 	}
-	if err := setClaudeHooks(settings, hookCmd); err != nil {
-		return err
-	}
-	// 全部校验通过后再写，避免只写了一半
-	if err := writeJSON(mcpPath, mcp); err != nil {
-		return err
-	}
-	if err := writeJSON(settingsPath, settings); err != nil {
-		return err
-	}
-	return writeSkill(filepath.Join(dir, ".claude", "skills", "cohive", "SKILL.md"))
+	return setClaudeHooks(settings, hookCmd)
 }
 
 func tomlString(s string) string {
@@ -463,7 +526,7 @@ func tomlString(s string) string {
 	return b.String()
 }
 
-func codexBlock(command string, args []string, hookCmd string) string {
+func codexBlock(command string, args []string, hookCmd string, extraAllow []string) string {
 	quoted := make([]string, len(args))
 	for i, a := range args {
 		quoted[i] = tomlString(a)
@@ -473,7 +536,7 @@ func codexBlock(command string, args []string, hookCmd string) string {
 	b.WriteString("[mcp_servers.cohive]\n")
 	fmt.Fprintf(&b, "command = %s\n", tomlString(command))
 	fmt.Fprintf(&b, "args = [%s]\n", strings.Join(quoted, ", "))
-	tools := append(append([]string{}, confirmTools...), allowTools...)
+	tools := append(append(append([]string{}, confirmTools...), allowTools...), extraAllow...)
 	sort.Strings(tools)
 	confirm := map[string]bool{}
 	for _, t := range confirmTools {
@@ -508,9 +571,17 @@ func hasCohiveServer(path, text string) (bool, error) {
 }
 
 func initCodex(dir, command string, args []string, hookCmd string) error {
-	for _, rel := range []string{".codex/config.toml", ".agents/skills/cohive/SKILL.md"} {
-		if err := checkNoSymlinks(dir, rel); err != nil {
-			return err
+	return initCodexAt(dir, command, args, hookCmd, nil, true)
+}
+
+// initCodexAt 写 dir 下的 .codex/config.toml 与 .agents/skills。guard 为真时检查符号链接（项目里的链接可能被别人预先放好）；
+// 写用户主目录时不查：用户自己的点文件常常是链接。
+func initCodexAt(dir, command string, args []string, hookCmd string, extraAllow []string, guard bool) error {
+	if guard {
+		for _, rel := range []string{".codex/config.toml", ".agents/skills/cohive/SKILL.md"} {
+			if err := checkNoSymlinks(dir, rel); err != nil {
+				return err
+			}
 		}
 	}
 	path := filepath.Join(dir, ".codex", "config.toml")
@@ -539,7 +610,7 @@ func initCodex(dir, command string, args []string, hookCmd string) error {
 		return i18n.Errorf("cli.init.handwritten_cohive", i18n.D{"Path": path})
 	}
 
-	block := codexBlock(command, args, hookCmd)
+	block := codexBlock(command, args, hookCmd, extraAllow)
 	var next string
 	if blockAt >= 0 {
 		next = rest[:blockAt] + block + rest[blockAt:]
