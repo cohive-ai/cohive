@@ -206,5 +206,7 @@
   "cli.client.proxy.http_error": "The Cohive server returned HTTP {{.Code}}: {{.Body}}",
   "cli.client.proxy.read_failed": "Failed to read the response from the Cohive server",
   "cli.client.proxy.stream_failed": "Failed to read the streaming response from the Cohive server: {{.Err}}",
-  "cli.client.proxy.unrecognized": "The Cohive server returned something unrecognizable"
+  "cli.client.proxy.unrecognized": "The Cohive server returned something unrecognizable",
+  "cli.client.bindings_bad_format": "The bindings file has the wrong format: {{.Path}}",
+  "cli.client.bindings_locked": "Another cohive process is updating the bindings (lock file {{.Path}}); try again in a moment"
 }

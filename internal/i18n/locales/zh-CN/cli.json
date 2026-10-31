@@ -197,5 +197,7 @@
   "cli.client.proxy.http_error": "Cohive 协作服务返回 HTTP {{.Code}}：{{.Body}}",
   "cli.client.proxy.read_failed": "读取协作服务响应失败",
   "cli.client.proxy.stream_failed": "读取 Cohive 协作服务的流式响应失败：{{.Err}}",
-  "cli.client.proxy.unrecognized": "Cohive 协作服务返回了无法识别的内容"
+  "cli.client.proxy.unrecognized": "Cohive 协作服务返回了无法识别的内容",
+  "cli.client.bindings_bad_format": "绑定表格式不对：{{.Path}}",
+  "cli.client.bindings_locked": "别的 cohive 进程正在更新绑定表（锁文件 {{.Path}}），请稍后再试"
 }
